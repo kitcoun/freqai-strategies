@@ -1,4 +1,4 @@
-FROM freqtradeorg/freqtrade:stable_freqairl
+FROM freqtradeorg/freqtrade:stable_freqai
 
 # Switch user to root if you must install something from apt
 # Don't forget to switch the user back below!
