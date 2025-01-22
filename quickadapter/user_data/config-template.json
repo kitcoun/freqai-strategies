@@ -53,7 +53,7 @@
             "ETH/USDT",
             "SOL/USDT",
             "BNB/USDT",
-            "XRP/USDT"            
+            "XRP/USDT"
         ],
         // // Spot IA
         // "pair_whitelist": [
@@ -130,7 +130,7 @@
         "backtest_period_days": 2,
         "write_metrics_to_disk": false,
         "identifier": "quickadapter-xgboost",
-        "fit_live_predictions_candles": 600,
+        "fit_live_predictions_candles": 300,
         "track_performance": false,
         "weibull_outlier_threshold": 0.999,
         "optuna_hyperopt": false,
