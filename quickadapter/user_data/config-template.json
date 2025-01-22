@@ -132,6 +132,7 @@
         "identifier": "quickadapter-xgboost",
         "fit_live_predictions_candles": 300,
         "track_performance": false,
+        "data_kitchen_thread_count": 8, // set to number of CPU threads / 2
         "weibull_outlier_threshold": 0.999,
         "optuna_hyperopt": false,
         "extra_returns_per_train": {
@@ -179,6 +180,7 @@
         "model_training_parameters": {
             // "device": "gpu",
             // "use_rmm:": true,
+            "nthread": 8, // set to number of CPU threads / 2
             "verbosity": 1
         }
     },
