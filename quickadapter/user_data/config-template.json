@@ -126,13 +126,13 @@
         "purge_old_models": 2,
         "expiration_hours": 12,
         "train_period_days": 14,
-        "live_retrain_hours": 0.083,
+        "live_retrain_hours": 0.5,
         "backtest_period_days": 2,
         "write_metrics_to_disk": false,
         "identifier": "quickadapter-xgboost",
         "fit_live_predictions_candles": 300,
         "track_performance": false,
-        "data_kitchen_thread_count": 8, // set to number of CPU threads / 2
+        "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
         "weibull_outlier_threshold": 0.999,
         "optuna_hyperopt": false,
         "extra_returns_per_train": {
@@ -180,7 +180,7 @@
         "model_training_parameters": {
             // "device": "gpu",
             // "use_rmm:": true,
-            "nthread": 8, // set to number of CPU threads / 2
+            "nthread": 6, // set to number of CPU threads / 4
             "verbosity": 1
         }
     },
