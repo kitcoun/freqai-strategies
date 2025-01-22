@@ -373,3 +373,7 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/vim,visualstudiocode,pycharm+all,linux,osx,windows,python
 
 config.json
+*.sqlite*
+models/
+data/
+!.gitkeep
