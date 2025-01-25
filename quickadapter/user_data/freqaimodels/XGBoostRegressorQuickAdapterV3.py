@@ -45,14 +45,11 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         X = data_dictionary["train_features"]
         y = data_dictionary["train_labels"]
 
-        if self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.1) == 0:
-            eval_set = None
-            eval_weights = None
-        else:
-            eval_set = [
-                (data_dictionary["test_features"], data_dictionary["test_labels"])
-            ]
-            eval_weights = [data_dictionary["test_weights"]]
+        X_test = data_dictionary["test_features"]
+        y_test = data_dictionary["test_labels"]
+        test_weights = data_dictionary["test_weights"]
+
+        eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
         sample_weight = data_dictionary["train_weights"]
 
@@ -145,3 +142,13 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_value_param2"] = f[1]
         dk.data["extra_returns_per_train"]["DI_value_param3"] = f[2]
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
+
+    def eval_set_and_weights(self, X_test, y_test, test_weights):
+        if self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.3) == 0:
+            eval_set = None
+            eval_weights = None
+        else:
+            eval_set = [(X_test, y_test)]
+            eval_weights = [test_weights]
+
+        return eval_set, eval_weights

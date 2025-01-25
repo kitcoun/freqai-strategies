@@ -128,7 +128,7 @@
         "track_performance": false,
         "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
         "weibull_outlier_threshold": 0.999,
-        "optuna_hyperopt": false,
+        "optuna_hyperopt": true,
         "extra_returns_per_train": {
             "DI_value_param1": 0,
             "DI_value_param2": 0,
@@ -167,14 +167,14 @@
             "buffer_train_data_candles": 100
         },
         "data_split_parameters": {
-            "test_size": 0,
+            "test_size": 0.3,
             "random_state": 1,
             "shuffle": false
         },
         "model_training_parameters": {
             // "device": "gpu",
             // "use_rmm:": true,
-            "nthread": 6, // set to number of CPU threads / 4
+            "n_jobs": 6, // set to number of CPU threads / 4
             "verbosity": 1
         }
     },

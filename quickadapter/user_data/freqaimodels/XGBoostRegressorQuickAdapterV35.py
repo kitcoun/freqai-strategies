@@ -46,21 +46,22 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         X = data_dictionary["train_features"]
         y = data_dictionary["train_labels"]
 
-        if self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.1) == 0:
-            eval_set = None
-            eval_weights = None
-        else:
-            eval_set = [
-                (data_dictionary["test_features"], data_dictionary["test_labels"])
-            ]
-            eval_weights = [data_dictionary["test_weights"]]
+        X_test = data_dictionary["test_features"]
+        y_test = data_dictionary["test_labels"]
+        test_weights = data_dictionary["test_weights"]
+
+        eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
         sample_weight = data_dictionary["train_weights"]
 
         xgb_model = self.get_init_model(dk.pair)
         start = time.time()
         hp = {}
-        if self.freqai_info.get("optuna_hyperopt", False):
+        if (
+            self.freqai_info.get("optuna_hyperopt", False)
+            and self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.3)
+            > 0
+        ):
             study = optuna.create_study(direction="minimize")
             study.optimize(
                 lambda trial: objective(
@@ -68,8 +69,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     X,
                     y,
                     sample_weight,
-                    data_dictionary["test_features"],
-                    data_dictionary["test_labels"],
+                    X_test,
+                    y_test,
                     self.model_training_parameters,
                 ),
                 n_trials=N_TRIALS,
@@ -80,8 +81,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             hp = study.best_params
             # trial = study.best_trial
             for key, value in hp.items():
-                logger.debug(f"Optuna {key:>20s} : {value}")
-            logger.info(f"Optuna {'best objective value':>20s} : {study.best_value}")
+                logger.debug(f"Optuna hyperopt {key:>20s} : {value}")
+            logger.info(
+                f"Optuna hyperopt {'best objective value':>20s} : {study.best_value}"
+            )
 
         window = hp.get("train_period_candles", 4032)
         X = X.tail(window)
@@ -174,10 +177,18 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_value_param3"] = f[2]
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
+    def eval_set_and_weights(self, X_test, y_test, test_weights):
+        if self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.3) == 0:
+            eval_set = None
+            eval_weights = None
+        else:
+            eval_set = [(X_test, y_test)]
+            eval_weights = [test_weights]
+
+        return eval_set, eval_weights
+
 
 def objective(trial, X, y, weights, X_test, y_test, params):
-    """Define the objective function"""
-
     window = trial.suggest_int("train_period_candles", 1152, 17280, step=600)
 
     # Fit the model
