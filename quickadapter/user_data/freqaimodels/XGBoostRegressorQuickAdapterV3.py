@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from xgboost import XGBRegressor
 import time
@@ -7,9 +7,6 @@ from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 import pandas as pd
 import scipy as spy
-import numpy.typing as npt
-from pandas import DataFrame
-import numpy as np
 
 import warnings
 
@@ -144,7 +141,10 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
     def eval_set_and_weights(self, X_test, y_test, test_weights):
-        if self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.3) == 0:
+        if (
+            self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.25)
+            == 0
+        ):
             eval_set = None
             eval_weights = None
         else:

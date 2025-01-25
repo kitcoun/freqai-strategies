@@ -5,7 +5,7 @@ FROM freqtradeorg/freqtrade:stable_freqai
 # USER root
 
 # The below dependency - pyti - serves as an example. Please use whatever you need!
-RUN pip install --user optuna
+RUN pip install --user optuna optuna-integration[xgboost]
 
 # Switch back to user (only if you required root above)
 # USER ftuser

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from xgboost import XGBRegressor
 import time
@@ -9,10 +9,10 @@ import pandas as pd
 import scipy as spy
 import optuna
 import sklearn
+import warnings
 
 N_TRIALS = 26
-
-import warnings
+TEST_SIZE = 0.25
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -57,12 +57,16 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         xgb_model = self.get_init_model(dk.pair)
         start = time.time()
         hp = {}
-        if (
+        optuna_hyperopt: bool = (
             self.freqai_info.get("optuna_hyperopt", False)
-            and self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.3)
+            and self.freqai_info.get("data_split_parameters", {}).get(
+                "test_size", TEST_SIZE
+            )
             > 0
-        ):
-            study = optuna.create_study(direction="minimize")
+        )
+        if optuna_hyperopt:
+            pruner = optuna.pruners.MedianPruner(n_warmup_steps=5)
+            study = optuna.create_study(pruner=pruner, direction="minimize")
             study.optimize(
                 lambda trial: objective(
                     trial,
@@ -77,11 +81,11 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 n_jobs=1,
             )
 
-            # display params
             hp = study.best_params
             # trial = study.best_trial
+            # log params
             for key, value in hp.items():
-                logger.debug(f"Optuna hyperopt {key:>20s} : {value}")
+                logger.info(f"Optuna hyperopt {key:>20s} : {value}")
             logger.info(
                 f"Optuna hyperopt {'best objective value':>20s} : {study.best_value}"
             )
@@ -90,7 +94,22 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         X = X.tail(window)
         y = y.tail(window)
         sample_weight = sample_weight[-window:]
-        model = XGBRegressor(**self.model_training_parameters)
+        if optuna_hyperopt:
+            params = {
+                **self.model_training_parameters,
+                **{
+                    # "learning_rate": hp.get("learning_rate"),
+                    # "gamma": hp.get("gamma"),
+                    # "reg_alpha": hp.get("reg_alpha"),
+                    # "reg_lambda": hp.get("reg_lambda"),
+                },
+            }
+        else:
+            params = self.model_training_parameters
+
+        logger.info(f"Model training parameters : {self.model_training_parameters}")
+
+        model = XGBRegressor(**params)
 
         model.fit(
             X=X,
@@ -178,7 +197,12 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
     def eval_set_and_weights(self, X_test, y_test, test_weights):
-        if self.freqai_info.get("data_split_parameters", {}).get("test_size", 0.3) == 0:
+        if (
+            self.freqai_info.get("data_split_parameters", {}).get(
+                "test_size", TEST_SIZE
+            )
+            == 0
+        ):
             eval_set = None
             eval_weights = None
         else:
@@ -189,16 +213,33 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
 
 def objective(trial, X, y, weights, X_test, y_test, params):
-    window = trial.suggest_int("train_period_candles", 1152, 17280, step=600)
+    study_params = {
+        "objective": "reg:squarederror",
+        "eval_metric": "rmse",
+        # "learning_rate": trial.suggest_loguniform("learning_rate", 1e-8, 1.0),
+        # "gamma": trial.suggest_loguniform("gamma", 1e-8, 1.0),
+        # "reg_alpha": trial.suggest_loguniform("reg_alpha", 1e-8, 1.0),
+        # "reg_lambda": trial.suggest_loguniform("reg_lambda", 1e-8, 1.0),
+        "callbacks": [
+            optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
+        ],
+    }
+    params = {**params, **study_params}
+    window = trial.suggest_int("train_period_candles", 1152, 17280, step=300)
 
     # Fit the model
     model = XGBRegressor(**params)
     X = X.tail(window)
     y = y.tail(window)
     weights = weights[-window:]
-    model.fit(X, y, sample_weight=weights, eval_set=[(X_test, y_test)])
+    model.fit(
+        X,
+        y,
+        sample_weight=weights,
+        eval_set=[(X_test, y_test)],
+    )
     y_pred = model.predict(X_test)
 
-    error = sklearn.metrics.mean_squared_error(y_test, y_pred)
+    error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
     return error
