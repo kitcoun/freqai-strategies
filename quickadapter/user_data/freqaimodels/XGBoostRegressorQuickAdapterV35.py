@@ -98,7 +98,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             params = {
                 **self.model_training_parameters,
                 **{
-                    # "learning_rate": hp.get("learning_rate"),
+                    "learning_rate": hp.get("learning_rate"),
                     # "gamma": hp.get("gamma"),
                     # "reg_alpha": hp.get("reg_alpha"),
                     # "reg_lambda": hp.get("reg_lambda"),
@@ -216,7 +216,7 @@ def objective(trial, X, y, weights, X_test, y_test, params):
     study_params = {
         "objective": "reg:squarederror",
         "eval_metric": "rmse",
-        # "learning_rate": trial.suggest_loguniform("learning_rate", 1e-8, 1.0),
+        "learning_rate": trial.suggest_loguniform("learning_rate", 1e-8, 1.0),
         # "gamma": trial.suggest_loguniform("gamma", 1e-8, 1.0),
         # "reg_alpha": trial.suggest_loguniform("reg_alpha", 1e-8, 1.0),
         # "reg_lambda": trial.suggest_loguniform("reg_lambda", 1e-8, 1.0),
