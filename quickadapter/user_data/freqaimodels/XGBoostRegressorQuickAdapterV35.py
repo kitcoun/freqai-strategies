@@ -11,7 +11,7 @@ import optuna
 import sklearn
 import warnings
 
-N_TRIALS = 26
+N_TRIALS = 50
 TEST_SIZE = 0.25
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -107,7 +107,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         else:
             params = self.model_training_parameters
 
-        logger.info(f"Model training parameters : {self.model_training_parameters}")
+        logger.info(f"Model training parameters : {params}")
 
         model = XGBRegressor(**params)
 
