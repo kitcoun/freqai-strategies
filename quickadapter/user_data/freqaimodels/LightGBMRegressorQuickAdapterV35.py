@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict
 
-from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
 import time
 from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
@@ -19,7 +19,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 logger = logging.getLogger(__name__)
 
 
-class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
+class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
     """
     The following freqaimodel is released to sponsors of the non-profit FreqAI open-source project.
     If you find the FreqAI project useful, please consider supporting it by becoming a sponsor.
@@ -54,7 +54,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         sample_weight = data_dictionary["train_weights"]
 
-        xgb_model = self.get_init_model(dk.pair)
+        lgbm_model = self.get_init_model(dk.pair)
         start = time.time()
         hp = {}
         optuna_hyperopt: bool = (
@@ -99,7 +99,6 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 **self.model_training_parameters,
                 **{
                     "learning_rate": hp.get("learning_rate"),
-                    "gamma": hp.get("gamma"),
                     "reg_alpha": hp.get("reg_alpha"),
                     "reg_lambda": hp.get("reg_lambda"),
                 },
@@ -109,7 +108,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         logger.info(f"Model training parameters : {params}")
 
-        model = XGBRegressor(**params)
+        model = LGBMRegressor(**params)
 
         model.fit(
             X=X,
@@ -117,7 +116,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             sample_weight=sample_weight,
             eval_set=eval_set,
             sample_weight_eval_set=eval_weights,
-            xgb_model=xgb_model,
+            init_model=lgbm_model,
         )
         time_spent = time.time() - start
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
@@ -214,21 +213,16 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
 def objective(trial, X, y, weights, X_test, y_test, params):
     study_params = {
-        "objective": "reg:squarederror",
-        "eval_metric": "rmse",
+        "objective": "rmse",
         "learning_rate": trial.suggest_loguniform("learning_rate", 1e-8, 1.0),
-        "gamma": trial.suggest_loguniform("gamma", 1e-8, 1.0),
         "reg_alpha": trial.suggest_loguniform("reg_alpha", 1e-8, 10.0),
         "reg_lambda": trial.suggest_loguniform("reg_lambda", 1e-8, 10.0),
-        "callbacks": [
-            optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
-        ],
     }
     params = {**params, **study_params}
     window = trial.suggest_int("train_period_candles", 1152, 17280, step=300)
 
     # Fit the model
-    model = XGBRegressor(**params)
+    model = LGBMRegressor(**params)
     X = X.tail(window)
     y = y.tail(window)
     weights = weights[-window:]
@@ -237,6 +231,7 @@ def objective(trial, X, y, weights, X_test, y_test, params):
         y,
         sample_weight=weights,
         eval_set=[(X_test, y_test)],
+        callbacks=[optuna.integration.LightGBMPruningCallback(trial, "rmse")],
     )
     y_pred = model.predict(X_test)
 

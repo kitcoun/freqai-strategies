@@ -124,6 +124,7 @@
         "backtest_period_days": 2,
         "write_metrics_to_disk": false,
         "identifier": "quickadapter-xgboost",
+        // "identifier": "quickadapter-lgbm",
         "fit_live_predictions_candles": 300,
         "track_performance": false,
         "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
@@ -163,7 +164,7 @@
             "inlier_metric_window": 0,
             "noise_standard_deviation": 0.02,
             "reverse_test_train_order": false,
-            "plot_feature_importances": 10,
+            "plot_feature_importances": 0,
             "buffer_train_data_candles": 100
         },
         "data_split_parameters": {
