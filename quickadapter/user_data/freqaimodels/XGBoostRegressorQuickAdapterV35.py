@@ -68,7 +68,6 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         start = time.time()
         if optuna_hyperopt:
-            hp = {}
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=5)
             study = optuna.create_study(pruner=pruner, direction="minimize")
             study.optimize(
