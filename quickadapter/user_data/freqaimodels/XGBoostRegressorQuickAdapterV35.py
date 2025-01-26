@@ -54,9 +54,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         sample_weight = data_dictionary["train_weights"]
 
+        model_training_parameters = self.model_training_parameters
+
         xgb_model = self.get_init_model(dk.pair)
-        start = time.time()
-        hp = {}
+
         optuna_hyperopt: bool = (
             self.freqai_info.get("optuna_hyperopt", False)
             and self.freqai_info.get("data_split_parameters", {}).get(
@@ -64,7 +65,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             )
             > 0
         )
+
+        start = time.time()
         if optuna_hyperopt:
+            hp = {}
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=5)
             study = optuna.create_study(pruner=pruner, direction="minimize")
             study.optimize(
@@ -90,13 +94,13 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 f"Optuna hyperopt {'best objective value':>20s} : {study.best_value}"
             )
 
-        window = hp.get("train_period_candles", 4032)
-        X = X.tail(window)
-        y = y.tail(window)
-        sample_weight = sample_weight[-window:]
-        if optuna_hyperopt:
-            params = {
-                **self.model_training_parameters,
+            window = hp.get("train_period_candles")
+            X = X.tail(window)
+            y = y.tail(window)
+            sample_weight = sample_weight[-window:]
+
+            model_training_parameters = {
+                **model_training_parameters,
                 **{
                     "n_estimators": hp.get("n_estimators"),
                     "learning_rate": hp.get("learning_rate"),
@@ -105,12 +109,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     "reg_lambda": hp.get("reg_lambda"),
                 },
             }
-        else:
-            params = self.model_training_parameters
 
-        logger.info(f"Model training parameters : {params}")
+        logger.info(f"Model training parameters : {model_training_parameters}")
 
-        model = XGBRegressor(**params)
+        model = XGBRegressor(**model_training_parameters)
 
         model.fit(
             X=X,
