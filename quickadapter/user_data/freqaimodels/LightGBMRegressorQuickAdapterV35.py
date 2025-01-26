@@ -100,7 +100,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             sample_weight = sample_weight[-window:]
 
             model_training_parameters = {
-                **self.model_training_parameters,
+                **model_training_parameters,
                 **{
                     "n_estimators": hp.get("n_estimators"),
                     "learning_rate": hp.get("learning_rate"),
