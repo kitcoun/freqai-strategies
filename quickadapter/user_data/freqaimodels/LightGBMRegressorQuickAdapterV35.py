@@ -116,7 +116,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             y=y,
             sample_weight=sample_weight,
             eval_set=eval_set,
-            sample_weight_eval_set=eval_weights,
+            eval_sample_weight=eval_weights,
             init_model=lgbm_model,
         )
         time_spent = time.time() - start
