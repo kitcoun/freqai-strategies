@@ -80,8 +80,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                     y_test,
                     self.model_training_parameters,
                 ),
-                n_trials=N_TRIALS,
-                n_jobs=1,
+                n_trials=self.freqai_info.get("optuna_hyperopt_trials", N_TRIALS),
+                n_jobs=self.freqai_info.get("optuna_hyperopt_jobs", 1),
+                timeout=self.freqai_info.get("optuna_hyperopt_timeout", 7200),
             )
 
             hp = study.best_params

@@ -130,6 +130,9 @@
         "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
         "weibull_outlier_threshold": 0.999,
         "optuna_hyperopt": true,
+        "optuna_hyperopt_trials": 36,
+        "optuna_hyperopt_timeout": 3600,
+        "optuna_hyperopt_jobs": 1,
         "extra_returns_per_train": {
             "DI_value_param1": 0,
             "DI_value_param2": 0,

@@ -80,8 +80,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     y_test,
                     self.model_training_parameters,
                 ),
-                n_trials=N_TRIALS,
-                n_jobs=1,
+                n_trials=self.freqai_info.get("optuna_hyperopt_trials", N_TRIALS),
+                n_jobs=self.freqai_info.get("optuna_hyperopt_jobs", 1),
+                timeout=self.freqai_info.get("optuna_hyperopt_timeout", 7200),
             )
 
             hp = study.best_params
@@ -103,6 +104,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 **{
                     "n_estimators": hp.get("n_estimators"),
                     "learning_rate": hp.get("learning_rate"),
+                    "max_depth": hp.get("max_depth"),
                     "gamma": hp.get("gamma"),
                     "reg_alpha": hp.get("reg_alpha"),
                     "reg_lambda": hp.get("reg_lambda"),
@@ -220,6 +222,7 @@ def objective(trial, X, y, weights, X_test, y_test, params):
         "eval_metric": "rmse",
         "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
         "learning_rate": trial.suggest_loguniform("learning_rate", 1e-8, 1.0),
+        "max_depth": trial.suggest_int("max_depth", 1, 10),
         "gamma": trial.suggest_loguniform("gamma", 1e-8, 1.0),
         "reg_alpha": trial.suggest_loguniform("reg_alpha", 1e-8, 10.0),
         "reg_lambda": trial.suggest_loguniform("reg_lambda", 1e-8, 10.0),
