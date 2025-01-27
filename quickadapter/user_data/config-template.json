@@ -119,7 +119,7 @@
         "conv_width": 1,
         "purge_old_models": 2,
         "expiration_hours": 12,
-        "train_period_days": 14,
+        "train_period_days": 30,
         "live_retrain_hours": 0.5,
         "backtest_period_days": 2,
         "write_metrics_to_disk": false,

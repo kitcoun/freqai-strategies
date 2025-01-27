@@ -231,7 +231,7 @@ def objective(trial, X, y, weights, X_test, y_test, params):
         ],
     }
     params = {**params, **study_params}
-    window = trial.suggest_int("train_period_candles", 1152, 17280, step=300)
+    window = trial.suggest_int("train_period_candles", 1152, 17280, step=100)
 
     # Fit the model
     model = XGBRegressor(**params)
