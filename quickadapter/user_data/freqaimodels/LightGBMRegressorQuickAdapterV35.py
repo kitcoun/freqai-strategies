@@ -243,6 +243,7 @@ def objective(trial, X, y, weights, X_test, y_test, params):
         y,
         sample_weight=weights,
         eval_set=[(X_test, y_test)],
+        eval_metric="rmse",
         callbacks=[optuna.integration.LightGBMPruningCallback(trial, "rmse")],
     )
     y_pred = model.predict(X_test)
