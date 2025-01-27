@@ -104,6 +104,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 **{
                     "n_estimators": hp.get("n_estimators"),
                     "learning_rate": hp.get("learning_rate"),
+                    "subsample": hp.get("subsample"),
+                    "colsample_bytree": hp.get("colsample_bytree"),
                     "reg_alpha": hp.get("reg_alpha"),
                     "reg_lambda": hp.get("reg_lambda"),
                 },
@@ -217,10 +219,12 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 def objective(trial, X, y, weights, X_test, y_test, params):
     study_params = {
         "objective": "rmse",
-        "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
-        "learning_rate": trial.suggest_loguniform("learning_rate", 1e-8, 1.0),
-        "reg_alpha": trial.suggest_loguniform("reg_alpha", 1e-8, 10.0),
-        "reg_lambda": trial.suggest_loguniform("reg_lambda", 1e-8, 10.0),
+        "n_estimators": trial.suggest_int("n_estimators", 100, 800),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
+        "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+        "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
+        "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
     }
     params = {**params, **study_params}
     window = trial.suggest_int("train_period_candles", 1152, 17280, step=100)
