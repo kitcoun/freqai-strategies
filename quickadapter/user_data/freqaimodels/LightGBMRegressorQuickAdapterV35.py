@@ -103,7 +103,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 **model_training_parameters,
                 **{
                     "n_estimators": hp.get("n_estimators"),
+                    "num_leaves": hp.get("num_leaves"),
                     "learning_rate": hp.get("learning_rate"),
+                    "min_child_samples": hp.get("min_child_samples"),
                     "subsample": hp.get("subsample"),
                     "colsample_bytree": hp.get("colsample_bytree"),
                     "reg_alpha": hp.get("reg_alpha"),
@@ -220,7 +222,9 @@ def objective(trial, X, y, weights, X_test, y_test, params):
     study_params = {
         "objective": "rmse",
         "n_estimators": trial.suggest_int("n_estimators", 100, 800),
+        "num_leaves": trial.suggest_int("num_leaves", 20, 3000, step=10),
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
+        "min_child_samples": trial.suggest_int("min_child_samples", 10, 200),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
