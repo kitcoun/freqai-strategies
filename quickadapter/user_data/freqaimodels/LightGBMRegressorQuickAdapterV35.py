@@ -69,7 +69,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         start = time.time()
         if optuna_hyperopt:
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=5)
-            study = optuna.create_study(pruner=pruner, direction="minimize")
+            study = optuna.create_study(
+                pruner=pruner,
+                direction="minimize",
+            )
             study.optimize(
                 lambda trial: objective(
                     trial,
@@ -222,9 +225,9 @@ def objective(trial, X, y, weights, X_test, y_test, params):
     study_params = {
         "objective": "rmse",
         "n_estimators": trial.suggest_int("n_estimators", 100, 800),
-        "num_leaves": trial.suggest_int("num_leaves", 20, 3000, step=10),
+        "num_leaves": trial.suggest_int("num_leaves", 2, 256),
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
-        "min_child_samples": trial.suggest_int("min_child_samples", 10, 200),
+        "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
