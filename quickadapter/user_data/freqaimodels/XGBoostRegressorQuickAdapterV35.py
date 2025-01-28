@@ -53,8 +53,6 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         xgb_model = self.get_init_model(dk.pair)
 
-        logger.info(f"Model training parameters : {self.model_training_parameters}")
-
         model = XGBRegressor(**self.model_training_parameters)
 
         optuna_hyperopt: bool = (
@@ -243,8 +241,6 @@ def objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
 
 def hp_objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
     study_params = {
-        "objective": "reg:squarederror",
-        "eval_metric": "rmse",
         "n_estimators": trial.suggest_int("n_estimators", 100, 800),
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
         "max_depth": trial.suggest_int("max_depth", 3, 12),
@@ -253,14 +249,18 @@ def hp_objective(trial, X, y, train_weights, X_test, y_test, test_weights, param
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
         "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
-        "callbacks": [
-            optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
-        ],
     }
     params = {**params, **study_params}
 
     # Fit the model
-    model = XGBRegressor(**params)
+    model = XGBRegressor(
+        objective="reg:squarederror",
+        eval_metric="rmse",
+        callbacks=[
+            optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
+        ],
+        **params,
+    )
     model.fit(
         X=X,
         y=y,

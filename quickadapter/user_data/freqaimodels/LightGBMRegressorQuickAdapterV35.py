@@ -53,8 +53,6 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         lgbm_model = self.get_init_model(dk.pair)
 
-        logger.info(f"Model training parameters : {self.model_training_parameters}")
-
         model = LGBMRegressor(**self.model_training_parameters)
 
         optuna_hyperopt: bool = (
@@ -222,7 +220,7 @@ def objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
     test_weights = test_weights[-test_window:]
 
     # Fit the model
-    model = LGBMRegressor(**params)
+    model = LGBMRegressor(objective="rmse", **params)
     model.fit(
         X=X,
         y=y,
@@ -241,7 +239,6 @@ def objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
 
 def hp_objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
     study_params = {
-        "objective": "rmse",
         "n_estimators": trial.suggest_int("n_estimators", 100, 800),
         "num_leaves": trial.suggest_int("num_leaves", 2, 256),
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
@@ -254,7 +251,7 @@ def hp_objective(trial, X, y, train_weights, X_test, y_test, test_weights, param
     params = {**params, **study_params}
 
     # Fit the model
-    model = LGBMRegressor(**params)
+    model = LGBMRegressor(objective="rmse", **params)
     model.fit(
         X=X,
         y=y,
