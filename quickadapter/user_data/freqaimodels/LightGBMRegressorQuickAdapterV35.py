@@ -45,18 +45,17 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         X = data_dictionary["train_features"]
         y = data_dictionary["train_labels"]
+        train_weights = data_dictionary["train_weights"]
 
         X_test = data_dictionary["test_features"]
         y_test = data_dictionary["test_labels"]
         test_weights = data_dictionary["test_weights"]
 
-        eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
-
-        sample_weight = data_dictionary["train_weights"]
-
-        model_training_parameters = self.model_training_parameters
-
         lgbm_model = self.get_init_model(dk.pair)
+
+        logger.info(f"Model training parameters : {self.model_training_parameters}")
+
+        model = LGBMRegressor(**self.model_training_parameters)
 
         optuna_hyperopt: bool = (
             self.freqai_info.get("optuna_hyperopt", False)
@@ -78,14 +77,15 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                     trial,
                     X,
                     y,
-                    sample_weight,
+                    train_weights,
                     X_test,
                     y_test,
+                    test_weights,
                     self.model_training_parameters,
                 ),
                 n_trials=self.freqai_info.get("optuna_hyperopt_trials", N_TRIALS),
                 n_jobs=self.freqai_info.get("optuna_hyperopt_jobs", 1),
-                timeout=self.freqai_info.get("optuna_hyperopt_timeout", 7200),
+                timeout=self.freqai_info.get("optuna_hyperopt_timeout", 3600),
             )
 
             hp = study.best_params
@@ -97,33 +97,22 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 f"Optuna hyperopt {'best objective value':>20s} : {study.best_value}"
             )
 
-            window = hp.get("train_period_candles")
-            X = X.tail(window)
-            y = y.tail(window)
-            sample_weight = sample_weight[-window:]
+            train_window = hp.get("train_period_candles")
+            X = X.tail(train_window)
+            y = y.tail(train_window)
+            train_weights = train_weights[-train_window:]
 
-            model_training_parameters = {
-                **model_training_parameters,
-                **{
-                    "n_estimators": hp.get("n_estimators"),
-                    "num_leaves": hp.get("num_leaves"),
-                    "learning_rate": hp.get("learning_rate"),
-                    "min_child_samples": hp.get("min_child_samples"),
-                    "subsample": hp.get("subsample"),
-                    "colsample_bytree": hp.get("colsample_bytree"),
-                    "reg_alpha": hp.get("reg_alpha"),
-                    "reg_lambda": hp.get("reg_lambda"),
-                },
-            }
+            test_window = hp.get("test_period_candles")
+            X_test = X_test.tail(test_window)
+            y_test = y_test.tail(test_window)
+            test_weights = test_weights[-test_window:]
 
-        logger.info(f"Model training parameters : {model_training_parameters}")
-
-        model = LGBMRegressor(**model_training_parameters)
+        eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
         model.fit(
             X=X,
             y=y,
-            sample_weight=sample_weight,
+            sample_weight=train_weights,
             eval_set=eval_set,
             eval_sample_weight=eval_weights,
             init_model=lgbm_model,
@@ -221,7 +210,36 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         return eval_set, eval_weights
 
 
-def objective(trial, X, y, weights, X_test, y_test, params):
+def objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
+    train_window = trial.suggest_int("train_period_candles", 1152, 17280, step=100)
+    X = X.tail(train_window)
+    y = y.tail(train_window)
+    train_weights = train_weights[-train_window:]
+
+    test_window = trial.suggest_int("test_period_candles", 1152, 17280, step=100)
+    X_test = X_test.tail(test_window)
+    y_test = y_test.tail(test_window)
+    test_weights = test_weights[-test_window:]
+
+    # Fit the model
+    model = LGBMRegressor(**params)
+    model.fit(
+        X=X,
+        y=y,
+        sample_weight=train_weights,
+        eval_set=[(X_test, y_test)],
+        eval_sample_weight=[test_weights],
+        eval_metric="rmse",
+        callbacks=[optuna.integration.LightGBMPruningCallback(trial, "rmse")],
+    )
+    y_pred = model.predict(X_test)
+
+    error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
+
+    return error
+
+
+def hp_objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
     study_params = {
         "objective": "rmse",
         "n_estimators": trial.suggest_int("n_estimators", 100, 800),
@@ -234,18 +252,15 @@ def objective(trial, X, y, weights, X_test, y_test, params):
         "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
     }
     params = {**params, **study_params}
-    window = trial.suggest_int("train_period_candles", 1152, 17280, step=100)
 
     # Fit the model
     model = LGBMRegressor(**params)
-    X = X.tail(window)
-    y = y.tail(window)
-    weights = weights[-window:]
     model.fit(
-        X,
-        y,
-        sample_weight=weights,
+        X=X,
+        y=y,
+        sample_weight=train_weights,
         eval_set=[(X_test, y_test)],
+        eval_sample_weight=[test_weights],
         eval_metric="rmse",
         callbacks=[optuna.integration.LightGBMPruningCallback(trial, "rmse")],
     )

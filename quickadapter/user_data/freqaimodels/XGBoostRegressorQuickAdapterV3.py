@@ -41,24 +41,23 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
 
         X = data_dictionary["train_features"]
         y = data_dictionary["train_labels"]
+        train_weights = data_dictionary["train_weights"]
 
         X_test = data_dictionary["test_features"]
         y_test = data_dictionary["test_labels"]
         test_weights = data_dictionary["test_weights"]
 
-        eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
-
-        sample_weight = data_dictionary["train_weights"]
-
         xgb_model = self.get_init_model(dk.pair)
 
         model = XGBRegressor(**self.model_training_parameters)
+
+        eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
         start = time.time()
         model.fit(
             X=X,
             y=y,
-            sample_weight=sample_weight,
+            sample_weight=train_weights,
             eval_set=eval_set,
             sample_weight_eval_set=eval_weights,
             xgb_model=xgb_model,
