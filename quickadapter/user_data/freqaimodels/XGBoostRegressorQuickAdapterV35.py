@@ -179,7 +179,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             di_values = di_values.dropna()
             f = spy.stats.genextreme.fit(di_values)
             cutoff = spy.stats.genextreme.ppf(
-                self.freqai_info.get("outlier_threshold"), *f
+                self.freqai_info.get("outlier_threshold", 0.999), *f
             )
 
         dk.data["DI_value_mean"] = pred_df_full["DI_values"].mean()
