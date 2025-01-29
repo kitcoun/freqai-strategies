@@ -157,7 +157,7 @@
             "buffer_train_data_candles": 100
         },
         "data_split_parameters": {
-            "test_size": 0.3,
+            "test_size": 0.333,
             "random_state": 1,
             "shuffle": false
         },
