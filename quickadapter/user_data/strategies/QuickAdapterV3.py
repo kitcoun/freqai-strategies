@@ -179,7 +179,6 @@ class QuickAdapterV3(IStrategy):
             (dataframe["vwap_upperband"] - dataframe["vwap_lowerband"])
             / dataframe["vwap_middleband"]
         ) * 100
-        dataframe = dataframe.copy()
         dataframe["%-dist_to_vwap_upperband"] = get_distance(
             dataframe["close"], dataframe["vwap_upperband"]
         )
@@ -397,19 +396,17 @@ def chaikin_mf(df, periods=20):
 
 # VWAP bands
 def VWAPB(dataframe, window_size=20, num_of_std=1):
-    df = dataframe.copy()
-    df["vwap"] = qtpylib.rolling_vwap(df, window=window_size)
-    rolling_std = df["vwap"].rolling(window=window_size).std()
-    df["vwap_low"] = df["vwap"] - (rolling_std * num_of_std)
-    df["vwap_high"] = df["vwap"] + (rolling_std * num_of_std)
-    return df["vwap_low"], df["vwap"], df["vwap_high"]
+    vwap = qtpylib.rolling_vwap(dataframe, window=window_size)
+    rolling_std = vwap.rolling(window=window_size).std()
+    vwap_low = vwap - (rolling_std * num_of_std)
+    vwap_high = vwap + (rolling_std * num_of_std)
+    return vwap_low, vwap, vwap_high
 
 
 def EWO(dataframe, sma1_length=5, sma2_length=35):
-    df = dataframe.copy()
-    sma1 = ta.EMA(df, timeperiod=sma1_length)
-    sma2 = ta.EMA(df, timeperiod=sma2_length)
-    smadif = (sma1 - sma2) / df["close"] * 100
+    sma1 = ta.EMA(dataframe, timeperiod=sma1_length)
+    sma2 = ta.EMA(dataframe, timeperiod=sma2_length)
+    smadif = (sma1 - sma2) / dataframe["close"] * 100
     return smadif
 
 
