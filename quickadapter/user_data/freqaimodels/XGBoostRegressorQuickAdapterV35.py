@@ -76,6 +76,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     X_test,
                     y_test,
                     test_weights,
+                    self.freqai_info.get("optuna_hyperopt_candles_step", 100),
                     self.model_training_parameters,
                 ),
                 n_trials=self.freqai_info.get("optuna_hyperopt_trials", N_TRIALS),
@@ -205,13 +206,13 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         return eval_set, eval_weights
 
 
-def objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
-    train_window = trial.suggest_int("train_period_candles", 1152, 17280, step=100)
+def objective(trial, X, y, train_weights, X_test, y_test, test_weights, candles_step, params):
+    train_window = trial.suggest_int("train_period_candles", 1152, 17280, step=candles_step)
     X = X.tail(train_window)
     y = y.tail(train_window)
     train_weights = train_weights[-train_window:]
 
-    test_window = trial.suggest_int("test_period_candles", 1152, 17280, step=100)
+    test_window = trial.suggest_int("test_period_candles", 1152, 17280, step=candles_step)
     X_test = X_test.tail(test_window)
     y_test = y_test.tail(test_window)
     test_weights = test_weights[-test_window:]
