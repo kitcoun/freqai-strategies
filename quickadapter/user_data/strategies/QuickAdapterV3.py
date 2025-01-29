@@ -171,10 +171,11 @@ class QuickAdapterV3(IStrategy):
         )
         dataframe["%-dist_to_zerohist"] = get_distance(0, dataframe["%-macdhist"])
         # VWAP
-        vwap_low, vwap, vwap_high = VWAPB(dataframe, 20, 1)
-        dataframe["vwap_upperband"] = vwap_high
-        dataframe["vwap_middleband"] = vwap
-        dataframe["vwap_lowerband"] = vwap_low
+        (
+            dataframe["vwap_lowerband"],
+            dataframe["vwap_middleband"],
+            dataframe["vwap_upperband"],
+        ) = VWAPB(dataframe, 20, 1)
         dataframe["%-vwap_width"] = (
             (dataframe["vwap_upperband"] - dataframe["vwap_lowerband"])
             / dataframe["vwap_middleband"]
