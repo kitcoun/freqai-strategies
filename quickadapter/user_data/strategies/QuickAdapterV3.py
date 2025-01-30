@@ -132,6 +132,19 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
         # Added
+        psar = ta.SAR(
+            dataframe["high"], dataframe["low"], acceleration=0.02, maximum=0.2
+        )
+        dataframe["%-diff_to_psar"] = dataframe["close"] - psar
+        kc = qtpylib.keltner_channel(
+            qtpylib.typical_price(dataframe), window=14, atrs=2
+        )
+        dataframe["kc_lowerband"] = kc["lower"]
+        dataframe["kc_middleband"] = kc["mid"]
+        dataframe["kc_upperband"] = kc["upper"]
+        dataframe["%-kc_width"] = (
+            dataframe["kc_upperband"] - dataframe["kc_lowerband"]
+        ) / dataframe["kc_middleband"]
         bollinger = qtpylib.bollinger_bands(
             qtpylib.typical_price(dataframe), window=14, stds=2.2
         )
