@@ -181,8 +181,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         else:
             di_values = pd.to_numeric(pred_df_full["DI_values"], errors="coerce")
             di_values = di_values.dropna()
-            f = spy.stats.genextreme.fit(di_values)
-            cutoff = spy.stats.genextreme.ppf(
+            f = spy.stats.weibull_min.fit(di_values)
+            cutoff = spy.stats.weibull_min.ppf(
                 self.freqai_info.get("outlier_threshold", 0.999), *f
             )
 
@@ -209,13 +209,19 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         return eval_set, eval_weights
 
 
-def objective(trial, X, y, train_weights, X_test, y_test, test_weights, candles_step, params):
-    train_window = trial.suggest_int("train_period_candles", 1152, 17280, step=candles_step)
+def objective(
+    trial, X, y, train_weights, X_test, y_test, test_weights, candles_step, params
+):
+    train_window = trial.suggest_int(
+        "train_period_candles", 1152, 17280, step=candles_step
+    )
     X = X.tail(train_window)
     y = y.tail(train_window)
     train_weights = train_weights[-train_window:]
 
-    test_window = trial.suggest_int("test_period_candles", 1152, 17280, step=candles_step)
+    test_window = trial.suggest_int(
+        "test_period_candles", 1152, 17280, step=candles_step
+    )
     X_test = X_test.tail(test_window)
     y_test = y_test.tail(test_window)
     test_weights = test_weights[-test_window:]
