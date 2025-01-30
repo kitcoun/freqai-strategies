@@ -136,9 +136,7 @@ class QuickAdapterV3(IStrategy):
             dataframe["high"], dataframe["low"], acceleration=0.02, maximum=0.2
         )
         dataframe["%-diff_to_psar"] = dataframe["close"] - psar
-        kc = qtpylib.keltner_channel(
-            qtpylib.typical_price(dataframe), window=14, atrs=2
-        )
+        kc = qtpylib.keltner_channel(dataframe, window=14, atrs=2)
         dataframe["kc_lowerband"] = kc["lower"]
         dataframe["kc_middleband"] = kc["mid"]
         dataframe["kc_upperband"] = kc["upper"]
