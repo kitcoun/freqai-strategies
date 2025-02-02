@@ -137,27 +137,27 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         pred_df_full = (
             self.dd.historic_predictions[pair].tail(num_candles).reset_index(drop=True)
         )
-        pred_df_sorted = pd.DataFrame()
-        for label in pred_df_full.keys():
-            if pred_df_full[label].dtype == object:
-                continue
-            pred_df_sorted[label] = pred_df_full[label]
-
-        # pred_df_sorted = pred_df_sorted
-        for col in pred_df_sorted:
-            pred_df_sorted[col] = pred_df_sorted[col].sort_values(
-                ascending=False, ignore_index=True
-            )
-        frequency = num_candles / (
-            self.freqai_info["feature_parameters"]["label_period_candles"] * 2
-        )
-        max_pred = pred_df_sorted.iloc[: int(frequency)].mean()
-        min_pred = pred_df_sorted.iloc[-int(frequency) :].mean()
 
         if not warmed_up:
             dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = 2
             dk.data["extra_returns_per_train"]["&s-minima_sort_threshold"] = -2
         else:
+            pred_df_sorted = pd.DataFrame()
+            for label in pred_df_full.keys():
+                if pred_df_full[label].dtype == object:
+                    continue
+                pred_df_sorted[label] = pred_df_full[label]
+
+            # pred_df_sorted = pred_df_sorted
+            for col in pred_df_sorted:
+                pred_df_sorted[col] = pred_df_sorted[col].sort_values(
+                    ascending=False, ignore_index=True
+                )
+            frequency = num_candles / (
+                self.freqai_info["feature_parameters"]["label_period_candles"] * 2
+            )
+            max_pred = pred_df_sorted.iloc[: int(frequency)].mean()
+            min_pred = pred_df_sorted.iloc[-int(frequency) :].mean()
             dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = max_pred[
                 "&s-extrema"
             ]
