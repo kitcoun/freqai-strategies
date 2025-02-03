@@ -12,7 +12,7 @@ import sklearn
 import warnings
 
 N_TRIALS = 36
-TEST_SIZE = 0.25
+TEST_SIZE = 0.1
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -57,19 +57,13 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         optuna_hyperopt: bool = (
             self.freqai_info.get("optuna_hyperopt", False)
-            and self.freqai_info.get("data_split_parameters", {}).get(
-                "test_size", TEST_SIZE
-            )
-            > 0
+            and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
 
         start = time.time()
         if optuna_hyperopt:
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=5)
-            study = optuna.create_study(
-                pruner=pruner,
-                direction="minimize",
-            )
+            study = optuna.create_study(pruner=pruner, direction="minimize")
             study.optimize(
                 lambda trial: objective(
                     trial,
@@ -156,9 +150,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 pred_df_sorted[col] = pred_df_sorted[col].sort_values(
                     ascending=False, ignore_index=True
                 )
-            frequency = num_candles / (
-                self.freqai_info["feature_parameters"]["label_period_candles"] * 2
-            )
+            frequency = num_candles / (self.ft_params["label_period_candles"] * 2)
             max_pred = pred_df_sorted.iloc[: int(frequency)].mean()
             min_pred = pred_df_sorted.iloc[-int(frequency) :].mean()
             dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = max_pred[
@@ -194,12 +186,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
     def eval_set_and_weights(self, X_test, y_test, test_weights):
-        if (
-            self.freqai_info.get("data_split_parameters", {}).get(
-                "test_size", TEST_SIZE
-            )
-            == 0
-        ):
+        if self.data_split_parameters.get("test_size", TEST_SIZE) == 0:
             eval_set = None
             eval_weights = None
         else:
@@ -210,7 +197,15 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
 
 def objective(
-    trial, X, y, train_weights, X_test, y_test, test_weights, candles_step, params
+    trial,
+    X,
+    y,
+    train_weights,
+    X_test,
+    y_test,
+    test_weights,
+    candles_step,
+    params,
 ):
     train_window = trial.suggest_int(
         "train_period_candles", 1152, 17280, step=candles_step
