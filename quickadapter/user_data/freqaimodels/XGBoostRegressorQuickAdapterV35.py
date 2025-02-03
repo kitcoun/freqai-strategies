@@ -150,7 +150,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 pred_df_sorted[col] = pred_df_sorted[col].sort_values(
                     ascending=False, ignore_index=True
                 )
-            frequency = num_candles / (self.self.ft_params["label_period_candles"] * 2)
+            frequency = num_candles / (self.ft_params["label_period_candles"] * 2)
             max_pred = pred_df_sorted.iloc[: int(frequency)].mean()
             min_pred = pred_df_sorted.iloc[-int(frequency) :].mean()
             dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = max_pred[
