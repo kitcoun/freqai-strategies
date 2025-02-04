@@ -62,7 +62,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         start = time.time()
         if optuna_hyperopt:
-            pruner = optuna.pruners.MedianPruner(n_warmup_steps=5)
+            pruner = optuna.pruners.HyperbandPruner(n_warmup_steps=5)
             study = optuna.create_study(pruner=pruner, direction="minimize")
             study.optimize(
                 lambda trial: objective(
