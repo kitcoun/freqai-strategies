@@ -39,7 +39,7 @@ class QuickAdapterV3(IStrategy):
     stoploss = -0.02
     # Trailing stop:
     trailing_stop = True
-    trailing_stop_positive = 0.0075
+    trailing_stop_positive = 0.0099
     trailing_stop_positive_offset = 0.01
     trailing_only_offset_is_reached = True
 
