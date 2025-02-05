@@ -36,8 +36,12 @@ class QuickAdapterV3(IStrategy):
 
     position_adjustment_enable = False
 
-    # Attempts to handle large drops with DCA. High stoploss is required.
-    stoploss = -0.04
+    stoploss = -0.02
+    # Trailing stop:
+    trailing_stop = True
+    trailing_stop_positive = 0.01
+    trailing_stop_positive_offset = 0.01
+    trailing_only_offset_is_reached = True
 
     order_types = {
         "entry": "limit",
@@ -55,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     # This number is explained a bit further down
     max_dca_multiplier = 2
 
-    minimal_roi = {"0": 0.03, "5000": -1}
+    minimal_roi = {"0": 0.03, "1000": -1}
 
     process_only_new_candles = True
 
@@ -99,12 +103,6 @@ class QuickAdapterV3(IStrategy):
 
     use_exit_signal = True
     startup_candle_count: int = 80
-
-    # # Trailing stop:
-    # trailing_stop = True
-    # trailing_stop_positive = 0.01
-    # trailing_stop_positive_offset = 0.025
-    # trailing_only_offset_is_reached = True
 
     def feature_engineering_expand_all(self, dataframe, period, **kwargs):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
@@ -320,13 +318,8 @@ class QuickAdapterV3(IStrategy):
 
         entry_tag = trade.enter_tag
 
-        trade_duration = (current_time - trade.open_date_utc).seconds / 60
-
-        if trade_duration > 1000:
-            return "trade expired"
-
         if last_candle["DI_catch"] == 0:
-            return "Outlier detected"
+            return "outlier_detected"
 
         if (
             last_candle["&s-extrema"] < last_candle["minima_sort_threshold"]
