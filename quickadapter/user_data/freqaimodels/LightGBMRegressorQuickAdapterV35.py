@@ -199,7 +199,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         return eval_set, eval_weights
 
 
-def min_max_pred(pred_df, fit_live_predictions_candles, label_period_candles):
+def min_max_pred(
+    pred_df: pd.Dataframe, fit_live_predictions_candles: int, label_period_candles: int
+):
     pred_df_sorted = pd.DataFrame()
     for label in pred_df.keys():
         if pred_df[label].dtype == object:
