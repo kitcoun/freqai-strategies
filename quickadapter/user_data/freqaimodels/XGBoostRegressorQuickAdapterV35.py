@@ -36,6 +36,14 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.__optuna_hyperopt: bool = (
+            self.freqai_info.get("optuna_hyperopt", False)
+            and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
+        )
+        self.__optuna_hp = {}
+
     def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
         User sets up the training and test data to fit their desired model here
@@ -55,13 +63,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         model = XGBRegressor(**self.model_training_parameters)
 
-        optuna_hyperopt: bool = (
-            self.freqai_info.get("optuna_hyperopt", False)
-            and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
-        )
-
         start = time.time()
-        if optuna_hyperopt:
+        if self.__optuna_hyperopt:
             pruner = optuna.pruners.HyperbandPruner()
             study = optuna.create_study(pruner=pruner, direction="minimize")
             study.optimize(
@@ -73,6 +76,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     X_test,
                     y_test,
                     test_weights,
+                    self.freqai_info.get("fit_live_predictions_candles", 100),
                     self.freqai_info.get("optuna_hyperopt_candles_step", 100),
                     self.model_training_parameters,
                 ),
@@ -81,21 +85,20 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 timeout=self.freqai_info.get("optuna_hyperopt_timeout", 3600),
             )
 
-            hp = study.best_params
-            # trial = study.best_trial
+            self.__optuna_hp = study.best_params
             # log params
-            for key, value in hp.items():
+            for key, value in self.__optuna_hp.items():
                 logger.info(f"Optuna hyperopt {key:>20s} : {value}")
             logger.info(
                 f"Optuna hyperopt {'best objective value':>20s} : {study.best_value}"
             )
 
-            train_window = hp.get("train_period_candles")
+            train_window = self.__optuna_hp.get("train_period_candles")
             X = X.tail(train_window)
             y = y.tail(train_window)
             train_weights = train_weights[-train_window:]
 
-            test_window = hp.get("test_period_candles")
+            test_window = self.__optuna_hp.get("test_period_candles")
             X_test = X_test.tail(test_window)
             y_test = y_test.tail(test_window)
             test_weights = test_weights[-test_window:]
@@ -139,20 +142,20 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = 2
             dk.data["extra_returns_per_train"]["&s-minima_sort_threshold"] = -2
         else:
-            pred_df_sorted = pd.DataFrame()
-            for label in pred_df_full.keys():
-                if pred_df_full[label].dtype == object:
-                    continue
-                pred_df_sorted[label] = pred_df_full[label]
-
-            # pred_df_sorted = pred_df_sorted
-            for col in pred_df_sorted:
-                pred_df_sorted[col] = pred_df_sorted[col].sort_values(
-                    ascending=False, ignore_index=True
+            if self.__optuna_hyperopt:
+                label_period_candles = self.__optuna_hp.get(
+                    "label_period_candles", self.ft_params["label_period_candles"]
                 )
-            frequency = num_candles / (self.ft_params["label_period_candles"] * 2)
-            max_pred = pred_df_sorted.iloc[: int(frequency)].mean()
-            min_pred = pred_df_sorted.iloc[-int(frequency) :].mean()
+                self.freqai_info["feature_parameters"]["label_period_candles"] = (
+                    label_period_candles
+                )
+            else:
+                label_period_candles = self.ft_params["label_period_candles"]
+            min_pred, max_pred = min_max_pred(
+                pred_df_full,
+                num_candles,
+                label_period_candles,
+            )
             dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = max_pred[
                 "&s-extrema"
             ]
@@ -196,6 +199,26 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         return eval_set, eval_weights
 
 
+def min_max_pred(
+    pred_df: pd.DataFrame, fit_live_predictions_candles, label_period_candles
+):
+    pred_df_sorted = pd.DataFrame()
+    for label in pred_df.keys():
+        if pred_df[label].dtype == object:
+            continue
+        pred_df_sorted[label] = pred_df[label]
+
+    # pred_df_sorted = pred_df_sorted
+    for col in pred_df_sorted:
+        pred_df_sorted[col] = pred_df_sorted[col].sort_values(
+            ascending=False, ignore_index=True
+        )
+    frequency = fit_live_predictions_candles / (label_period_candles * 2)
+    max_pred = pred_df_sorted.iloc[: int(frequency)].mean()
+    min_pred = pred_df_sorted.iloc[-int(frequency) :].mean()
+    return min_pred, max_pred
+
+
 def objective(
     trial,
     X,
@@ -204,6 +227,7 @@ def objective(
     X_test,
     y_test,
     test_weights,
+    fit_live_predictions_candles,
     candles_step,
     params,
 ):
@@ -239,7 +263,19 @@ def objective(
     )
     y_pred = model.predict(X_test)
 
-    error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
+    label_period_candles = trial.suggest_int(
+        "label_period_candles", 1, fit_live_predictions_candles // 2
+    )
+    y_pred_min, y_pred_max = min_max_pred(
+        pd.DataFrame(y_pred), fit_live_predictions_candles, label_period_candles
+    )
+    y_test_min, y_test_max = min_max_pred(
+        pd.DataFrame(y_test), fit_live_predictions_candles, label_period_candles
+    )
+
+    error = sklearn.metrics.root_mean_squared_error(
+        pd.concat([y_test_min, y_test_max]), pd.concat([y_pred_min, y_pred_max])
+    )
 
     return error
 
