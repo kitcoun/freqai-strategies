@@ -274,7 +274,8 @@ def objective(
     )
 
     error = sklearn.metrics.root_mean_squared_error(
-        pd.concat([y_test_min, y_test_max]), pd.concat([y_pred_min, y_pred_max])
+        pd.concat([y_test_min, y_test_max]).reset_index(drop=True),
+        pd.concat([y_pred_min, y_pred_max]).reset_index(drop=True),
     )
 
     return error
