@@ -90,9 +90,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             self.__optuna_hp = study.best_params
             # log params
             for key, value in self.__optuna_hp.items():
-                logger.info(f"Optuna hyperopt {key:>20s} : {value}")
+                logger.info(f"Optuna hyperopt | {key:>20s} : {value}")
             logger.info(
-                f"Optuna hyperopt {'best objective value':>20s} : {study.best_value}"
+                f"Optuna hyperopt | {'best objective value':>20s} : {study.best_value}"
             )
 
             train_window = self.__optuna_hp.get("train_period_candles")
@@ -138,7 +138,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             )
             if candle_diff < 0:
                 logger.warning(
-                    f"Fit live predictions not warmed up yet. Still {abs(candle_diff)} candles to go"
+                    f"{pair} fit live predictions not warmed up yet. Still {abs(candle_diff)} candles to go"
                 )
                 warmed_up = False
 
