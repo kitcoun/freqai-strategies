@@ -225,17 +225,26 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-hour_of_day"] = (dataframe["date"].dt.hour + 1) / 25
         return dataframe
 
-    def set_freqai_targets(self, dataframe, **kwargs):
+    def set_freqai_targets(self, dataframe, metadata, **kwargs):
+        pair = str(metadata.get("pair"))
+        label_period_candles = (
+            self.freqai_info["feature_parameters"]
+            .get(pair, {})
+            .get(
+                "label_period_candles",
+                self.freqai_info["feature_parameters"]["label_period_candles"],
+            )
+        )
         dataframe["&s-extrema"] = 0
         min_peaks = argrelextrema(
             dataframe["low"].values,
             np.less,
-            order=self.freqai_info["feature_parameters"]["label_period_candles"],
+            order=label_period_candles,
         )
         max_peaks = argrelextrema(
             dataframe["high"].values,
             np.greater,
-            order=self.freqai_info["feature_parameters"]["label_period_candles"],
+            order=label_period_candles,
         )
         for mp in min_peaks[0]:
             dataframe.at[mp, "&s-extrema"] = -1

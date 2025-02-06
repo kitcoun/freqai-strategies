@@ -103,6 +103,12 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             y_test = y_test.tail(test_window)
             test_weights = test_weights[-test_window:]
 
+            if dk.pair not in self.freqai_info["feature_parameters"]:
+                self.freqai_info["feature_parameters"][dk.pair] = {}
+            self.freqai_info["feature_parameters"][dk.pair]["label_period_candles"] = (
+                self.__optuna_hp.get("label_period_candles")
+            )
+
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
         model.fit(
@@ -145,9 +151,6 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             if self.__optuna_hyperopt:
                 label_period_candles = self.__optuna_hp.get(
                     "label_period_candles", self.ft_params["label_period_candles"]
-                )
-                self.freqai_info["feature_parameters"]["label_period_candles"] = (
-                    label_period_candles
                 )
             else:
                 label_period_candles = self.ft_params["label_period_candles"]
@@ -231,19 +234,25 @@ def objective(
     candles_step,
     params,
 ):
-    if (len(X) != len(y)) or (len(X) != len(train_weights)):
-        raise ValueError("Training sets must have the same length")
-    if (len(X_test) != len(y_test)) or (len(X_test) != len(test_weights)):
-        raise ValueError("Test sets must have the same length")
+    min_train_window: int = 10
+    max_train_window: int = (
+        len(X) if len(X) > min_train_window else (min_train_window + len(X))
+    )
     train_window = trial.suggest_int(
-        "train_period_candles", 0, len(X), step=candles_step
+        "train_period_candles", min_train_window, max_train_window, step=candles_step
     )
     X = X.tail(train_window)
     y = y.tail(train_window)
     train_weights = train_weights[-train_window:]
 
+    min_test_window: int = 10
+    max_test_window: int = (
+        len(X_test)
+        if len(X_test) > min_test_window
+        else (min_test_window + len(X_test))
+    )
     test_window = trial.suggest_int(
-        "test_period_candles", 0, len(X_test), step=candles_step
+        "test_period_candles", min_test_window, max_test_window, step=candles_step
     )
     X_test = X_test.tail(test_window)
     y_test = y_test.tail(test_window)
