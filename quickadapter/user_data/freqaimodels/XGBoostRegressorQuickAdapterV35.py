@@ -281,14 +281,12 @@ def objective(
     )
     y_pred = model.predict(X_test)
 
+    min_label_period_candles = 1
+    max_label_period_candles = int(fit_live_predictions_candles / 2)
+    if max_label_period_candles < min_label_period_candles:
+        max_label_period_candles = min_label_period_candles
     label_period_candles = trial.suggest_int(
-        "label_period_candles",
-        int(fit_live_predictions_candles / 20)
-        if fit_live_predictions_candles > 20
-        else 1,
-        int(fit_live_predictions_candles / 2)
-        if fit_live_predictions_candles > 2
-        else fit_live_predictions_candles,
+        "label_period_candles", min_label_period_candles, max_label_period_candles
     )
     y_test = y_test.tail(label_period_candles)
     y_pred = y_pred[-label_period_candles:]
