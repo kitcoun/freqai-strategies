@@ -231,15 +231,19 @@ def objective(
     candles_step,
     params,
 ):
+    if (len(X) != len(y)) or (len(X) != len(train_weights)):
+        raise ValueError("Training sets must have the same length")
+    if (len(X_test) != len(y_test)) or (len(X_test) != len(test_weights)):
+        raise ValueError("Test sets must have the same length")
     train_window = trial.suggest_int(
-        "train_period_candles", 1152, 17280, step=candles_step
+        "train_period_candles", 0, len(X), step=candles_step
     )
     X = X.tail(train_window)
     y = y.tail(train_window)
     train_weights = train_weights[-train_window:]
 
     test_window = trial.suggest_int(
-        "test_period_candles", 1152, 17280, step=candles_step
+        "test_period_candles", 0, len(X_test), step=candles_step
     )
     X_test = X_test.tail(test_window)
     y_test = y_test.tail(test_window)

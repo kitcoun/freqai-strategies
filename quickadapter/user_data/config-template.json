@@ -119,7 +119,7 @@
     "optuna_hyperopt_trials": 36,
     "optuna_hyperopt_timeout": 3600,
     "optuna_hyperopt_jobs": 6,
-    "optuna_hyperopt_candles_step": 100,
+    "optuna_hyperopt_candles_step": 10,
     "extra_returns_per_train": {
       "DI_value_param1": 0,
       "DI_value_param2": 0,
