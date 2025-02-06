@@ -72,10 +72,10 @@
     // // Spot meme
     // "pair_whitelist": [
     //     "DOGE/USDT",
-    //     "PENGU/USDT",
     //     "SHIB/USDT",
     //     "PEPE/USDT",
-    //     "BONK/USDT"
+    //     "BONK/USDT",
+    //     "WIF/USDT",
     // ],
   },
   "pairlists": [
