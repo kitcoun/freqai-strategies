@@ -138,7 +138,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             )
             if candle_diff < 0:
                 logger.warning(
-                    f"{pair} fit live predictions not warmed up yet. Still {abs(candle_diff)} candles to go"
+                    f"{pair}: fit live predictions not warmed up yet. Still {abs(candle_diff)} candles to go"
                 )
                 warmed_up = False
 
