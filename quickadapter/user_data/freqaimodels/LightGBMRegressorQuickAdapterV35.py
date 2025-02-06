@@ -40,7 +40,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         super().__init__(**kwargs)
         self.__optuna_config = self.freqai_info.get("optuna_hyperopt", {})
         self.__optuna_hyperopt: bool = (
-            self.__optuna_config.get("enabled", False)
+            self.freqai_info.get("enabled", False)
+            and self.__optuna_config.get("enabled", False)
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
         self.__optuna_hp = {}
