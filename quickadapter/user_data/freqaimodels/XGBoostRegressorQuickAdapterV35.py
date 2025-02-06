@@ -264,19 +264,18 @@ def objective(
     y_pred = model.predict(X_test)
 
     label_period_candles = trial.suggest_int(
-        "label_period_candles", 1, fit_live_predictions_candles // 2
+        "label_period_candles",
+        int(fit_live_predictions_candles / 20)
+        if fit_live_predictions_candles > 20
+        else 1,
+        int(fit_live_predictions_candles / 2)
+        if fit_live_predictions_candles > 2
+        else fit_live_predictions_candles,
     )
-    y_pred_min, y_pred_max = min_max_pred(
-        pd.DataFrame(y_pred), fit_live_predictions_candles, label_period_candles
-    )
-    y_test_min, y_test_max = min_max_pred(
-        pd.DataFrame(y_test), fit_live_predictions_candles, label_period_candles
-    )
+    y_test = y_test.tail(label_period_candles)
+    y_pred = y_pred[-label_period_candles:]
 
-    error = sklearn.metrics.root_mean_squared_error(
-        pd.concat([y_test_min, y_test_max]).reset_index(drop=True),
-        pd.concat([y_pred_min, y_pred_max]).reset_index(drop=True),
-    )
+    error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
     return error
 
