@@ -38,8 +38,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.__optuna_config = self.freqai_info.get("optuna_hyperopt", {})
         self.__optuna_hyperopt: bool = (
-            self.freqai_info.get("optuna_hyperopt", False)
+            self.__optuna_config.get("enabled", False)
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
         self.__optuna_hp = {}
@@ -77,12 +78,12 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     y_test,
                     test_weights,
                     self.freqai_info.get("fit_live_predictions_candles", 100),
-                    self.freqai_info.get("optuna_hyperopt_candles_step", 100),
+                    self.__optuna_config.get("candles_step", 100),
                     self.model_training_parameters,
                 ),
-                n_trials=self.freqai_info.get("optuna_hyperopt_trials", N_TRIALS),
-                n_jobs=self.freqai_info.get("optuna_hyperopt_jobs", 1),
-                timeout=self.freqai_info.get("optuna_hyperopt_timeout", 3600),
+                n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
+                n_jobs=self.__optuna_config.get("n_jobs", 1),
+                timeout=self.__optuna_config.get("timeout", 3600),
             )
 
             self.__optuna_hp = study.best_params
