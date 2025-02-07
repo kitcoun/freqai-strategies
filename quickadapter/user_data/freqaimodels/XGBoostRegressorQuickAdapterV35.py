@@ -285,8 +285,6 @@ def objective(
 
     min_label_period_candles = int(fit_live_predictions_candles / 10)
     max_label_period_candles = int(fit_live_predictions_candles / 2)
-    if max_label_period_candles < min_label_period_candles:
-        max_label_period_candles = min_label_period_candles
     label_period_candles = trial.suggest_int(
         "label_period_candles", min_label_period_candles, max_label_period_candles
     )
