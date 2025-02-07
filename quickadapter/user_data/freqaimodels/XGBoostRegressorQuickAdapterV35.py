@@ -78,6 +78,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     X_test,
                     y_test,
                     test_weights,
+                    self.data_split_parameters.get("test_size", TEST_SIZE),
                     self.freqai_info.get("fit_live_predictions_candles", 100),
                     self.__optuna_config.get("candles_step", 100),
                     self.model_training_parameters,
@@ -235,11 +236,12 @@ def objective(
     X_test,
     y_test,
     test_weights,
+    test_size,
     fit_live_predictions_candles,
     candles_step,
     params,
 ):
-    min_train_window: int = 10
+    min_train_window: int = 600
     max_train_window: int = (
         len(X) if len(X) > min_train_window else (min_train_window + len(X))
     )
@@ -250,7 +252,7 @@ def objective(
     y = y.tail(train_window)
     train_weights = train_weights[-train_window:]
 
-    min_test_window: int = 10
+    min_test_window: int = int(min_train_window * test_size)
     max_test_window: int = (
         len(X_test)
         if len(X_test) > min_test_window
@@ -281,7 +283,7 @@ def objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles = 1
+    min_label_period_candles = int(fit_live_predictions_candles / 10)
     max_label_period_candles = int(fit_live_predictions_candles / 2)
     if max_label_period_candles < min_label_period_candles:
         max_label_period_candles = min_label_period_candles
