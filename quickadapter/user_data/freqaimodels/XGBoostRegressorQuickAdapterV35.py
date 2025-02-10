@@ -10,6 +10,7 @@ import scipy as spy
 import optuna
 import sklearn
 import warnings
+import re
 
 N_TRIALS = 36
 TEST_SIZE = 0.1
@@ -67,7 +68,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         start = time.time()
         if self.__optuna_hyperopt:
-            study_name = dk.pair
+            study_name = str(dk.pair)
             storage_dir = str(dk.full_path).rsplit("/", 1)
             pruner = optuna.pruners.HyperbandPruner()
             study = optuna.create_study(
@@ -78,7 +79,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 ),
                 pruner=pruner,
                 direction=optuna.study.StudyDirection.MINIMIZE,
-                storage=f"sqlite:///{storage_dir}/optuna-xgboost.sqlite",
+                storage=optuna.storages.journal.JournalFileBackend(
+                    f"{storage_dir}/optuna-xgboost-{sanitize_path(study_name)}.log"
+                ),
                 load_if_exists=True,
             )
             study.optimize(
@@ -342,3 +345,8 @@ def hp_objective(trial, X, y, train_weights, X_test, y_test, test_weights, param
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
     return error
+
+
+def sanitize_path(path: str) -> str:
+    allowed = re.compile(r"[^A-Za-z0-9 _\-\.\(\)]")
+    return allowed.sub("_", path)
