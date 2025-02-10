@@ -242,11 +242,12 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 def min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
+    beta = 10.0
     min_pred = pred_df.tail(label_period_candles).apply(
-        lambda col: smooth_min(col, beta=10.0)
+        lambda col: smooth_min(col, beta=beta)
     )
     max_pred = pred_df.tail(label_period_candles).apply(
-        lambda col: smooth_max(col, beta=10.0)
+        lambda col: smooth_max(col, beta=beta)
     )
 
     return min_pred, max_pred
@@ -325,7 +326,9 @@ def objective(
     min_label_period_candles = int(fit_live_predictions_candles / 10)
     max_label_period_candles = fit_live_predictions_candles
     label_period_candles = trial.suggest_int(
-        "label_period_candles", min_label_period_candles, max_label_period_candles
+        "label_period_candles",
+        min_label_period_candles,
+        max_label_period_candles,
     )
     y_test = y_test.tail(label_period_candles)
     y_pred = y_pred[-label_period_candles:]

@@ -242,11 +242,12 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 def min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
+    beta = 10.0
     min_pred = pred_df.tail(label_period_candles).apply(
-        lambda col: smooth_min(col, beta=10.0)
+        lambda col: smooth_min(col, beta=beta)
     )
     max_pred = pred_df.tail(label_period_candles).apply(
-        lambda col: smooth_max(col, beta=10.0)
+        lambda col: smooth_max(col, beta=beta)
     )
 
     return min_pred, max_pred
