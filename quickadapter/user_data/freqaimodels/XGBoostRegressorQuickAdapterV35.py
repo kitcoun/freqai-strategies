@@ -79,8 +79,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 ),
                 pruner=pruner,
                 direction=optuna.study.StudyDirection.MINIMIZE,
-                storage=optuna.storages.journal.JournalFileBackend(
-                    f"{storage_dir}/optuna-{sanitize_path(study_name)}.log"
+                storage=optuna.storages.JournalStorage(
+                    optuna.storages.journal.JournalFileBackend(
+                        f"{storage_dir}/optuna-{sanitize_path(study_name)}.log"
+                    )
                 ),
                 load_if_exists=True,
             )
