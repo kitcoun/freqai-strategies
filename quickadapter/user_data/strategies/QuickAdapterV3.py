@@ -255,7 +255,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["&s-extrema"] = (
             dataframe["&s-extrema"]
             .rolling(window=6, win_type="gaussian", center=True)
-            .median(std=0.5)
+            .mean(std=0.5)
         )
         return dataframe
 
