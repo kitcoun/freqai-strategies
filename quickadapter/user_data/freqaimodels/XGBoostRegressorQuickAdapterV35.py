@@ -67,7 +67,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         start = time.time()
         if self.__optuna_hyperopt:
-            storage_dir, study_name = str(dk.full_path).rsplit("/", 1)
+            study_name = dk.pair
+            storage_dir = str(dk.full_path).rsplit("/", 1)
             pruner = optuna.pruners.HyperbandPruner()
             study = optuna.create_study(
                 study_name=study_name,
