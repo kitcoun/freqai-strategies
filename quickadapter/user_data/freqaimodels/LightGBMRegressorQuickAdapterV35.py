@@ -11,6 +11,7 @@ import optuna
 import sklearn
 import warnings
 import re
+import numpy as np
 
 N_TRIALS = 36
 TEST_SIZE = 0.1
@@ -236,19 +237,28 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 def min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
-    pred_df_sorted = pd.DataFrame()
-    for label in pred_df.keys():
-        if pred_df[label].dtype == object:
-            continue
-        pred_df_sorted[label] = pred_df[label]
+    min_pred = pred_df.tail(label_period_candles).apply(
+        lambda col: smooth_min(col, beta=10)
+    )
+    max_pred = pred_df.tail(label_period_candles).apply(
+        lambda col: smooth_max(col, beta=10)
+    )
 
-    for col in pred_df_sorted:
-        pred_df_sorted[col] = pred_df_sorted[col].sort_values(
-            ascending=False, ignore_index=True
-        )
-    frequency = fit_live_predictions_candles / (label_period_candles * 2)
-    max_pred = pred_df_sorted.iloc[: int(frequency)].mean()
-    min_pred = pred_df_sorted.iloc[-int(frequency) :].mean()
+    return min_pred, max_pred
+
+
+def __min_max_pred(
+    pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
+):
+    pred_df_sorted = (
+        pred_df.select_dtypes(exclude=["object"])
+        .copy()
+        .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+    )
+
+    frequency = fit_live_predictions_candles / label_period_candles
+    min_pred = pred_df_sorted.iloc[-int(frequency) :].median()
+    max_pred = pred_df_sorted.iloc[: int(frequency)].median()
     return min_pred, max_pred
 
 
@@ -303,7 +313,7 @@ def objective(
     y_pred = model.predict(X_test)
 
     min_label_period_candles = int(fit_live_predictions_candles / 10)
-    max_label_period_candles = int(fit_live_predictions_candles / 2)
+    max_label_period_candles = fit_live_predictions_candles
     label_period_candles = trial.suggest_int(
         "label_period_candles",
         min_label_period_candles,
@@ -351,3 +361,11 @@ def hp_objective(trial, X, y, train_weights, X_test, y_test, test_weights, param
 def sanitize_path(path: str) -> str:
     allowed = re.compile(r"[^A-Za-z0-9 _\-\.\(\)]")
     return allowed.sub("_", path)
+
+
+def smooth_max(series, beta=1.0):
+    return np.log(np.sum(np.exp(beta * series))) / beta
+
+
+def smooth_min(series, beta=1.0):
+    return -np.log(np.sum(np.exp(-beta * series))) / beta
