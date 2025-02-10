@@ -67,8 +67,19 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         start = time.time()
         if self.__optuna_hyperopt:
+            storage_dir, study_name = str(dk.full_path).rsplit("/", 1)
             pruner = optuna.pruners.HyperbandPruner()
-            study = optuna.create_study(pruner=pruner, direction="minimize")
+            study = optuna.create_study(
+                study_name=study_name,
+                sampler=optuna.samplers.TPESampler(
+                    multivariate=True,
+                    group=True,
+                ),
+                pruner=pruner,
+                direction=optuna.study.StudyDirection.MINIMIZE,
+                storage=f"sqlite:///{storage_dir}/optuna-lgbm.sqlite",
+                load_if_exists=True,
+            )
             study.optimize(
                 lambda trial: objective(
                     trial,
@@ -86,6 +97,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
                 n_jobs=self.__optuna_config.get("n_jobs", 1),
                 timeout=self.__optuna_config.get("timeout", 3600),
+                gc_after_trial=True,
             )
 
             self.__optuna_hp = study.best_params
