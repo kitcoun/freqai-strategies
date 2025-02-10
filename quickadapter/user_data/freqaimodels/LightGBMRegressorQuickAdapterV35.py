@@ -238,10 +238,10 @@ def min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
     min_pred = pred_df.tail(label_period_candles).apply(
-        lambda col: smooth_min(col, beta=10)
+        lambda col: smooth_min(col, beta=10.0)
     )
     max_pred = pred_df.tail(label_period_candles).apply(
-        lambda col: smooth_max(col, beta=10)
+        lambda col: smooth_max(col, beta=10.0)
     )
 
     return min_pred, max_pred
