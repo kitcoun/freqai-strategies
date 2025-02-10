@@ -199,10 +199,15 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             ]
 
         dk.data["labels_mean"], dk.data["labels_std"] = {}, {}
-        for ft in dk.label_list:
-            # f = spy.stats.norm.fit(pred_df_full[ft])
-            dk.data["labels_std"][ft] = 0  # f[1]
-            dk.data["labels_mean"][ft] = 0  # f[0]
+        for label in dk.label_list + dk.unique_class_list:
+            if pred_df_full[label].dtype == object:
+                continue
+            if not warmed_up:
+                f = [0, 0]
+            else:
+                f = spy.stats.norm.fit(pred_df_full[label])
+            dk.data["labels_mean"][label] = f[0]
+            dk.data["labels_std"][label] = f[1]
 
         # fit the DI_threshold
         if not warmed_up:
