@@ -70,6 +70,17 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         if self.__optuna_hyperopt:
             study_name = str(dk.pair)
             storage_dir = str(dk.full_path)
+            storage_type = self.__optuna_config.get("storage_type", "sqlite")
+            if storage_type == "sqlite":
+                storage = (
+                    f"sqlite:///{storage_dir}/optuna-{sanitize_path(study_name)}.sqlite"
+                )
+            elif storage_type == "file":
+                storage = optuna.storages.JournalStorage(
+                    optuna.storages.journal.JournalFileBackend(
+                        f"{storage_dir}/optuna-{sanitize_path(study_name)}.log"
+                    )
+                )
             pruner = optuna.pruners.HyperbandPruner()
             study = optuna.create_study(
                 study_name=study_name,
@@ -79,11 +90,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 ),
                 pruner=pruner,
                 direction=optuna.study.StudyDirection.MINIMIZE,
-                storage=optuna.storages.JournalStorage(
-                    optuna.storages.journal.JournalFileBackend(
-                        f"{storage_dir}/optuna-{sanitize_path(study_name)}.log"
-                    )
-                ),
+                storage=storage,
                 load_if_exists=True,
             )
             study.optimize(

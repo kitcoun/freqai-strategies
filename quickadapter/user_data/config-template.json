@@ -120,7 +120,8 @@
       "n_trials": 36,
       "n_jobs": 6,
       "timeout": 3600,
-      "candles_step": 10
+      "candles_step": 10,
+      "storage_type": "sqlite"
     },
     "extra_returns_per_train": {
       "DI_value_param1": 0,
