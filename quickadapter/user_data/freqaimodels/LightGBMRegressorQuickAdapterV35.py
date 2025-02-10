@@ -242,11 +242,16 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 def min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
+    local_pred_df = pd.DataFrame()
+    for label in pred_df:
+        if pred_df[label].dtype == object:
+            continue
+        local_pred_df[label] = pred_df[label]
     beta = 10.0
-    min_pred = pred_df.tail(label_period_candles).apply(
+    min_pred = local_pred_df.tail(label_period_candles).apply(
         lambda col: smooth_min(col, beta=beta)
     )
-    max_pred = pred_df.tail(label_period_candles).apply(
+    max_pred = local_pred_df.tail(label_period_candles).apply(
         lambda col: smooth_max(col, beta=beta)
     )
 
@@ -256,10 +261,13 @@ def min_max_pred(
 def __min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
-    pred_df_sorted = (
-        pred_df.select_dtypes(exclude=["object"])
-        .copy()
-        .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+    pred_df_sorted = pd.DataFrame()
+    for label in pred_df:
+        if pred_df[label].dtype == object:
+            continue
+        pred_df_sorted[label] = pred_df[label]
+    pred_df_sorted = pred_df_sorted.apply(
+        lambda col: col.sort_values(ascending=False, ignore_index=True)
     )
 
     frequency = fit_live_predictions_candles / label_period_candles
