@@ -10,7 +10,7 @@ from freqtrade.strategy.interface import IStrategy
 from technical.pivots_points import pivots_points
 from freqtrade.exchange import timeframe_to_prev_date
 from freqtrade.persistence import Trade
-from scipy.signal import argrelextrema
+from scipy.signal import find_peaks
 import numpy as np
 import pandas_ta as pta
 
@@ -236,19 +236,19 @@ class QuickAdapterV3(IStrategy):
             )
         )
         dataframe["&s-extrema"] = 0
-        min_peaks = argrelextrema(
-            dataframe["low"].values,
-            np.less,
-            order=label_period_candles,
+        min_peaks, _ = find_peaks(
+            -dataframe["low"].values,
+            height=0,
+            distance=label_period_candles,
         )
-        max_peaks = argrelextrema(
+        max_peaks, _ = find_peaks(
             dataframe["high"].values,
-            np.greater,
-            order=label_period_candles,
+            height=0,
+            distance=label_period_candles,
         )
-        for mp in min_peaks[0]:
+        for mp in min_peaks:
             dataframe.at[mp, "&s-extrema"] = -1
-        for mp in max_peaks[0]:
+        for mp in max_peaks:
             dataframe.at[mp, "&s-extrema"] = 1
         dataframe["minima"] = np.where(dataframe["&s-extrema"] == -1, 1, 0)
         dataframe["maxima"] = np.where(dataframe["&s-extrema"] == 1, 1, 0)
