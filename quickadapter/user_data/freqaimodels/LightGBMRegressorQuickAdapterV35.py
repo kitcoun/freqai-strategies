@@ -217,7 +217,6 @@ def min_max_pred(
             continue
         pred_df_sorted[label] = pred_df[label]
 
-    # pred_df_sorted = pred_df_sorted
     for col in pred_df_sorted:
         pred_df_sorted[col] = pred_df_sorted[col].sort_values(
             ascending=False, ignore_index=True
