@@ -65,7 +65,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         init_model = self.get_init_model(dk.pair)
 
-        model = LGBMRegressor(**self.model_training_parameters)
+        model = LGBMRegressor(objective="rmse", **self.model_training_parameters)
 
         start = time.time()
         if self.__optuna_hyperopt:
@@ -146,6 +146,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             sample_weight=train_weights,
             eval_set=eval_set,
             eval_sample_weight=eval_weights,
+            eval_metric="rmse",
             init_model=init_model,
         )
         time_spent = time.time() - start
@@ -191,12 +192,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 num_candles,
                 label_period_candles,
             )
-            dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = max_pred[
-                "&s-extrema"
-            ]
-            dk.data["extra_returns_per_train"]["&s-minima_sort_threshold"] = min_pred[
-                "&s-extrema"
-            ]
+            dk.data["extra_returns_per_train"]["&s-minima_sort_threshold"] = min_pred
+            dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = max_pred
 
         dk.data["labels_mean"], dk.data["labels_std"] = {}, {}
         for label in dk.label_list + dk.unique_class_list:
@@ -242,18 +239,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 def __min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
-    local_pred_df = pd.DataFrame()
-    for label in pred_df:
-        if pred_df[label].dtype == object:
-            continue
-        local_pred_df[label] = pred_df[label]
     beta = 10.0
-    min_pred = local_pred_df.tail(label_period_candles).apply(
-        lambda col: smooth_min(col, beta=beta)
-    )
-    max_pred = local_pred_df.tail(label_period_candles).apply(
-        lambda col: smooth_max(col, beta=beta)
-    )
+    extrema = pred_df.tail(label_period_candles)["&s-extrema"]
+    min_pred = smooth_min(extrema, beta=beta)
+    max_pred = smooth_max(extrema, beta=beta)
 
     return min_pred, max_pred
 
@@ -273,7 +262,7 @@ def min_max_pred(
     frequency = fit_live_predictions_candles / label_period_candles
     min_pred = pred_df_sorted.iloc[-int(frequency) :].median()
     max_pred = pred_df_sorted.iloc[: int(frequency)].median()
-    return min_pred, max_pred
+    return min_pred["&s-extrema"], max_pred["&s-extrema"]
 
 
 def objective(
