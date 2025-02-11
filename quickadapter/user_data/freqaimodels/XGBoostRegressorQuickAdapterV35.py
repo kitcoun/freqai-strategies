@@ -46,7 +46,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             and self.__optuna_config.get("enabled", False)
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
-        self.__optuna_hp = {}
+        self.__optuna_hp: dict[str, dict] = {}
 
     def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
@@ -73,7 +73,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
         start = time.time()
         if self.__optuna_hyperopt:
-            study_name = str(dk.pair)
+            study_name = dk.pair
             storage = self.get_optuna_storage(dk)
             pruner = optuna.pruners.HyperbandPruner()
             study = optuna.create_study(
@@ -107,28 +107,30 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 gc_after_trial=True,
             )
 
-            self.__optuna_hp = study.best_params
-            # log params
-            for key, value in self.__optuna_hp.items():
-                logger.info(f"Optuna hyperopt | {key:>20s} : {value}")
-            logger.info(
-                f"Optuna hyperopt | {'best objective value':>20s} : {study.best_value}"
-            )
+            if dk.pair not in self.__optuna_hp:
+                self.__optuna_hp[dk.pair] = {}
 
-            train_window = self.__optuna_hp.get("train_period_candles")
+            self.__optuna_hp[dk.pair]["rmse"] = study.best_value
+            self.__optuna_hp[dk.pair].update(study.best_params)
+            # log params
+            for key, value in self.__optuna_hp[dk.pair].items():
+                logger.info(f"Optuna hyperopt | {key:>20s} : {value}")
+
+            train_window = self.__optuna_hp[dk.pair].get("train_period_candles")
             X = X.tail(train_window)
             y = y.tail(train_window)
             train_weights = train_weights[-train_window:]
 
-            test_window = self.__optuna_hp.get("test_period_candles")
+            test_window = self.__optuna_hp[dk.pair].get("test_period_candles")
             X_test = X_test.tail(test_window)
             y_test = y_test.tail(test_window)
             test_weights = test_weights[-test_window:]
 
+            # FIXME: find a better way to propagate optuna computed params to strategy
             if dk.pair not in self.freqai_info["feature_parameters"]:
                 self.freqai_info["feature_parameters"][dk.pair] = {}
             self.freqai_info["feature_parameters"][dk.pair]["label_period_candles"] = (
-                self.__optuna_hp.get("label_period_candles")
+                self.__optuna_hp[dk.pair].get("label_period_candles")
             )
 
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
@@ -174,7 +176,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 self.__optuna_hyperopt
                 and pair in self.freqai_info["feature_parameters"]
             ):
-                label_period_candles = self.__optuna_hp.get(
+                label_period_candles = self.__optuna_hp.get(pair, {}).get(
                     "label_period_candles", self.ft_params["label_period_candles"]
                 )
             else:
@@ -217,6 +219,15 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_value_param3"] = f[2]
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
+        dk.data["extra_returns_per_train"]["label_period_candles"] = (
+            self.__optuna_hp.get(pair, {}).get(
+                "label_period_candles", self.ft_params["label_period_candles"]
+            )
+        )
+        dk.data["extra_returns_per_train"]["rmse"] = self.__optuna_hp.get(pair, {}).get(
+            "rmse", 0
+        )
+
     def eval_set_and_weights(self, X_test, y_test, test_weights):
         if self.data_split_parameters.get("test_size", TEST_SIZE) == 0:
             eval_set = None
@@ -231,13 +242,11 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         storage_dir = str(dk.full_path)
         storage_type = self.__optuna_config.get("storage_type", "sqlite")
         if storage_type == "sqlite":
-            storage = (
-                f"sqlite:///{storage_dir}/optuna-{sanitize_path(str(dk.pair))}.sqlite"
-            )
+            storage = f"sqlite:///{storage_dir}/optuna-{sanitize_path(dk.pair)}.sqlite"
         elif storage_type == "file":
             storage = optuna.storages.JournalStorage(
                 optuna.storages.journal.JournalFileBackend(
-                    f"{storage_dir}/optuna-{sanitize_path(str(dk.pair))}.log"
+                    f"{storage_dir}/optuna-{sanitize_path(dk.pair)}.log"
                 )
             )
         return storage

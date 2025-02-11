@@ -129,7 +129,9 @@
       "DI_value_param3": 0,
       "DI_cutoff": 2,
       "&s-minima_sort_threshold": -2,
-      "&s-maxima_sort_threshold": 2
+      "&s-maxima_sort_threshold": 2,
+      "label_period_candles": 100,
+      "rmse": 0
     },
     "feature_parameters": {
       "include_corr_pairlist": [
