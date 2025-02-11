@@ -68,7 +68,7 @@ class QuickAdapterV3(IStrategy):
     plot_config = {
         "main_plot": {},
         "subplots": {
-            "accuracy": {"accuracy_score": {"color": "#c28ce3", "type": "line"}},
+            # "rmse": {"rmse": {"color": "#c28ce3", "type": "line"}},
             "extrema": {
                 "&s-extrema": {"color": "#f53580", "type": "line"},
                 "&s-minima_sort_threshold": {"color": "#4ae747", "type": "line"},
@@ -76,7 +76,7 @@ class QuickAdapterV3(IStrategy):
             },
             "min_max": {
                 "maxima": {"color": "#a29db9", "type": "line"},
-                "minima": {"color": "#ac7fc", "type": "bar"},
+                "minima": {"color": "#ac7fc", "type": "line"},
             },
         },
     }
@@ -238,12 +238,10 @@ class QuickAdapterV3(IStrategy):
         dataframe["&s-extrema"] = 0
         min_peaks, _ = find_peaks(
             -dataframe["low"].values,
-            height=0,
             distance=label_period_candles,
         )
         max_peaks, _ = find_peaks(
             dataframe["high"].values,
-            height=0,
             distance=label_period_candles,
         )
         for mp in min_peaks:
