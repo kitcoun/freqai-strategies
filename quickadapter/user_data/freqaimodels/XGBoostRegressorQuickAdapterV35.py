@@ -252,8 +252,11 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 def min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ) -> tuple[float, float]:
+    label_period_frequency: int = int(
+        fit_live_predictions_candles / label_period_candles
+    )
+    extrema = pred_df.tail(label_period_candles * label_period_frequency)["&s-extrema"]
     beta = 10.0
-    extrema = pred_df.tail(label_period_candles)["&s-extrema"]
     min_pred = smooth_min(extrema, beta=beta)
     max_pred = smooth_max(extrema, beta=beta)
 
