@@ -242,7 +242,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
 def min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
-):
+) -> tuple[float, float]:
     beta = 10.0
     extrema = pred_df.tail(label_period_candles)["&s-extrema"]
     min_pred = smooth_min(extrema, beta=beta)
@@ -253,7 +253,7 @@ def min_max_pred(
 
 def __min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
-):
+) -> tuple[float, float]:
     pred_df_sorted = (
         pred_df.select_dtypes(exclude=["object"])
         .copy()
@@ -280,7 +280,7 @@ def objective(
     fit_live_predictions_candles,
     candles_step,
     params,
-):
+) -> float:
     min_train_window: int = 600
     max_train_window: int = (
         len(X) if len(X) > min_train_window else (min_train_window + len(X))
@@ -333,7 +333,9 @@ def objective(
     return error
 
 
-def hp_objective(trial, X, y, train_weights, X_test, y_test, test_weights, params):
+def hp_objective(
+    trial, X, y, train_weights, X_test, y_test, test_weights, params
+) -> float:
     study_params = {
         "n_estimators": trial.suggest_int("n_estimators", 100, 800),
         "num_leaves": trial.suggest_int("num_leaves", 2, 256),
@@ -369,9 +371,9 @@ def sanitize_path(path: str) -> str:
     return allowed.sub("_", path)
 
 
-def smooth_max(series, beta=1.0):
+def smooth_max(series: pd.Series, beta=1.0) -> float:
     return np.log(np.sum(np.exp(beta * series))) / beta
 
 
-def smooth_min(series, beta=1.0):
+def smooth_min(series: pd.Series, beta=1.0) -> float:
     return -np.log(np.sum(np.exp(-beta * series))) / beta
