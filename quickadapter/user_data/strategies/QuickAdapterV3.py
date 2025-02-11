@@ -75,8 +75,8 @@ class QuickAdapterV3(IStrategy):
                 "&s-maxima_sort_threshold": {"color": "#5b5e4b", "type": "line"},
             },
             "min_max": {
-                "maxima": {"color": "#a29db9", "type": "line"},
-                "minima": {"color": "#ac7fc", "type": "line"},
+                "maxima": {"color": "#a29db9", "type": "bar"},
+                "minima": {"color": "#ac7fc", "type": "bar"},
             },
         },
     }
