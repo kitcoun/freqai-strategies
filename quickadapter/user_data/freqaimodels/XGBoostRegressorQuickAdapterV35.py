@@ -239,7 +239,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         return eval_set, eval_weights
 
 
-def __min_max_pred(
+def min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
     beta = 10.0
@@ -250,7 +250,7 @@ def __min_max_pred(
     return min_pred, max_pred
 
 
-def min_max_pred(
+def __min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ):
     pred_df_sorted = pd.DataFrame()
