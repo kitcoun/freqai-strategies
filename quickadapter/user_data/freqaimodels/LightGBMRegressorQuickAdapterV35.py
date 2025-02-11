@@ -169,10 +169,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = 2
             dk.data["extra_returns_per_train"]["&s-minima_sort_threshold"] = -2
         else:
-            if (
-                self.__optuna_hyperopt
-                and pair in self.freqai_info["feature_parameters"]
-            ):
+            if self.__optuna_hyperopt:
                 label_period_candles = self.__optuna_hp.get(pair, {}).get(
                     "label_period_candles", self.ft_params["label_period_candles"]
                 )
