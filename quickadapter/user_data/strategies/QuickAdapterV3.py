@@ -71,12 +71,12 @@ class QuickAdapterV3(IStrategy):
             "rmse": {"rmse": {"color": "#c28ce3", "type": "line"}},
             "extrema": {
                 "&s-extrema": {"color": "#f53580", "type": "line"},
-                "&s-minima_threshold": {"color": "#4ae747", "type": "line"},
+                "&s-minima_threshold": {"color": "#e6be0b", "type": "line"},
                 "&s-maxima_threshold": {"color": "#5b5e4b", "type": "line"},
             },
             "min_max": {
-                "maxima": {"color": "#ac7fc", "type": "bar"},
-                "minima": {"color": "#ac7fc", "type": "bar"},
+                "maxima": {"color": "#0dd6de", "type": "bar"},
+                "minima": {"color": "#e3970b", "type": "bar"},
             },
         },
     }
