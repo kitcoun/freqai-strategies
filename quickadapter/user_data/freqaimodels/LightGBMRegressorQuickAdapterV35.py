@@ -166,8 +166,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         )
 
         if not warmed_up:
-            dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = 2
-            dk.data["extra_returns_per_train"]["&s-minima_sort_threshold"] = -2
+            dk.data["extra_returns_per_train"]["&s-maxima_threshold"] = 2
+            dk.data["extra_returns_per_train"]["&s-minima_threshold"] = -2
         else:
             if self.__optuna_hyperopt:
                 label_period_candles = self.__optuna_hp.get(pair, {}).get(
@@ -175,13 +175,13 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 )
             else:
                 label_period_candles = self.ft_params["label_period_candles"]
-            min_pred, max_pred = min_max_pred(
+            min_pred, max_pred = self.min_max_pred(
                 pred_df_full,
                 num_candles,
                 label_period_candles,
             )
-            dk.data["extra_returns_per_train"]["&s-minima_sort_threshold"] = min_pred
-            dk.data["extra_returns_per_train"]["&s-maxima_sort_threshold"] = max_pred
+            dk.data["extra_returns_per_train"]["&s-minima_threshold"] = min_pred
+            dk.data["extra_returns_per_train"]["&s-maxima_threshold"] = max_pred
 
         dk.data["labels_mean"], dk.data["labels_std"] = {}, {}
         for label in dk.label_list + dk.unique_class_list:
@@ -245,8 +245,30 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             )
         return storage
 
+    def min_max_pred(
+        self,
+        pred_df: pd.DataFrame,
+        fit_live_predictions_candles: int,
+        label_period_candles: int,
+    ) -> tuple[float, float]:
+        predictions_smoothing = self.freqai_info.get(
+            "predictions_smoothing", "log-sum-exp"
+        )
+        if predictions_smoothing == "log-sum-exp":
+            return log_sum_exp_min_max_pred(
+                pred_df, fit_live_predictions_candles, label_period_candles
+            )
+        elif predictions_smoothing == "mean":
+            return mean_min_max_pred(
+                pred_df, fit_live_predictions_candles, label_period_candles
+            )
+        elif predictions_smoothing == "median":
+            return median_min_max_pred(
+                pred_df, fit_live_predictions_candles, label_period_candles
+            )
 
-def min_max_pred(
+
+def log_sum_exp_min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ) -> tuple[float, float]:
     label_period_frequency: int = int(
@@ -260,7 +282,24 @@ def min_max_pred(
     return min_pred, max_pred
 
 
-def __min_max_pred(
+def mean_min_max_pred(
+    pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
+) -> tuple[float, float]:
+    pred_df_sorted = (
+        pred_df.select_dtypes(exclude=["object"])
+        .copy()
+        .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+    )
+
+    label_period_frequency: int = int(
+        fit_live_predictions_candles / label_period_candles
+    )
+    min_pred = pred_df_sorted.iloc[-label_period_frequency:].mean()
+    max_pred = pred_df_sorted.iloc[:label_period_frequency].mean()
+    return min_pred["&s-extrema"], max_pred["&s-extrema"]
+
+
+def median_min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ) -> tuple[float, float]:
     pred_df_sorted = (

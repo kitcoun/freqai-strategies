@@ -112,8 +112,9 @@
     "identifier": "quickadapter-xgboost",
     // "identifier": "quickadapter-lgbm",
     "fit_live_predictions_candles": 300,
-    "track_performance": false,
     "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
+    "track_performance": false,
+    "predictions_smoothing": "log-sum-exp",
     "outlier_threshold": 0.999,
     "optuna_hyperopt": {
       "enabled": true,
@@ -128,8 +129,8 @@
       "DI_value_param2": 0,
       "DI_value_param3": 0,
       "DI_cutoff": 2,
-      "&s-minima_sort_threshold": -2,
-      "&s-maxima_sort_threshold": 2,
+      "&s-minima_threshold": -2,
+      "&s-maxima_threshold": 2,
       "label_period_candles": 100,
       "rmse": 0
     },

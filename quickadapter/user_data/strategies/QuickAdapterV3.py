@@ -71,8 +71,8 @@ class QuickAdapterV3(IStrategy):
             "rmse": {"rmse": {"color": "#c28ce3", "type": "line"}},
             "extrema": {
                 "&s-extrema": {"color": "#f53580", "type": "line"},
-                "&s-minima_sort_threshold": {"color": "#4ae747", "type": "line"},
-                "&s-maxima_sort_threshold": {"color": "#5b5e4b", "type": "line"},
+                "&s-minima_threshold": {"color": "#4ae747", "type": "line"},
+                "&s-maxima_threshold": {"color": "#5b5e4b", "type": "line"},
             },
             "min_max": {
                 "maxima": {"color": "#ac7fc", "type": "bar"},
@@ -266,15 +266,15 @@ class QuickAdapterV3(IStrategy):
             1,
         )
 
-        dataframe["minima_sort_threshold"] = dataframe["&s-minima_sort_threshold"]
-        dataframe["maxima_sort_threshold"] = dataframe["&s-maxima_sort_threshold"]
+        dataframe["minima_threshold"] = dataframe["&s-minima_threshold"]
+        dataframe["maxima_threshold"] = dataframe["&s-maxima_threshold"]
         return dataframe
 
     def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         enter_long_conditions = [
             df["do_predict"] == 1,
             df["DI_catch"] == 1,
-            df["&s-extrema"] < df["minima_sort_threshold"],
+            df["&s-extrema"] < df["minima_threshold"],
         ]
 
         if enter_long_conditions:
@@ -286,7 +286,7 @@ class QuickAdapterV3(IStrategy):
         enter_short_conditions = [
             df["do_predict"] == 1,
             df["DI_catch"] == 1,
-            df["&s-extrema"] > df["maxima_sort_threshold"],
+            df["&s-extrema"] > df["maxima_threshold"],
         ]
 
         if enter_short_conditions:
@@ -329,13 +329,13 @@ class QuickAdapterV3(IStrategy):
             return "outlier_detected"
 
         if (
-            last_candle["&s-extrema"] < last_candle["minima_sort_threshold"]
+            last_candle["&s-extrema"] < last_candle["minima_threshold"]
             and entry_tag == "short"
         ):
             return "minima_detected_short"
 
         if (
-            last_candle["&s-extrema"] > last_candle["maxima_sort_threshold"]
+            last_candle["&s-extrema"] > last_candle["maxima_threshold"]
             and entry_tag == "long"
         ):
             return "maxima_detected_long"
