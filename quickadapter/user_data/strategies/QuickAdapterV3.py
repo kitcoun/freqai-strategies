@@ -68,7 +68,7 @@ class QuickAdapterV3(IStrategy):
     plot_config = {
         "main_plot": {},
         "subplots": {
-            "rmse": {"rmse": {"color": "#c28ce3", "type": "line"}},
+            "accuracy": {"rmse": {"color": "#c28ce3", "type": "line"}},
             "extrema": {
                 "&s-extrema": {"color": "#f53580", "type": "line"},
                 "&s-minima_threshold": {"color": "#4ae747", "type": "line"},
