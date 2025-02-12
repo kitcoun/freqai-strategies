@@ -234,10 +234,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
     def get_optuna_storage(self, dk: FreqaiDataKitchen):
         storage_dir = str(dk.full_path)
-        storage_type = self.__optuna_config.get("storage_type", "sqlite")
-        if storage_type == "sqlite":
+        storage_backend = self.__optuna_config.get("storage", "sqlite")
+        if storage_backend == "sqlite":
             storage = f"sqlite:///{storage_dir}/optuna-{sanitize_path(dk.pair)}.sqlite"
-        elif storage_type == "file":
+        elif storage_backend == "file":
             storage = optuna.storages.JournalStorage(
                 optuna.storages.journal.JournalFileBackend(
                     f"{storage_dir}/optuna-{sanitize_path(dk.pair)}.log"
