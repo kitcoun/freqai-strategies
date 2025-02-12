@@ -94,9 +94,13 @@ class QuickAdapterV3(IStrategy):
             },
             {
                 "method": "StoplossGuard",
-                "lookback_period_candles": 300,
+                "lookback_period_candles": self.freqai_info.get(
+                    "fit_live_predictions_candles", 100
+                ),
                 "trade_limit": 1,
-                "stop_duration_candles": 300,
+                "stop_duration_candles": self.freqai_info.get(
+                    "fit_live_predictions_candles", 100
+                ),
                 "only_per_pair": True,
             },
         ]
