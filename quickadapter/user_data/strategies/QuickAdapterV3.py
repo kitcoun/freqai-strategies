@@ -202,6 +202,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-dist_to_vwap_lowerband"] = get_distance(
             dataframe["close"], dataframe["vwap_lowerband"]
         )
+        dataframe["%-body"] = dataframe["close"] - dataframe["open"]
         dataframe["%-tail"] = (dataframe["close"] - dataframe["low"]).abs()
         dataframe["%-wick"] = (dataframe["high"] - dataframe["close"]).abs()
         pp = pivots_points(dataframe)
