@@ -87,51 +87,59 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 storage=storage,
                 load_if_exists=True,
             )
-            study.optimize(
-                lambda trial: objective(
-                    trial,
-                    X,
-                    y,
-                    train_weights,
-                    X_test,
-                    y_test,
-                    test_weights,
-                    self.data_split_parameters.get("test_size", TEST_SIZE),
-                    self.freqai_info.get("fit_live_predictions_candles", 100),
-                    self.__optuna_config.get("candles_step", 100),
-                    self.model_training_parameters,
-                ),
-                n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
-                n_jobs=self.__optuna_config.get("n_jobs", 1),
-                timeout=self.__optuna_config.get("timeout", 3600),
-                gc_after_trial=True,
-            )
+            hyperopt_failed = False
+            try:
+                study.optimize(
+                    lambda trial: objective(
+                        trial,
+                        X,
+                        y,
+                        train_weights,
+                        X_test,
+                        y_test,
+                        test_weights,
+                        self.data_split_parameters.get("test_size", TEST_SIZE),
+                        self.freqai_info.get("fit_live_predictions_candles", 100),
+                        self.__optuna_config.get("candles_step", 100),
+                        self.model_training_parameters,
+                    ),
+                    n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
+                    n_jobs=self.__optuna_config.get("n_jobs", 1),
+                    timeout=self.__optuna_config.get("timeout", 3600),
+                    gc_after_trial=True,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Optuna hyperopt failed: {e}. Please consider using a concurrency friendly storage backend like 'file' or lower the number of jobs."
+                )
+                hyperopt_failed = True
 
-            if dk.pair not in self.__optuna_hp:
-                self.__optuna_hp[dk.pair] = {}
+            if not hyperopt_failed:
+                if dk.pair not in self.__optuna_hp:
+                    self.__optuna_hp[dk.pair] = {}
 
-            self.__optuna_hp[dk.pair]["rmse"] = study.best_value
-            self.__optuna_hp[dk.pair].update(study.best_params)
-            # log params
-            for key, value in self.__optuna_hp[dk.pair].items():
-                logger.info(f"Optuna hyperopt | {key:>20s} : {value}")
+                self.__optuna_hp[dk.pair]["rmse"] = study.best_value
+                self.__optuna_hp[dk.pair].update(study.best_params)
+                # log params
+                for key, value in self.__optuna_hp[dk.pair].items():
+                    logger.info(f"Optuna hyperopt | {key:>20s} : {value}")
 
-            train_window = self.__optuna_hp[dk.pair].get("train_period_candles")
-            X = X.tail(train_window)
-            y = y.tail(train_window)
-            train_weights = train_weights[-train_window:]
+                train_window = self.__optuna_hp[dk.pair].get("train_period_candles")
+                X = X.tail(train_window)
+                y = y.tail(train_window)
+                train_weights = train_weights[-train_window:]
 
-            test_window = self.__optuna_hp[dk.pair].get("test_period_candles")
-            X_test = X_test.tail(test_window)
-            y_test = y_test.tail(test_window)
-            test_weights = test_weights[-test_window:]
+                test_window = self.__optuna_hp[dk.pair].get("test_period_candles")
+                X_test = X_test.tail(test_window)
+                y_test = y_test.tail(test_window)
+                test_weights = test_weights[-test_window:]
 
-            # FIXME: find a better way to propagate optuna computed params to strategy
-            if dk.pair not in self.freqai_info["feature_parameters"]:
-                self.freqai_info["feature_parameters"][dk.pair] = {}
-            self.freqai_info["feature_parameters"][dk.pair]["label_period_candles"] = (
-                self.__optuna_hp[dk.pair].get("label_period_candles")
-            )
+                # FIXME: find a better way to propagate optuna computed params to strategy
+                if dk.pair not in self.freqai_info["feature_parameters"]:
+                    self.freqai_info["feature_parameters"][dk.pair] = {}
+                self.freqai_info["feature_parameters"][dk.pair][
+                    "label_period_candles"
+                ] = self.__optuna_hp[dk.pair].get("label_period_candles")
 
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
@@ -160,7 +168,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             )
             if candle_diff < 0:
                 logger.warning(
-                    f"{pair}: fit live predictions not warmed up yet. Still {abs(candle_diff)} candles to go"
+                    f"{pair}: fit live predictions not warmed up yet. Still {abs(candle_diff)} candles to go."
                 )
                 warmed_up = False
 
@@ -217,9 +225,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_hp.get(pair, {}).get(
-                "label_period_candles", self.ft_params["label_period_candles"]
-            )
+            self.__optuna_hp.get(
+                pair, {}
+            ).get("label_period_candles", self.ft_params["label_period_candles"])
         )
         dk.data["extra_returns_per_train"]["rmse"] = self.__optuna_hp.get(pair, {}).get(
             "rmse", 0
