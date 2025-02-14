@@ -1,11 +1,4 @@
 FROM freqtradeorg/freqtrade:stable_freqai
 
-# Switch user to root if you must install something from apt
-# Don't forget to switch the user back below!
-# USER root
-
-# The below dependency - pyti - serves as an example. Please use whatever you need!
-RUN pip install --user optuna optuna-integration
-
-# Switch back to user (only if you required root above)
-# USER ftuser
+ARG optuna_version=4.2.1
+RUN pip install --user optuna==${optuna_version} optuna-integration==${optuna_version}
