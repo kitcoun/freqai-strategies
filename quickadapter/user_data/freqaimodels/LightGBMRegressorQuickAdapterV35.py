@@ -16,6 +16,10 @@ import numpy as np
 N_TRIALS = 36
 TEST_SIZE = 0.1
 
+EXTREMA_COLUMN = "&s-extrema"
+MINIMA_THRESHOLD_COLUMN = "&s-minima_threshold"
+MAXIMA_THRESHOLD_COLUMN = "&s-maxima_threshold"
+
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 logger = logging.getLogger(__name__)
@@ -69,56 +73,14 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         start = time.time()
         if self.__optuna_hyperopt:
-            study_name = dk.pair
-            storage = self.get_optuna_storage(dk)
-            pruner = optuna.pruners.HyperbandPruner()
-            study = optuna.create_study(
-                study_name=study_name,
-                sampler=optuna.samplers.TPESampler(
-                    multivariate=True,
-                    group=True,
-                ),
-                pruner=pruner,
-                direction=optuna.study.StudyDirection.MINIMIZE,
-                storage=storage,
-                load_if_exists=True,
+            params = self.optuna_optimize(
+                dk, X, y, train_weights, X_test, y_test, test_weights
             )
-            hyperopt_failed = False
-            try:
-                study.optimize(
-                    lambda trial: objective(
-                        trial,
-                        X,
-                        y,
-                        train_weights,
-                        X_test,
-                        y_test,
-                        test_weights,
-                        self.data_split_parameters.get("test_size", TEST_SIZE),
-                        self.freqai_info.get("fit_live_predictions_candles", 100),
-                        self.__optuna_config.get("candles_step", 100),
-                        self.model_training_parameters,
-                    ),
-                    n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
-                    n_jobs=self.__optuna_config.get("n_jobs", 1),
-                    timeout=self.__optuna_config.get("timeout", 3600),
-                    gc_after_trial=True,
-                )
-            except Exception as e:
-                logger.error(
-                    f"Optuna hyperopt failed: {e}. Please consider using a concurrency friendly storage backend like 'file' or lower the number of jobs."
-                )
-                hyperopt_failed = True
 
-            if not hyperopt_failed:
+            if params:
                 if dk.pair not in self.__optuna_hp:
                     self.__optuna_hp[dk.pair] = {}
-
-                self.__optuna_hp[dk.pair]["rmse"] = study.best_value
-                self.__optuna_hp[dk.pair].update(study.best_params)
-                # log params
-                for key, value in self.__optuna_hp[dk.pair].items():
-                    logger.info(f"Optuna hyperopt | {key:>20s} : {value}")
+                self.__optuna_hp[dk.pair] = params
 
                 train_window = self.__optuna_hp[dk.pair].get("train_period_candles")
                 X = X.tail(train_window)
@@ -174,8 +136,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         )
 
         if not warmed_up:
-            dk.data["extra_returns_per_train"]["&s-maxima_threshold"] = 2
-            dk.data["extra_returns_per_train"]["&s-minima_threshold"] = -2
+            dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = 2
+            dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = -2
         else:
             if self.__optuna_hyperopt:
                 label_period_candles = self.__optuna_hp.get(pair, {}).get(
@@ -188,8 +150,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 num_candles,
                 label_period_candles,
             )
-            dk.data["extra_returns_per_train"]["&s-minima_threshold"] = min_pred
-            dk.data["extra_returns_per_train"]["&s-maxima_threshold"] = max_pred
+            dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = min_pred
+            dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = max_pred
 
         dk.data["labels_mean"], dk.data["labels_std"] = {}, {}
         for label in dk.label_list + dk.unique_class_list:
@@ -275,6 +237,66 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 pred_df, fit_live_predictions_candles, label_period_candles
             )
 
+    def optuna_optimize(
+        self,
+        dk: FreqaiDataKitchen,
+        X,
+        y,
+        train_weights,
+        X_test,
+        y_test,
+        test_weights,
+    ) -> dict | None:
+        study_name = dk.pair
+        storage = self.get_optuna_storage(dk)
+        pruner = optuna.pruners.HyperbandPruner()
+        study = optuna.create_study(
+            study_name=study_name,
+            sampler=optuna.samplers.TPESampler(
+                multivariate=True,
+                group=True,
+            ),
+            pruner=pruner,
+            direction=optuna.study.StudyDirection.MINIMIZE,
+            storage=storage,
+            load_if_exists=True,
+        )
+        hyperopt_failed = False
+        try:
+            study.optimize(
+                lambda trial: objective(
+                    trial,
+                    X,
+                    y,
+                    train_weights,
+                    X_test,
+                    y_test,
+                    test_weights,
+                    self.data_split_parameters.get("test_size", TEST_SIZE),
+                    self.freqai_info.get("fit_live_predictions_candles", 100),
+                    self.__optuna_config.get("candles_step", 100),
+                    self.model_training_parameters,
+                ),
+                n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
+                n_jobs=self.__optuna_config.get("n_jobs", 1),
+                timeout=self.__optuna_config.get("timeout", 3600),
+                gc_after_trial=True,
+            )
+        except Exception as e:
+            logger.error(
+                f"Optuna hyperopt failed: {e}. Please consider using a concurrency friendly storage backend like 'file' or lower the number of jobs."
+            )
+            hyperopt_failed = True
+
+        if not hyperopt_failed:
+            params = {"rmse": study.best_value, **study.best_params}
+            # log params
+            for key, value in params.items():
+                logger.info(f"Optuna hyperopt | {key:>20s} : {value}")
+            return params
+
+        return None
+
 
 def log_sum_exp_min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
@@ -282,7 +304,9 @@ def log_sum_exp_min_max_pred(
     label_period_frequency: int = int(
         fit_live_predictions_candles / label_period_candles
     )
-    extrema = pred_df.tail(label_period_candles * label_period_frequency)["&s-extrema"]
+    extrema = pred_df.tail(label_period_candles * label_period_frequency)[
+        EXTREMA_COLUMN
+    ]
     beta = 10.0
     min_pred = smooth_min(extrema, beta=beta)
     max_pred = smooth_max(extrema, beta=beta)
@@ -304,7 +328,7 @@ def mean_min_max_pred(
     )
     min_pred = pred_df_sorted.iloc[-label_period_frequency:].mean()
     max_pred = pred_df_sorted.iloc[:label_period_frequency].mean()
-    return min_pred["&s-extrema"], max_pred["&s-extrema"]
+    return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
 def median_min_max_pred(
@@ -321,7 +345,7 @@ def median_min_max_pred(
     )
     min_pred = pred_df_sorted.iloc[-label_period_frequency:].median()
     max_pred = pred_df_sorted.iloc[:label_period_frequency].median()
-    return min_pred["&s-extrema"], max_pred["&s-extrema"]
+    return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
 def objective(

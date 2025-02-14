@@ -16,6 +16,10 @@ import pandas_ta as pta
 
 logger = logging.getLogger(__name__)
 
+EXTREMA_COLUMN = "&s-extrema"
+MINIMA_THRESHOLD_COLUMN = "&s-minima_threshold"
+MAXIMA_THRESHOLD_COLUMN = "&s-maxima_threshold"
+
 
 class QuickAdapterV3(IStrategy):
     """
@@ -70,9 +74,9 @@ class QuickAdapterV3(IStrategy):
         "subplots": {
             "accuracy": {"rmse": {"color": "#c28ce3", "type": "line"}},
             "extrema": {
-                "&s-extrema": {"color": "#f53580", "type": "line"},
-                "&s-minima_threshold": {"color": "#4ae747", "type": "line"},
-                "&s-maxima_threshold": {"color": "#e6be0b", "type": "line"},
+                EXTREMA_COLUMN: {"color": "#f53580", "type": "line"},
+                MINIMA_THRESHOLD_COLUMN: {"color": "#4ae747", "type": "line"},
+                MAXIMA_THRESHOLD_COLUMN: {"color": "#e6be0b", "type": "line"},
             },
             "min_max": {
                 "maxima": {"color": "#0dd6de", "type": "bar"},
@@ -240,7 +244,7 @@ class QuickAdapterV3(IStrategy):
                 self.freqai_info["feature_parameters"]["label_period_candles"],
             )
         )
-        dataframe["&s-extrema"] = 0
+        dataframe[EXTREMA_COLUMN] = 0
         min_peaks, _ = find_peaks(
             -dataframe["low"].values,
             distance=label_period_candles,
@@ -250,13 +254,13 @@ class QuickAdapterV3(IStrategy):
             distance=label_period_candles,
         )
         for mp in min_peaks:
-            dataframe.at[mp, "&s-extrema"] = -1
+            dataframe.at[mp, EXTREMA_COLUMN] = -1
         for mp in max_peaks:
-            dataframe.at[mp, "&s-extrema"] = 1
-        dataframe["minima"] = np.where(dataframe["&s-extrema"] == -1, -1, 0)
-        dataframe["maxima"] = np.where(dataframe["&s-extrema"] == 1, 1, 0)
-        dataframe["&s-extrema"] = (
-            dataframe["&s-extrema"]
+            dataframe.at[mp, EXTREMA_COLUMN] = 1
+        dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
+        dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
+        dataframe[EXTREMA_COLUMN] = (
+            dataframe[EXTREMA_COLUMN]
             .rolling(window=6, win_type="gaussian", center=True)
             .mean(std=0.5)
         )
@@ -271,15 +275,15 @@ class QuickAdapterV3(IStrategy):
             1,
         )
 
-        dataframe["minima_threshold"] = dataframe["&s-minima_threshold"]
-        dataframe["maxima_threshold"] = dataframe["&s-maxima_threshold"]
+        dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
+        dataframe["maxima_threshold"] = dataframe[MAXIMA_THRESHOLD_COLUMN]
         return dataframe
 
     def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         enter_long_conditions = [
             df["do_predict"] == 1,
             df["DI_catch"] == 1,
-            df["&s-extrema"] < df["minima_threshold"],
+            df[EXTREMA_COLUMN] < df["minima_threshold"],
         ]
 
         if enter_long_conditions:
@@ -291,7 +295,7 @@ class QuickAdapterV3(IStrategy):
         enter_short_conditions = [
             df["do_predict"] == 1,
             df["DI_catch"] == 1,
-            df["&s-extrema"] > df["maxima_threshold"],
+            df[EXTREMA_COLUMN] > df["maxima_threshold"],
         ]
 
         if enter_short_conditions:
@@ -334,13 +338,13 @@ class QuickAdapterV3(IStrategy):
             return "outlier_detected"
 
         if (
-            last_candle["&s-extrema"] < last_candle["minima_threshold"]
+            last_candle[EXTREMA_COLUMN] < last_candle["minima_threshold"]
             and entry_tag == "short"
         ):
             return "minima_detected_short"
 
         if (
-            last_candle["&s-extrema"] > last_candle["maxima_threshold"]
+            last_candle[EXTREMA_COLUMN] > last_candle["maxima_threshold"]
             and entry_tag == "long"
         ):
             return "maxima_detected_long"
