@@ -184,9 +184,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_hp.get(
-                pair, {}
-            ).get("label_period_candles", self.ft_params["label_period_candles"])
+            self.__optuna_hp.get(pair, {}).get(
+                "label_period_candles", self.ft_params["label_period_candles"]
+            )
         )
         dk.data["extra_returns_per_train"]["rmse"] = self.__optuna_hp.get(pair, {}).get(
             "rmse", 0
@@ -250,6 +250,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         study_name = dk.pair
         storage = self.get_optuna_storage(dk)
         pruner = optuna.pruners.HyperbandPruner()
+        try:
+            optuna.delete_study(study_name=study_name, storage=storage)
+        except optuna.exceptions.StudyNotFound:
+            pass
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -259,7 +263,6 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             pruner=pruner,
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
-            load_if_exists=True,
         )
         hyperopt_failed = False
         try:
