@@ -85,7 +85,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 if dk.pair not in self.__optuna_hp:
                     self.__optuna_hp[dk.pair] = {}
                 self.__optuna_hp[dk.pair] = params
-
+            if self.__optuna_hp.get(dk.pair):
                 train_window = self.__optuna_hp[dk.pair].get("train_period_candles")
                 X = X.tail(train_window)
                 y = y.tail(train_window)
@@ -290,7 +290,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             )
         except Exception as e:
             logger.error(
-                f"Optuna hyperopt failed: {e}. Please consider using a concurrency friendly storage backend like 'file' or lower the number of jobs."
+                f"Optuna hyperopt failed: {e}. Consider using a concurrency friendly storage backend like 'file' or lower the number of jobs."
             )
             hyperopt_failed = True
 
