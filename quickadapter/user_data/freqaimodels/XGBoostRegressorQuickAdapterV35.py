@@ -255,7 +255,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         pruner = optuna.pruners.HyperbandPruner()
         try:
             optuna.delete_study(study_name=study_name, storage=storage)
-        except optuna.exceptions.StudyNotFound:
+        except Exception:
             pass
         study = optuna.create_study(
             study_name=study_name,
