@@ -286,9 +286,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 gc_after_trial=True,
             )
         except Exception as e:
-            logger.error(
-                f"Optuna hyperopt failed: {e}. Consider using a concurrency friendly storage backend like 'file' or lower the number of jobs."
-            )
+            logger.error(f"Optuna hyperopt failed: {e}", exc_info=True)
             hyperopt_failed = True
 
         if not hyperopt_failed:

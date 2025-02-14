@@ -69,21 +69,23 @@ class QuickAdapterV3(IStrategy):
 
     can_short = False
 
-    plot_config = {
-        "main_plot": {},
-        "subplots": {
-            "accuracy": {"rmse": {"color": "#c28ce3", "type": "line"}},
-            "extrema": {
-                EXTREMA_COLUMN: {"color": "#f53580", "type": "line"},
-                MINIMA_THRESHOLD_COLUMN: {"color": "#4ae747", "type": "line"},
-                MAXIMA_THRESHOLD_COLUMN: {"color": "#e6be0b", "type": "line"},
+    @property
+    def plot_config(self):
+        return {
+            "main_plot": {},
+            "subplots": {
+                "accuracy": {"rmse": {"color": "#c28ce3", "type": "line"}},
+                "extrema": {
+                    EXTREMA_COLUMN: {"color": "#f53580", "type": "line"},
+                    MINIMA_THRESHOLD_COLUMN: {"color": "#4ae747", "type": "line"},
+                    MAXIMA_THRESHOLD_COLUMN: {"color": "#e6be0b", "type": "line"},
+                },
+                "min_max": {
+                    "maxima": {"color": "#0dd6de", "type": "bar"},
+                    "minima": {"color": "#e3970b", "type": "bar"},
+                },
             },
-            "min_max": {
-                "maxima": {"color": "#0dd6de", "type": "bar"},
-                "minima": {"color": "#e3970b", "type": "bar"},
-            },
-        },
-    }
+        }
 
     @property
     def protections(self):
