@@ -275,10 +275,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         study_name = f"hp-{dk.pair}"
         storage = self.optuna_storage(dk)
         pruner = optuna.pruners.HyperbandPruner()
-        try:
-            optuna.delete_study(study_name=study_name, storage=storage)
-        except Exception:
-            pass
+        previous_study = self.optuna_previous_study(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -289,6 +286,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
+        if previous_study:
+            study.enqueue_trial(previous_study.best_params)
         start = time.time()
         try:
             study.optimize(
@@ -333,10 +332,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         study_name = f"period-{dk.pair}"
         storage = self.optuna_storage(dk)
         pruner = optuna.pruners.HyperbandPruner()
-        try:
-            optuna.delete_study(study_name=study_name, storage=storage)
-        except Exception:
-            pass
+        previous_study = self.optuna_previous_study(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -347,6 +343,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
+        if previous_study:
+            study.enqueue_trial(previous_study.best_params)
         start = time.time()
         try:
             study.optimize(
@@ -379,6 +377,20 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         for key, value in params.items():
             logger.info(f"Optuna period hyperopt | {key:>20s} : {value}")
         return params
+
+    def optuna_previous_study(
+        self, study_name: str, storage
+    ) -> optuna.study.Study | None:
+        try:
+            previous_study = optuna.load_study(study_name=study_name, storage=storage)
+            previous_study.best_params
+        except Exception:
+            previous_study = None
+        try:
+            optuna.delete_study(study_name=study_name, storage=storage)
+        except Exception:
+            pass
+        return previous_study
 
 
 def log_sum_exp_min_max_pred(
