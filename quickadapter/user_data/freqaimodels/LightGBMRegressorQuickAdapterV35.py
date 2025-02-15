@@ -309,9 +309,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             logger.error(f"Optuna hp hyperopt failed: {e}", exc_info=True)
             return None
 
-        params = {"rmse": study.best_value, **study.best_params}
+        params = study.best_params
         # log params
-        for key, value in params.items():
+        for key, value in {"rmse": study.best_value, **params}.items():
             logger.info(f"Optuna hp hyperopt | {key:>20s} : {value}")
         return params
 
