@@ -50,7 +50,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             and self.__optuna_config.get("enabled", False)
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
-        self.__optuna_hp: dict[str, dict] = {}
+        self.__optuna_period_params: dict[str, dict] = {}
 
     def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
@@ -67,27 +67,47 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         y_test = data_dictionary["test_labels"]
         test_weights = data_dictionary["test_weights"]
 
-        init_model = self.get_init_model(dk.pair)
+        model_training_parameters = self.model_training_parameters
 
-        model = LGBMRegressor(objective="rmse", **self.model_training_parameters)
+        init_model = self.get_init_model(dk.pair)
 
         start = time.time()
         if self.__optuna_hyperopt:
-            params = self.optuna_optimize(
+            optuna_hp_params = self.optuna_hp_optimize(
                 dk, X, y, train_weights, X_test, y_test, test_weights
             )
+            if optuna_hp_params:
+                model_training_parameters = {
+                    **model_training_parameters,
+                    **optuna_hp_params,
+                }
 
-            if params:
-                if dk.pair not in self.__optuna_hp:
-                    self.__optuna_hp[dk.pair] = {}
-                self.__optuna_hp[dk.pair] = params
-            if self.__optuna_hp.get(dk.pair):
-                train_window = self.__optuna_hp[dk.pair].get("train_period_candles")
+            optuna_period_params = self.optuna_period_optimize(
+                dk,
+                X,
+                y,
+                train_weights,
+                X_test,
+                y_test,
+                test_weights,
+                model_training_parameters,
+            )
+            if optuna_period_params:
+                if dk.pair not in self.__optuna_period_params:
+                    self.__optuna_period_params[dk.pair] = {}
+                self.__optuna_period_params[dk.pair] = optuna_period_params
+
+            if self.__optuna_period_params.get(dk.pair):
+                train_window = self.__optuna_period_params[dk.pair].get(
+                    "train_period_candles"
+                )
                 X = X.tail(train_window)
                 y = y.tail(train_window)
                 train_weights = train_weights[-train_window:]
 
-                test_window = self.__optuna_hp[dk.pair].get("test_period_candles")
+                test_window = self.__optuna_period_params[dk.pair].get(
+                    "test_period_candles"
+                )
                 X_test = X_test.tail(test_window)
                 y_test = y_test.tail(test_window)
                 test_weights = test_weights[-test_window:]
@@ -97,7 +117,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                     self.freqai_info["feature_parameters"][dk.pair] = {}
                 self.freqai_info["feature_parameters"][dk.pair][
                     "label_period_candles"
-                ] = self.__optuna_hp[dk.pair].get("label_period_candles")
+                ] = self.__optuna_period_params[dk.pair].get("label_period_candles")
+
+        model = LGBMRegressor(objective="rmse", **model_training_parameters)
 
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
@@ -140,7 +162,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = -2
         else:
             if self.__optuna_hyperopt:
-                label_period_candles = self.__optuna_hp.get(pair, {}).get(
+                label_period_candles = self.__optuna_period_params.get(pair, {}).get(
                     "label_period_candles", self.ft_params["label_period_candles"]
                 )
             else:
@@ -184,13 +206,13 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_hp.get(pair, {}).get(
+            self.__optuna_period_params.get(pair, {}).get(
                 "label_period_candles", self.ft_params["label_period_candles"]
             )
         )
-        dk.data["extra_returns_per_train"]["rmse"] = self.__optuna_hp.get(pair, {}).get(
-            "rmse", 0
-        )
+        dk.data["extra_returns_per_train"]["rmse"] = self.__optuna_period_params.get(
+            pair, {}
+        ).get("rmse", 0)
 
     def eval_set_and_weights(self, X_test, y_test, test_weights):
         if self.data_split_parameters.get("test_size", TEST_SIZE) == 0:
@@ -202,7 +224,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         return eval_set, eval_weights
 
-    def get_optuna_storage(self, dk: FreqaiDataKitchen):
+    def optuna_storage(self, dk: FreqaiDataKitchen):
         storage_dir = str(dk.full_path)
         storage_backend = self.__optuna_config.get("storage", "sqlite")
         if storage_backend == "sqlite":
@@ -237,7 +259,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 pred_df, fit_live_predictions_candles, label_period_candles
             )
 
-    def optuna_optimize(
+    def optuna_hp_optimize(
         self,
         dk: FreqaiDataKitchen,
         X,
@@ -247,8 +269,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         y_test,
         test_weights,
     ) -> dict | None:
-        study_name = dk.pair
-        storage = self.get_optuna_storage(dk)
+        study_name = f"hp-{dk.pair}"
+        storage = self.optuna_storage(dk)
         pruner = optuna.pruners.HyperbandPruner()
         try:
             optuna.delete_study(study_name=study_name, storage=storage)
@@ -264,10 +286,64 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        hyperopt_failed = False
         try:
             study.optimize(
-                lambda trial: objective(
+                lambda trial: hp_objective(
+                    trial,
+                    X,
+                    y,
+                    train_weights,
+                    X_test,
+                    y_test,
+                    test_weights,
+                    self.model_training_parameters,
+                ),
+                n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
+                n_jobs=self.__optuna_config.get("n_jobs", 1),
+                timeout=self.__optuna_config.get("timeout", 3600),
+                gc_after_trial=True,
+            )
+        except Exception as e:
+            logger.error(f"Optuna hp hyperopt failed: {e}", exc_info=True)
+            return None
+
+        params = {"rmse": study.best_value, **study.best_params}
+        # log params
+        for key, value in params.items():
+            logger.info(f"Optuna hp hyperopt | {key:>20s} : {value}")
+        return params
+
+    def optuna_period_optimize(
+        self,
+        dk: FreqaiDataKitchen,
+        X,
+        y,
+        train_weights,
+        X_test,
+        y_test,
+        test_weights,
+        model_training_parameters,
+    ) -> dict | None:
+        study_name = f"period-{dk.pair}"
+        storage = self.optuna_storage(dk)
+        pruner = optuna.pruners.HyperbandPruner()
+        try:
+            optuna.delete_study(study_name=study_name, storage=storage)
+        except Exception:
+            pass
+        study = optuna.create_study(
+            study_name=study_name,
+            sampler=optuna.samplers.TPESampler(
+                multivariate=True,
+                group=True,
+            ),
+            pruner=pruner,
+            direction=optuna.study.StudyDirection.MINIMIZE,
+            storage=storage,
+        )
+        try:
+            study.optimize(
+                lambda trial: period_objective(
                     trial,
                     X,
                     y,
@@ -278,7 +354,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                     self.data_split_parameters.get("test_size", TEST_SIZE),
                     self.freqai_info.get("fit_live_predictions_candles", 100),
                     self.__optuna_config.get("candles_step", 100),
-                    self.model_training_parameters,
+                    model_training_parameters,
                 ),
                 n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
                 n_jobs=self.__optuna_config.get("n_jobs", 1),
@@ -286,17 +362,14 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 gc_after_trial=True,
             )
         except Exception as e:
-            logger.error(f"Optuna hyperopt failed: {e}", exc_info=True)
-            hyperopt_failed = True
+            logger.error(f"Optuna period hyperopt failed: {e}", exc_info=True)
+            return None
 
-        if not hyperopt_failed:
-            params = {"rmse": study.best_value, **study.best_params}
-            # log params
-            for key, value in params.items():
-                logger.info(f"Optuna hyperopt | {key:>20s} : {value}")
-            return params
-
-        return None
+        params = {"rmse": study.best_value, **study.best_params}
+        # log params
+        for key, value in params.items():
+            logger.info(f"Optuna period hyperopt | {key:>20s} : {value}")
+        return params
 
 
 def log_sum_exp_min_max_pred(
@@ -349,7 +422,7 @@ def median_min_max_pred(
     return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
-def objective(
+def period_objective(
     trial,
     X,
     y,
@@ -360,7 +433,7 @@ def objective(
     test_size,
     fit_live_predictions_candles,
     candles_step,
-    params,
+    model_training_parameters,
 ) -> float:
     min_train_window: int = 600
     max_train_window: int = (
@@ -387,7 +460,7 @@ def objective(
     test_weights = test_weights[-test_window:]
 
     # Fit the model
-    model = LGBMRegressor(objective="rmse", **params)
+    model = LGBMRegressor(objective="rmse", **model_training_parameters)
     model.fit(
         X=X,
         y=y,
@@ -415,10 +488,10 @@ def objective(
 
 
 def hp_objective(
-    trial, X, y, train_weights, X_test, y_test, test_weights, params
+    trial, X, y, train_weights, X_test, y_test, test_weights, model_training_parameters
 ) -> float:
-    study_params = {
-        "n_estimators": trial.suggest_int("n_estimators", 100, 800),
+    study_parameters = {
+        # "n_estimators": trial.suggest_int("n_estimators", 100, 800),
         "num_leaves": trial.suggest_int("num_leaves", 2, 256),
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
         "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
@@ -427,10 +500,10 @@ def hp_objective(
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
         "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
     }
-    params = {**params, **study_params}
+    model_training_parameters = {**model_training_parameters, **study_parameters}
 
     # Fit the model
-    model = LGBMRegressor(objective="rmse", **params)
+    model = LGBMRegressor(objective="rmse", **model_training_parameters)
     model.fit(
         X=X,
         y=y,
