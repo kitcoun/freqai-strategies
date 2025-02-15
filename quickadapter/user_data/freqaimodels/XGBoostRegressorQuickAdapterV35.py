@@ -395,14 +395,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         if not study:
             return False
         try:
-            # Check if there are completed trials
-            if len(study.trials) == 0:
-                return False
-
-            # Check if best_params exists (raises ValueError if no trials succeeded)
-            _ = study.best_params
-            return True
-        except ValueError:
+            _ = study.trials
+        except KeyError:
             return False
 
 
