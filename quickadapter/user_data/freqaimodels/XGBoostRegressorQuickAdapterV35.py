@@ -231,11 +231,11 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         storage_dir = str(dk.full_path)
         storage_backend = self.__optuna_config.get("storage", "file")
         if storage_backend == "sqlite":
-            storage = f"sqlite:///{storage_dir}/optuna-{sanitize_path(dk.pair)}.sqlite"
+            storage = f"sqlite:///{storage_dir}/optuna-{sanitize_path(dk.pair.split('/')[0])}.sqlite"
         elif storage_backend == "file":
             storage = optuna.storages.JournalStorage(
                 optuna.storages.journal.JournalFileBackend(
-                    f"{storage_dir}/optuna-{sanitize_path(dk.pair)}.log"
+                    f"{storage_dir}/optuna-{sanitize_path(dk.pair.split('/')[0])}.log"
                 )
             )
         return storage
