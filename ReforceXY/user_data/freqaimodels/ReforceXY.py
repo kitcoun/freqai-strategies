@@ -450,12 +450,15 @@ class ReforceXY(BaseReinforcementLearningModel):
         Runs hyperparameter optimization using Optuna and
         returns the best hyperparameters found
         """
-        storage_dir, study_name = str(dk.full_path).rsplit("/", 1)
+        study_name = str(dk.pair)
+        storage_dir = str(dk.full_path)
         storage_backend = self.rl_config_optuna.get("storage", "file")
         if storage_backend == "sqlite":
-            storage = f"sqlite:///{storage_dir}/optuna.sqlite"
+            storage = f"sqlite:///{storage_dir}/optuna-{dk.pair.split('/')[0]}.sqlite"
         elif storage_backend == "file":
-            storage = JournalStorage(JournalFileBackend(f"{storage_dir}/optuna.log"))
+            storage = JournalStorage(
+                JournalFileBackend(f"{storage_dir}/optuna-{dk.pair.split('/')[0]}.log")
+            )
         study: Study = create_study(
             study_name=study_name,
             sampler=TPESampler(
