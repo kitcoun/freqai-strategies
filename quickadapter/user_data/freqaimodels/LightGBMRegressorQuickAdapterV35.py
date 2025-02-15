@@ -288,6 +288,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
+        start = time.time()
         try:
             study.optimize(
                 lambda trial: hp_objective(
@@ -308,6 +309,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         except Exception as e:
             logger.error(f"Optuna hp hyperopt failed: {e}", exc_info=True)
             return None
+        time_spent = time.time() - start
+        logger.info(f"Optuna hp hyperopt done ({time_spent:.2f} secs)")
 
         params = study.best_params
         # log params
@@ -343,6 +346,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
+        start = time.time()
         try:
             study.optimize(
                 lambda trial: period_objective(
@@ -366,6 +370,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         except Exception as e:
             logger.error(f"Optuna period hyperopt failed: {e}", exc_info=True)
             return None
+        time_spent = time.time() - start
+        logger.info(f"Optuna period hyperopt done ({time_spent:.2f} secs)")
 
         params = {"rmse": study.best_value, **study.best_params}
         # log params
