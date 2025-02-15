@@ -285,7 +285,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        if previous_study:
+        if previous_study and hasattr(previous_study, "best_params"):
             study.enqueue_trial(previous_study.best_params)
         start = time.time()
         try:
@@ -342,7 +342,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        if previous_study:
+        if previous_study and hasattr(previous_study, "best_params"):
             study.enqueue_trial(previous_study.best_params)
         start = time.time()
         try:
@@ -382,7 +382,6 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
     ) -> optuna.study.Study | None:
         try:
             previous_study = optuna.load_study(study_name=study_name, storage=storage)
-            previous_study.best_params
         except Exception:
             previous_study = None
         try:
