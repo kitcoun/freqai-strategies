@@ -499,10 +499,9 @@ def hp_objective(
     trial, X, y, train_weights, X_test, y_test, test_weights, model_training_parameters
 ) -> float:
     study_parameters = {
-        # "n_estimators": trial.suggest_int("n_estimators", 100, 800),
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
-        "max_depth": trial.suggest_int("max_depth", 3, 12),
-        "gamma": trial.suggest_float("gamma", 0, 2),
+        "max_depth": trial.suggest_int("max_depth", 3, 18),
+        "min_child_weight": trial.suggest_int("min_child_weight", 1, 200),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),

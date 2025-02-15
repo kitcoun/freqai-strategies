@@ -89,6 +89,9 @@ class QuickAdapterV3(IStrategy):
 
     @property
     def protections(self):
+        fit_live_predictions_candles = self.freqai_info.get(
+            "fit_live_predictions_candles", 100
+        )
         return [
             {"method": "CooldownPeriod", "stop_duration_candles": 4},
             {
@@ -100,13 +103,9 @@ class QuickAdapterV3(IStrategy):
             },
             {
                 "method": "StoplossGuard",
-                "lookback_period_candles": self.freqai_info.get(
-                    "fit_live_predictions_candles", 100
-                ),
+                "lookback_period_candles": fit_live_predictions_candles,
                 "trade_limit": 1,
-                "stop_duration_candles": self.freqai_info.get(
-                    "fit_live_predictions_candles", 100
-                ),
+                "stop_duration_candles": fit_live_predictions_candles,
                 "only_per_pair": True,
             },
         ]

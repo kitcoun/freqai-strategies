@@ -119,7 +119,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                     "label_period_candles"
                 ] = self.__optuna_period_params[dk.pair].get("label_period_candles")
 
-        model = LGBMRegressor(objective="rmse", **model_training_parameters)
+        model = LGBMRegressor(
+            objective="regression", metric="rmse", **model_training_parameters
+        )
 
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
@@ -460,7 +462,9 @@ def period_objective(
     test_weights = test_weights[-test_window:]
 
     # Fit the model
-    model = LGBMRegressor(objective="rmse", **model_training_parameters)
+    model = LGBMRegressor(
+        objective="regression", metric="rmse", **model_training_parameters
+    )
     model.fit(
         X=X,
         y=y,
@@ -491,10 +495,10 @@ def hp_objective(
     trial, X, y, train_weights, X_test, y_test, test_weights, model_training_parameters
 ) -> float:
     study_parameters = {
-        # "n_estimators": trial.suggest_int("n_estimators", 100, 800),
         "num_leaves": trial.suggest_int("num_leaves", 2, 256),
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
         "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+        "min_child_weight": trial.suggest_int("min_child_weight", 1, 200),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
@@ -503,7 +507,9 @@ def hp_objective(
     model_training_parameters = {**model_training_parameters, **study_parameters}
 
     # Fit the model
-    model = LGBMRegressor(objective="rmse", **model_training_parameters)
+    model = LGBMRegressor(
+        objective="regression", metric="rmse", **model_training_parameters
+    )
     model.fit(
         X=X,
         y=y,
