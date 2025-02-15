@@ -286,7 +286,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        if previous_study and hasattr(previous_study, "best_params"):
+        if self.optuna_study_has_best_params(previous_study):
             study.enqueue_trial(previous_study.best_params)
         start = time.time()
         try:
@@ -343,7 +343,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        if previous_study and hasattr(previous_study, "best_params"):
+        if self.optuna_study_has_best_params(previous_study):
             study.enqueue_trial(previous_study.best_params)
         start = time.time()
         try:
@@ -390,6 +390,20 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         except Exception:
             pass
         return previous_study
+
+    def optuna_study_has_best_params(self, study: optuna.study.Study | None) -> bool:
+        if not study:
+            return False
+        try:
+            # Check if there are completed trials
+            if len(study.trials) == 0:
+                return False
+
+            # Check if best_params exists (raises ValueError if no trials succeeded)
+            _ = study.best_params
+            return True
+        except ValueError:
+            return False
 
 
 def log_sum_exp_min_max_pred(
