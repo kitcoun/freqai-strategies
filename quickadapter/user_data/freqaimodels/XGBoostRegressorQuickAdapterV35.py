@@ -408,7 +408,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         if not study:
             return False
         try:
-            _ = study.trials
+            _ = study.best_params
+            return True
         except KeyError:
             return False
 
