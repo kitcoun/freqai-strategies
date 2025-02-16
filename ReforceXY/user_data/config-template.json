@@ -179,8 +179,7 @@
       "plot_new_best": false // Enable tensorboard rollout plot upon finding a new best model
     },
     "rl_config_optuna": {
-      "enabled": false, // Enable optuna hyperopt
-      "n_jobs": 6,
+      "enabled": true, // Enable optuna hyperopt
       "n_trials": 100,
       "n_startup_trials": 10,
       "timeout_hours": 0
