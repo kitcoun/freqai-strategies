@@ -73,7 +73,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "max_trade_duration_candles": 96,   // Timeout exit value used with force_actions
                 "force_actions": false,             // Utilize minimal_roi, stoploss, and max_trade_duration_candles as TP/SL/Timeout in the environment
                 "n_envs": 1,                        // Number of DummyVecEnv environments
-                "frame_staking": 0,                 // Number of VecFrameStack stacks (set to 1 to use)
+                "frame_staking": 0,                 // Number of VecFrameStack stacks (set > 1 to use)
                 "lr_schedule": false,               // Enable learning rate linear schedule
                 "cr_schedule": false,               // Enable clip range linear schedule
                 "max_no_improvement_evals": 0,      // Maximum consecutive evaluations without a new best model
@@ -489,6 +489,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         except KeyboardInterrupt:
             pass
 
+        # FIXME: ensure that best trial params are handled on a per pair basis
         logger.info("------------ Hyperopt results ------------")
         logger.info(
             "Best trial: %s. Score: %s", study.best_trial.number, study.best_trial.value
