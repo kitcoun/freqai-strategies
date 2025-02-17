@@ -74,7 +74,10 @@ class QuickAdapterV3(IStrategy):
         return {
             "main_plot": {},
             "subplots": {
-                "accuracy": {"rmse": {"color": "#c28ce3", "type": "line"}},
+                "accuracy": {
+                    "hp_rmse": {"color": "#c28ce3", "type": "line"},
+                    "period_rmse": {"color": "#a3087a", "type": "line"},
+                },
                 "extrema": {
                     EXTREMA_COLUMN: {"color": "#f53580", "type": "line"},
                     MINIMA_THRESHOLD_COLUMN: {"color": "#4ae747", "type": "line"},

@@ -132,7 +132,8 @@
       "&s-minima_threshold": -2,
       "&s-maxima_threshold": 2,
       "label_period_candles": 100,
-      "rmse": 0
+      "hp_rmse": 0,
+      "period_rmse": 0
     },
     "feature_parameters": {
       "include_corr_pairlist": [
