@@ -177,8 +177,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         )
 
         if not warmed_up:
-            dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = 2
             dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = -2
+            dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = 2
         else:
             if self.__optuna_hyperopt:
                 label_period_candles = self.__optuna_period_params.get(pair, {}).get(
