@@ -583,7 +583,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
             self.force_actions: bool = self.rl_config.get("force_actions", False)
-            self._force_action: ForceActions = None
+            self._force_action: Optional[ForceActions] = None
             self.take_profit: float = self.config["minimal_roi"]["0"]
             self.stop_loss: float = self.config["stoploss"]
             self.timeout: int = self.rl_config.get("max_trade_duration_candles", 128)
@@ -629,7 +629,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             Reset is called at the beginning of every episode
             """
             _, history = super().reset(seed, **kwargs)
-            self._force_action: ForceActions = None
+            self._force_action: Optional[ForceActions] = None
             self._last_closed_position: Positions = None
             self._last_closed_trade_tick: int = 0
             return self._get_observation(), history
