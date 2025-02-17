@@ -224,9 +224,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_period_params.get(pair, {}).get(
-                "label_period_candles", self.ft_params["label_period_candles"]
-            )
+            self.__optuna_period_params.get(
+                pair, {}
+            ).get("label_period_candles", self.ft_params["label_period_candles"])
         )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
             pair, {}
@@ -417,14 +417,14 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         self, study_name: str, storage
     ) -> optuna.study.Study | None:
         try:
-            previous_study = optuna.load_study(study_name=study_name, storage=storage)
+            study = optuna.load_study(study_name=study_name, storage=storage)
         except Exception:
-            previous_study = None
+            study = None
         try:
             optuna.delete_study(study_name=study_name, storage=storage)
         except Exception:
             pass
-        return previous_study
+        return study
 
     def optuna_study_has_best_params(self, study: optuna.study.Study | None) -> bool:
         if not study:

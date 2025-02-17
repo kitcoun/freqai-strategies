@@ -3,6 +3,7 @@ import gc
 import json
 import logging
 import warnings
+import time
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type, Tuple
@@ -474,6 +475,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             storage=storage,
             load_if_exists=True,
         )
+        start = time.time()
         try:
             study.optimize(
                 lambda trial: self.objective(trial, train_df, total_timesteps, dk),
@@ -489,8 +491,13 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
         except KeyboardInterrupt:
             pass
+        time_spent = time.time() - start
 
-        logger.info("------------ Hyperopt results %s ------------", dk.pair)
+        logger.info(
+            "------------ Hyperopt results %s (%.2f secs) ------------",
+            dk.pair,
+            time_spent,
+        )
         logger.info(
             "Best trial: %s. Score: %s", study.best_trial.number, study.best_trial.value
         )
@@ -498,7 +505,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             "Best trial params: %s",
             self.optuna_trial_params[dk.pair][study.best_trial.number],
         )
-        logger.info("---------------------------------------------")
+        logger.info("-------------------------------------------------------")
 
         best_params_path = Path(
             dk.full_path / f"{dk.pair.split('/')[0]}_hyperopt_best_params.json"
