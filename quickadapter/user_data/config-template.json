@@ -118,8 +118,8 @@
     "outlier_threshold": 0.999,
     "optuna_hyperopt": {
       "enabled": true,
-      "n_trials": 36,
       "n_jobs": 6,
+      "n_trials": 36,
       "timeout": 3600,
       "candles_step": 10,
       "storage": "file"
