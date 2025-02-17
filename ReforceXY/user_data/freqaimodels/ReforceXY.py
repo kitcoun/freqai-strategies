@@ -500,11 +500,11 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
         logger.info("---------------------------------------------")
 
-        best_trial_path = Path(
+        best_params_path = Path(
             dk.full_path / f"{dk.pair.split('/')[0]}_hyperopt_best_params.json"
         )
-        logger.info("dumping to %s JSON file", best_trial_path)
-        with best_trial_path.open("w", encoding="utf-8") as write_file:
+        logger.info("dumping to %s JSON file", best_params_path)
+        with best_params_path.open("w", encoding="utf-8") as write_file:
             json.dump(study.best_trial.params, write_file, indent=4)
 
         return self.optuna_trial_params[dk.pair][study.best_trial.number]
