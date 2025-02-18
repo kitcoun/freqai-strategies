@@ -331,6 +331,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
         logger.info("Hyperopt: %s", self.hyperopt)
 
+        start = time.time()
         if self.hyperopt:
             model_params = self.study(train_df, total_timesteps, dk)
         else:
@@ -362,6 +363,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         finally:
             if self.progressbar_callback:
                 self.progressbar_callback.on_training_end()
+        time_spent = time.time() - start
+        self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
 
         if Path(dk.data_path / "best_model.zip").is_file():
             logger.info("Callback found a best model.")
