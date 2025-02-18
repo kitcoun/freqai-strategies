@@ -366,9 +366,10 @@ class ReforceXY(BaseReinforcementLearningModel):
         time_spent = time.time() - start
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
 
-        if Path(dk.data_path / "best_model.zip").is_file():
+        model_filename = dk.model_filename if dk.model_filename else "best"
+        if Path(dk.data_path / f"{model_filename}_model.zip").is_file():
             logger.info("Callback found a best model.")
-            best_model = self.MODELCLASS.load(dk.data_path / "best_model")
+            best_model = self.MODELCLASS.load(dk.data_path / f"{model_filename}_model")
             return best_model
 
         logger.info("Couldn't find best model, using final model instead.")

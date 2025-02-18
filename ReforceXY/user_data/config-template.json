@@ -130,7 +130,6 @@
       ],
       "label_period_candles": 100,
       "include_shifted_candles": 6,
-      "DI_threshold": 10,
       "weight_factor": 0.9,
       "principal_component_analysis": false,
       "use_SVM_to_remove_outliers": false,
