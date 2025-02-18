@@ -600,6 +600,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             self.timeout: int = self.rl_config.get("max_trade_duration_candles", 128)
             self._last_closed_position: Positions = None
             self._last_closed_trade_tick: int = 0
+            self._non_profit_steps: int = 0
             # self.reward_range = (-1, 1)
             if self.force_actions:
                 logger.info(
@@ -643,6 +644,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             self._force_action: Optional[ForceActions] = None
             self._last_closed_position: Positions = None
             self._last_closed_trade_tick: int = 0
+            self._non_profit_steps: int = 0
             return self._get_observation(), history
 
         def calculate_reward(self, action) -> float:
@@ -700,15 +702,28 @@ class ReforceXY(BaseReinforcementLearningModel):
             if action == Actions.Neutral.value and self._position == Positions.Neutral:
                 return -1
 
+            # discourage sitting in non profitable position
+            if (
+                self._position in (Positions.Short, Positions.Long)
+                and action == Actions.Neutral.value
+            ):
+                if pnl < 0:
+                    self._non_profit_steps += 1
+                else:
+                    self._non_profit_steps = 0
+            if self._non_profit_steps > 0:
+                return pnl - (
+                    0.1 * (self._non_profit_steps**2) * max(0, pnl)
+                )  # time aggressive (quadratic) and loss magnitude aware penalty
+
+            # discourage sitting in position
             max_trade_duration = self.rl_config.get("max_trade_duration_candles", 300)
             trade_duration = self.get_trade_duration()
-
             if trade_duration <= max_trade_duration:
                 factor *= 1.5
             elif trade_duration > max_trade_duration:
                 factor *= 0.5
 
-            # discourage sitting in position
             if (
                 self._position in (Positions.Short, Positions.Long)
                 and action == Actions.Neutral.value
