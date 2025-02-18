@@ -1105,9 +1105,13 @@ class InfoMetricsCallback(TensorboardCallback):
 
     def _on_training_start(self) -> None:
         _lr = self.model.learning_rate
+        _lr = _lr if isinstance(_lr, float) else "lr_schedule"
+        _cr = self.model.clip_range
+        _cr = _cr if isinstance(_cr, float) else "cr_schedule"
         hparam_dict = {
             "algorithm": self.model.__class__.__name__,
-            "learning_rate": _lr if _lr is float else "lr_schedule",
+            "learning_rate": _lr,
+            "clip_range": _cr,
             # "gamma": self.model.gamma,
             # "gae_lambda": self.model.gae_lambda,
             # "n_steps": self.model.n_steps,
