@@ -674,6 +674,10 @@ class ReforceXY(BaseReinforcementLearningModel):
                 ForceActions.Stop_loss,
                 ForceActions.Timeout,
             ):
+                if pnl > self.profit_aim * self.rr:
+                    factor *= self.rl_config.get("model_reward_parameters", {}).get(
+                        "win_reward_factor", 2
+                    )
                 return pnl * factor
 
             # first, penalize if the action is not valid
@@ -736,7 +740,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                     factor *= self.rl_config.get("model_reward_parameters", {}).get(
                         "win_reward_factor", 2
                     )
-                return float(pnl * factor)
+                return pnl * factor
 
             # close short
             if action == Actions.Short_exit.value and self._position == Positions.Short:
@@ -744,7 +748,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                     factor *= self.rl_config.get("model_reward_parameters", {}).get(
                         "win_reward_factor", 2
                     )
-                return float(pnl * factor)
+                return pnl * factor
 
             return 0.0
 
@@ -850,7 +854,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "tick": self._current_tick,
                 "position": self._position.value,
                 "action": action,
-                "force_action": self._get_force_action(),
+                "force_action": self._force_action,
                 "pnl": self.get_unrealized_profit(),
                 "reward": round(reward, 5),
                 "total_reward": round(self.total_reward, 5),
