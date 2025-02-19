@@ -464,7 +464,11 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         try:
             _ = study.best_params
             return True
+        # file backend storage raises KeyError
         except KeyError:
+            return False
+        # sqlite backend storage raises ValueError
+        except ValueError:
             return False
 
 

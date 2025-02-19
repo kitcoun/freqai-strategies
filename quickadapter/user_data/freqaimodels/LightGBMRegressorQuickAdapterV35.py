@@ -250,7 +250,6 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         storage_backend = self.__optuna_config.get("storage", "file")
         if storage_backend == "sqlite":
             storage = f"sqlite:///{storage_dir}/optuna-{dk.pair.split('/')[0]}.sqlite"
-            logging.info(f"Optuna storage: {storage}")
         elif storage_backend == "file":
             storage = optuna.storages.JournalStorage(
                 optuna.storages.journal.JournalFileBackend(
@@ -464,7 +463,11 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         try:
             _ = study.best_params
             return True
+        # file backend storage raises KeyError
         except KeyError:
+            return False
+        # sqlite backend storage raises ValueError
+        except ValueError:
             return False
 
 
