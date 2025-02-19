@@ -224,9 +224,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_period_params.get(pair, {}).get(
-                "label_period_candles", self.ft_params["label_period_candles"]
-            )
+            self.__optuna_period_params.get(
+                pair, {}
+            ).get("label_period_candles", self.ft_params["label_period_candles"])
         )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
             pair, {}
@@ -249,14 +249,12 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         storage_dir = str(dk.full_path)
         storage_backend = self.__optuna_config.get("storage", "file")
         if storage_backend == "sqlite":
-            sqlite_path = sanitize_path(
-                f"{storage_dir}/optuna-{dk.pair.split('/')[0]}.sqlite"
-            )
-            storage = f"sqlite:///{sqlite_path}"
+            storage = f"sqlite:///{storage_dir}/optuna-{dk.pair.split('/')[0]}.sqlite"
+            logging.info(f"Optuna storage: {storage}")
         elif storage_backend == "file":
             storage = optuna.storages.JournalStorage(
                 optuna.storages.journal.JournalFileBackend(
-                    sanitize_path(f"{storage_dir}/optuna-{dk.pair.split('/')[0]}.log")
+                    f"{storage_dir}/optuna-{dk.pair.split('/')[0]}.log"
                 )
             )
         return storage
@@ -620,11 +618,6 @@ def hp_objective(
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
     return error
-
-
-def sanitize_path(path: str) -> str:
-    allowed = re.compile(r"[^A-Za-z0-9 _\-\.\(\)]")
-    return allowed.sub("_", path)
 
 
 def smooth_max(series: pd.Series, beta=1.0) -> float:
