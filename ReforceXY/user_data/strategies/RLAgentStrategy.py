@@ -9,6 +9,8 @@ from freqtrade.strategy import IStrategy
 
 logger = logging.getLogger(__name__)
 
+ACTION_COLUMN = "&-action"
+
 
 class RLAgentStrategy(IStrategy):
     """
@@ -52,7 +54,7 @@ class RLAgentStrategy(IStrategy):
         return dataframe
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
-        dataframe["&-action"] = 0
+        dataframe[ACTION_COLUMN] = 0
 
         return dataframe
 
@@ -62,7 +64,7 @@ class RLAgentStrategy(IStrategy):
         return dataframe
 
     def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
-        enter_long_conditions = [df["do_predict"] == 1, df["&-action"] == 1]
+        enter_long_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 1]
 
         if enter_long_conditions:
             df.loc[
@@ -70,7 +72,7 @@ class RLAgentStrategy(IStrategy):
                 ["enter_long", "enter_tag"],
             ] = (1, "long")
 
-        enter_short_conditions = [df["do_predict"] == 1, df["&-action"] == 3]
+        enter_short_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 3]
 
         if enter_short_conditions:
             df.loc[
@@ -81,11 +83,11 @@ class RLAgentStrategy(IStrategy):
         return df
 
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
-        exit_long_conditions = [df["do_predict"] == 1, df["&-action"] == 2]
+        exit_long_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 2]
         if exit_long_conditions:
             df.loc[reduce(lambda x, y: x & y, exit_long_conditions), "exit_long"] = 1
 
-        exit_short_conditions = [df["do_predict"] == 1, df["&-action"] == 4]
+        exit_short_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 4]
         if exit_short_conditions:
             df.loc[reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"] = 1
 
