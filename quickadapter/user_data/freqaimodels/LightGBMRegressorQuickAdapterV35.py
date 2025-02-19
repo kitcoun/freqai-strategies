@@ -224,9 +224,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_period_params.get(
-                pair, {}
-            ).get("label_period_candles", self.ft_params["label_period_candles"])
+            self.__optuna_period_params.get(pair, {}).get(
+                "label_period_candles", self.ft_params["label_period_candles"]
+            )
         )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
             pair, {}
@@ -283,6 +283,19 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 pred_df, fit_live_predictions_candles, label_period_candles
             )
 
+    def optuna_hp_enqueue_previous_best_trial(
+        self,
+        dk: FreqaiDataKitchen,
+        study: optuna.study.Study,
+        previous_study: optuna.study.Study,
+    ) -> None:
+        if self.optuna_study_has_best_params(previous_study):
+            study.enqueue_trial(previous_study.best_params)
+        elif self.__optuna_hp_params.get(dk.pair):
+            study.enqueue_trial(self.__optuna_hp_params[dk.pair])
+        elif self.optuna_load_best_params(dk, "hp"):
+            study.enqueue_trial(self.optuna_load_best_params(dk, "hp"))
+
     def optuna_hp_optimize(
         self,
         dk: FreqaiDataKitchen,
@@ -307,10 +320,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        if self.optuna_study_has_best_params(previous_study):
-            study.enqueue_trial(previous_study.best_params)
-        elif self.__optuna_hp_params.get(dk.pair):
-            study.enqueue_trial(self.__optuna_hp_params[dk.pair])
+        self.optuna_hp_enqueue_previous_best_trial(dk, study, previous_study)
         start = time.time()
         try:
             study.optimize(
@@ -335,16 +345,25 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         time_spent = time.time() - start
         logger.info(f"Optuna hp hyperopt done ({time_spent:.2f} secs)")
 
-        hp_best_params_path = Path(
-            dk.full_path / f"{dk.pair.split('/')[0]}_optuna_hp_best_params.json"
-        )
-        with hp_best_params_path.open("w", encoding="utf-8") as write_file:
-            json.dump(study.best_params, write_file, indent=4)
         params = study.best_params
+        self.optuna_save_best_params(dk, "hp", params)
         # log params
         for key, value in {"rmse": study.best_value, **params}.items():
             logger.info(f"Optuna hp hyperopt | {key:>20s} : {value}")
         return params, study.best_value
+
+    def optuna_period_enqueue_previous_best_trial(
+        self,
+        dk: FreqaiDataKitchen,
+        study: optuna.study.Study,
+        previous_study: optuna.study.Study,
+    ) -> None:
+        if self.optuna_study_has_best_params(previous_study):
+            study.enqueue_trial(previous_study.best_params)
+        elif self.__optuna_period_params.get(dk.pair):
+            study.enqueue_trial(self.__optuna_period_params[dk.pair])
+        elif self.optuna_load_best_params(dk, "period"):
+            study.enqueue_trial(self.optuna_load_best_params(dk, "period"))
 
     def optuna_period_optimize(
         self,
@@ -371,10 +390,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        if self.optuna_study_has_best_params(previous_study):
-            study.enqueue_trial(previous_study.best_params)
-        elif self.__optuna_period_params.get(dk.pair):
-            study.enqueue_trial(self.__optuna_period_params[dk.pair])
+        self.optuna_period_enqueue_previous_best_trial(dk, study, previous_study)
         start = time.time()
         try:
             study.optimize(
@@ -402,16 +418,34 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         time_spent = time.time() - start
         logger.info(f"Optuna period hyperopt done ({time_spent:.2f} secs)")
 
-        period_best_params_path = Path(
-            dk.full_path / f"{dk.pair.split('/')[0]}_optuna_period_best_params.json"
-        )
-        with period_best_params_path.open("w", encoding="utf-8") as write_file:
-            json.dump(study.best_params, write_file, indent=4)
         params = study.best_params
+        self.optuna_save_best_params(dk, "period", params)
         # log params
         for key, value in {"rmse": study.best_value, **params}.items():
             logger.info(f"Optuna period hyperopt | {key:>20s} : {value}")
         return params, study.best_value
+
+    def optuna_save_best_params(
+        self, dk: FreqaiDataKitchen, namespace: str, best_params: dict
+    ) -> None:
+        best_params_path = Path(
+            dk.full_path
+            / f"{dk.pair.split('/')[0]}_optuna_{namespace}_best_params.json"
+        )
+        with best_params_path.open("w", encoding="utf-8") as write_file:
+            json.dump(best_params, write_file, indent=4)
+
+    def optuna_load_best_params(
+        self, dk: FreqaiDataKitchen, namespace: str
+    ) -> dict | None:
+        best_params_path = Path(
+            dk.full_path
+            / f"{dk.pair.split('/')[0]}_optuna_{namespace}_best_params.json"
+        )
+        if best_params_path.is_file():
+            with best_params_path.open("r", encoding="utf-8") as read_file:
+                return json.load(read_file)
+        return None
 
     def optuna_study_load_and_cleanup(
         self, study_name: str, storage

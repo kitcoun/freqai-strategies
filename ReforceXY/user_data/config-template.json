@@ -113,7 +113,7 @@
     // "live_retrain_hours": 0.5,
     "backtest_period_days": 2,
     "write_metrics_to_disk": false,
-    "identifier": "ReforceXY",
+    "identifier": "ReforceXY-PPO",
     "fit_live_predictions_candles": 300,
     "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
     "track_performance": false,

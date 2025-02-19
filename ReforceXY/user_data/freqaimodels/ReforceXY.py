@@ -402,6 +402,22 @@ class ReforceXY(BaseReinforcementLearningModel):
         :param model: Any = the trained model used to inference the features.
         """
 
+        def _is_valid(action: int, position: float) -> bool:
+            """
+            Determine if the action is valid for the step
+            """
+            # Agent should only try to exit if it is in position
+            if action in (Actions.Short_exit.value, Actions.Long_exit.value):
+                if position not in (Positions.Short, Positions.Long):
+                    return False
+
+            # Agent should only try to enter if it is not in position
+            if action in (Actions.Short_enter.value, Actions.Long_enter.value):
+                if position != Positions.Neutral:
+                    return False
+
+            return True
+
         def _action_masks(position: float):
             return [_is_valid(action.value, position) for action in Actions]
 
@@ -502,14 +518,34 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
         logger.info("-------------------------------------------------------")
 
+        self.save_best_params(dk, study.best_trial.params)
+
+        return self.optuna_trial_params[dk.pair][study.best_trial.number]
+
+    def save_best_params(self, dk: FreqaiDataKitchen, best_params: Dict) -> None:
+        """
+        Save the best hyperparameters found during hyperparameter optimization
+        """
         best_params_path = Path(
             dk.full_path / f"{dk.pair.split('/')[0]}_hyperopt_best_params.json"
         )
-        logger.info("dumping to %s JSON file", best_params_path)
+        logger.info("saving to %s JSON file", best_params_path)
         with best_params_path.open("w", encoding="utf-8") as write_file:
-            json.dump(study.best_trial.params, write_file, indent=4)
+            json.dump(best_params, write_file, indent=4)
 
-        return self.optuna_trial_params[dk.pair][study.best_trial.number]
+    def load_best_params(self, dk: FreqaiDataKitchen) -> Dict | None:
+        """
+        Load the best hyperparameters found and saved during hyperparameter optimization
+        """
+        best_params_path = Path(
+            dk.full_path / f"{dk.pair.split('/')[0]}_hyperopt_best_params.json"
+        )
+        if best_params_path.is_file():
+            logger.info("loading from %s JSON file", best_params_path)
+            with best_params_path.open("r", encoding="utf-8") as read_file:
+                best_params = json.load(read_file)
+            return best_params
+        return None
 
     def objective(
         self, trial: Trial, train_df, total_timesteps: int, dk: FreqaiDataKitchen
@@ -1374,20 +1410,3 @@ def sample_params_qrdqn(trial: Trial) -> Dict[str, Any]:
     n_quantiles = trial.suggest_int("n_quantiles", 5, 200)
     hyperparams["policy_kwargs"].update({"n_quantiles": n_quantiles})
     return hyperparams
-
-
-def _is_valid(action: int, position: float) -> bool:
-    """
-    Determine if the action is valid for the step
-    """
-    # Agent should only try to exit if it is in position
-    if action in (Actions.Short_exit.value, Actions.Long_exit.value):
-        if position not in (Positions.Short, Positions.Long):
-            return False
-
-    # Agent should only try to enter if it is not in position
-    if action in (Actions.Short_enter.value, Actions.Long_enter.value):
-        if position != Positions.Neutral:
-            return False
-
-    return True
