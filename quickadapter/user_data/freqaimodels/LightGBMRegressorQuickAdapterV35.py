@@ -588,6 +588,25 @@ def period_objective(
         y_pred.iloc[i : i + label_period_candles]
         for i in range(0, len(y_pred), label_period_candles)
     ]
+    max_chunk_length = max(len(chunk) for chunk in y_test + y_pred)
+    y_test = [
+        np.pad(
+            chunk,
+            (0, max_chunk_length - len(chunk)),
+            mode="constant",
+            constant_values=np.nan,
+        )
+        for chunk in y_test
+    ]
+    y_pred = [
+        np.pad(
+            chunk,
+            (0, max_chunk_length - len(chunk)),
+            mode="constant",
+            constant_values=np.nan,
+        )
+        for chunk in y_pred
+    ]
 
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
