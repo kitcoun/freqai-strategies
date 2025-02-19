@@ -596,9 +596,9 @@ def period_objective(
     y_test = y_test[:min_length]
     y_pred = y_pred[:min_length]
     # trim last chunk if needed
-    min_last_chunk_length = min(len(y_test[-1]), len(y_pred[-1]))
-    y_test[-1] = y_test[-1][:min_last_chunk_length]
-    y_pred[-1] = y_pred[-1][:min_last_chunk_length]
+    last_chunk_min_length = min(len(y_test[-1]), len(y_pred[-1]))
+    y_test[-1] = y_test[-1][:last_chunk_min_length]
+    y_pred[-1] = y_pred[-1][:last_chunk_min_length]
 
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
