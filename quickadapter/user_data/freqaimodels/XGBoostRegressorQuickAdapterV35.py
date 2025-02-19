@@ -12,7 +12,6 @@ import scipy as spy
 import optuna
 import sklearn
 import warnings
-import re
 import numpy as np
 
 N_TRIALS = 36
@@ -577,15 +576,22 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles = int(fit_live_predictions_candles / 10)
-    max_label_period_candles = fit_live_predictions_candles
+    min_label_period_candles = int(fit_live_predictions_candles / 6)
+    max_label_period_candles = int(fit_live_predictions_candles / 2)
     label_period_candles = trial.suggest_int(
         "label_period_candles",
         min_label_period_candles,
         max_label_period_candles,
     )
-    y_test = y_test.tail(label_period_candles)
-    y_pred = y_pred[-label_period_candles:]
+    y_test = [
+        y_test.iloc[i : i + label_period_candles]
+        for i in range(0, len(y_test), label_period_candles)
+    ]
+    y_pred = pd.Series(y_pred)
+    y_pred = [
+        y_pred.iloc[i : i + label_period_candles]
+        for i in range(0, len(y_pred), label_period_candles)
+    ]
 
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
