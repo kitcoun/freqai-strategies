@@ -52,8 +52,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             and self.__optuna_config.get("enabled", False)
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
-        self.__optuna_hp_rmse: dict[str, float | None] = {}
-        self.__optuna_period_rmse: dict[str, float | None] = {}
+        self.__optuna_hp_rmse: dict[str, float] = {}
+        self.__optuna_period_rmse: dict[str, float] = {}
         self.__optuna_hp_params: dict[str, dict] = {}
         self.__optuna_period_params: dict[str, dict] = {}
 
@@ -91,7 +91,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 }
             if optuna_hp_rmse:
                 if dk.pair not in self.__optuna_hp_rmse:
-                    self.__optuna_hp_rmse[dk.pair] = None
+                    self.__optuna_hp_rmse[dk.pair] = -1
                 self.__optuna_hp_rmse[dk.pair] = optuna_hp_rmse
 
             optuna_period_params, optuna_period_rmse = self.optuna_period_optimize(
@@ -110,7 +110,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 self.__optuna_period_params[dk.pair] = optuna_period_params
             if optuna_period_rmse:
                 if dk.pair not in self.__optuna_period_rmse:
-                    self.__optuna_period_rmse[dk.pair] = None
+                    self.__optuna_period_rmse[dk.pair] = -1
                 self.__optuna_period_rmse[dk.pair] = optuna_period_rmse
 
             if self.__optuna_period_params.get(dk.pair):
@@ -224,15 +224,15 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_period_params.get(
-                pair, {}
-            ).get("label_period_candles", self.ft_params["label_period_candles"])
+            self.__optuna_period_params.get(pair, {}).get(
+                "label_period_candles", self.ft_params["label_period_candles"]
+            )
         )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
-            pair, {}
+            pair, -1
         )
         dk.data["extra_returns_per_train"]["period_rmse"] = (
-            self.__optuna_period_rmse.get(pair, {})
+            self.__optuna_period_rmse.get(pair, -1)
         )
 
     def eval_set_and_weights(self, X_test, y_test, test_weights):
