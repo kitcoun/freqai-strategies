@@ -20,7 +20,7 @@ from optuna.exceptions import ExperimentalWarning
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
 from optuna.study import Study, StudyDirection
-from optuna.storages import JournalStorage
+from optuna.storages import JournalStorage, BaseStorage
 from optuna.storages.journal import JournalFileBackend
 from pandas import DataFrame, concat, merge
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
@@ -99,6 +99,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
         self.is_maskable: bool = (
             self.model_type == "MaskablePPO"
         )  # Enable action masking
@@ -125,6 +126,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             "n_startup_trials", 10
         )
         self.optuna_trial_params: Dict[str, list] = {}
+        for pair in self.pairs:
+            self.optuna_trial_params[pair] = []
         self.optuna_callback: Optional[MaskableTrialEvalCallback] = None
         self.unset_unsupported()
 
@@ -339,7 +342,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         logger.info("%s params: %s", self.model_type, model_params)
 
         if self.activate_tensorboard:
-            tb_path = Path(dk.full_path / "tensorboard" / dk.pair.split("/")[0])
+            tb_path = Path(self.full_path / "tensorboard" / dk.pair.split("/")[0])
         else:
             tb_path = None
 
@@ -450,17 +453,17 @@ class ReforceXY(BaseReinforcementLearningModel):
         output = output.rolling(window=self.CONV_WIDTH).apply(_predict)
         return output
 
-    def get_storage(self, dk: FreqaiDataKitchen):
+    def get_storage(self, pair: str) -> BaseStorage:
         """
         Get the storage for Optuna
         """
-        storage_dir = str(dk.full_path)
+        storage_dir = str(self.full_path)
         storage_backend = self.rl_config_optuna.get("storage", "sqlite")
         if storage_backend == "sqlite":
-            storage = f"sqlite:///{storage_dir}/optuna-{dk.pair.split('/')[0]}.sqlite"
+            storage = f"sqlite:///{storage_dir}/optuna-{pair.split('/')[0]}.sqlite"
         elif storage_backend == "file":
             storage = JournalStorage(
-                JournalFileBackend(f"{storage_dir}/optuna-{dk.pair.split('/')[0]}.log")
+                JournalFileBackend(f"{storage_dir}/optuna-{pair.split('/')[0]}.log")
             )
         return storage
 
@@ -470,7 +473,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         returns the best hyperparameters found
         """
         study_name = str(dk.pair)
-        storage = self.get_storage(dk)
+        storage = self.get_storage(dk.pair)
         study: Study = create_study(
             study_name=study_name,
             sampler=TPESampler(
@@ -517,27 +520,27 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
         logger.info("-------------------------------------------------------")
 
-        self.save_best_params(dk, study.best_trial.params)
+        self.save_best_params(dk.pair, study.best_trial.params)
 
         return self.optuna_trial_params[dk.pair][study.best_trial.number]
 
-    def save_best_params(self, dk: FreqaiDataKitchen, best_params: Dict) -> None:
+    def save_best_params(self, pair: str, best_params: Dict) -> None:
         """
         Save the best hyperparameters found during hyperparameter optimization
         """
         best_params_path = Path(
-            dk.full_path / f"{dk.pair.split('/')[0]}_hyperopt_best_params.json"
+            self.full_path / f"{pair.split('/')[0]}_hyperopt_best_params.json"
         )
         logger.info("saving to %s JSON file", best_params_path)
         with best_params_path.open("w", encoding="utf-8") as write_file:
             json.dump(best_params, write_file, indent=4)
 
-    def load_best_params(self, dk: FreqaiDataKitchen) -> Dict | None:
+    def load_best_params(self, pair: str) -> Dict | None:
         """
         Load the best hyperparameters found and saved during hyperparameter optimization
         """
         best_params_path = Path(
-            dk.full_path / f"{dk.pair.split('/')[0]}_hyperopt_best_params.json"
+            self.full_path / f"{pair.split('/')[0]}_hyperopt_best_params.json"
         )
         if best_params_path.is_file():
             logger.info("loading from %s JSON file", best_params_path)
@@ -565,15 +568,13 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         nan_encountered = False
         tensorboard_log_path = Path(
-            dk.full_path / "tensorboard" / dk.pair.split("/")[0]
+            self.full_path / "tensorboard" / dk.pair.split("/")[0]
         )
 
         logger.info(
             "------------ Hyperopt trial %d %s ------------", trial.number, dk.pair
         )
         logger.info("Trial %s params: %s", trial.number, params)
-        if dk.pair not in self.optuna_trial_params:
-            self.optuna_trial_params[dk.pair] = []
         self.optuna_trial_params[dk.pair].append(params)
 
         model = self.MODELCLASS(
