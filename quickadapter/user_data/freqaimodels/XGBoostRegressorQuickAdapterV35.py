@@ -306,7 +306,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         study_name = f"hp-{dk.pair}"
         storage = self.optuna_storage(dk)
         pruner = optuna.pruners.HyperbandPruner()
-        previous_study = self.optuna_study_load_and_cleanup(study_name, storage)
+        previous_study = self.optuna_study_load(study_name, storage)
+        self.optuna_study_delete(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -376,7 +377,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         study_name = f"period-{dk.pair}"
         storage = self.optuna_storage(dk)
         pruner = optuna.pruners.HyperbandPruner()
-        previous_study = self.optuna_study_load_and_cleanup(study_name, storage)
+        previous_study = self.optuna_study_load(study_name, storage)
+        self.optuna_study_delete(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -444,17 +446,17 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 return json.load(read_file)
         return None
 
-    def optuna_study_load_and_cleanup(
-        self, study_name: str, storage
-    ) -> optuna.study.Study | None:
-        try:
-            study = optuna.load_study(study_name=study_name, storage=storage)
-        except Exception:
-            study = None
+    def optuna_study_delete(self, study_name: str, storage) -> None:
         try:
             optuna.delete_study(study_name=study_name, storage=storage)
         except Exception:
             pass
+
+    def optuna_study_load(self, study_name: str, storage) -> optuna.study.Study | None:
+        try:
+            study = optuna.load_study(study_name=study_name, storage=storage)
+        except Exception:
+            study = None
         return study
 
     def optuna_study_has_best_params(self, study: optuna.study.Study | None) -> bool:
