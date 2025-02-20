@@ -368,7 +368,6 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         model_filename = dk.model_filename if dk.model_filename else "best"
         if Path(dk.data_path / f"{model_filename}_model.zip").is_file():
-            logger.info("Callback found a best model.")
             best_model = self.MODELCLASS.load(dk.data_path / f"{model_filename}_model")
             return best_model
 
