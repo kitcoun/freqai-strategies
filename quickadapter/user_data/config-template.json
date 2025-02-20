@@ -131,7 +131,7 @@
       "DI_cutoff": 2,
       "&s-minima_threshold": -2,
       "&s-maxima_threshold": 2,
-      // "label_period_candles": 100,
+      "label_period_candles": 100,
       "hp_rmse": -1,
       "period_rmse": -1
     },

@@ -127,12 +127,12 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 y_test = y_test.tail(test_window)
                 test_weights = test_weights[-test_window:]
 
-                # # FIXME: find a better way to propagate optuna computed params to strategy
-                # if dk.pair not in self.freqai_info["feature_parameters"]:
-                #     self.freqai_info["feature_parameters"][dk.pair] = {}
-                # self.freqai_info["feature_parameters"][dk.pair][
-                #     "label_period_candles"
-                # ] = self.__optuna_period_params[dk.pair].get("label_period_candles")
+                # FIXME: find a better way to propagate optuna computed params to strategy
+                if dk.pair not in self.freqai_info["feature_parameters"]:
+                    self.freqai_info["feature_parameters"][dk.pair] = {}
+                self.freqai_info["feature_parameters"][dk.pair][
+                    "label_period_candles"
+                ] = self.__optuna_period_params[dk.pair].get("label_period_candles")
 
         model = LGBMRegressor(
             objective="regression", metric="rmse", **model_training_parameters
@@ -178,13 +178,12 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = -2
             dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = 2
         else:
-            # if self.__optuna_hyperopt:
-            #     label_period_candles = self.__optuna_period_params.get(pair, {}).get(
-            #         "label_period_candles", self.ft_params["label_period_candles"]
-            #     )
-            # else:
-            #     label_period_candles = self.ft_params["label_period_candles"]
-            label_period_candles = self.ft_params["label_period_candles"]
+            if self.__optuna_hyperopt:
+                label_period_candles = self.__optuna_period_params.get(pair, {}).get(
+                    "label_period_candles", self.ft_params["label_period_candles"]
+                )
+            else:
+                label_period_candles = self.ft_params["label_period_candles"]
             min_pred, max_pred = self.min_max_pred(
                 pred_df_full,
                 num_candles,
@@ -223,11 +222,11 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_value_param3"] = f[2]
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
-        # dk.data["extra_returns_per_train"]["label_period_candles"] = (
-        #     self.__optuna_period_params.get(pair, {}).get(
-        #         "label_period_candles", self.ft_params["label_period_candles"]
-        #     )
-        # )
+        dk.data["extra_returns_per_train"]["label_period_candles"] = (
+            self.__optuna_period_params.get(pair, {}).get(
+                "label_period_candles", self.ft_params["label_period_candles"]
+            )
+        )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
             pair, -1
         )
@@ -400,6 +399,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                     y_test,
                     test_weights,
                     self.data_split_parameters.get("test_size", TEST_SIZE),
+                    self.freqai_info.get("fit_live_predictions_candles", 100),
                     self.__optuna_config.get("candles_step", 100),
                     model_training_parameters,
                 ),
@@ -529,6 +529,7 @@ def period_objective(
     y_test,
     test_weights,
     test_size,
+    fit_live_predictions_candles,
     candles_step,
     model_training_parameters,
 ) -> float:
@@ -570,6 +571,16 @@ def period_objective(
         callbacks=[optuna.integration.LightGBMPruningCallback(trial, "rmse")],
     )
     y_pred = model.predict(X_test)
+
+    min_label_period_candles = int(fit_live_predictions_candles / 6)
+    max_label_period_candles = int(fit_live_predictions_candles / 2)
+    label_period_candles = trial.suggest_int(
+        "label_period_candles",
+        min_label_period_candles,
+        max_label_period_candles,
+    )
+    y_test = y_test.tail(label_period_candles)
+    y_pred = y_pred[-label_period_candles:]
 
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
