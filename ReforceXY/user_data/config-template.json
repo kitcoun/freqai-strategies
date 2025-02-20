@@ -151,7 +151,7 @@
       "shuffle": false
     },
     "model_training_parameters": {
-      // "device": "cuda",
+      "device": "auto",
       "verbose": 1
     },
     "rl_config": {

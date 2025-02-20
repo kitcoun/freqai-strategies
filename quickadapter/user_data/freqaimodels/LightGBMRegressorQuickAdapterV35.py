@@ -52,10 +52,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             and self.__optuna_config.get("enabled", False)
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
-        self.__optuna_hp_rmse: dict[str, float] = {}
-        self.__optuna_period_rmse: dict[str, float] = {}
-        self.__optuna_hp_params: dict[str, dict] = {}
-        self.__optuna_period_params: dict[str, dict] = {}
+        self.__optuna_hp_rmse: Dict[str, float] = {}
+        self.__optuna_period_rmse: Dict[str, float] = {}
+        self.__optuna_hp_params: Dict[str, Dict] = {}
+        self.__optuna_period_params: Dict[str, Dict] = {}
         for pair in self.pairs:
             self.__optuna_hp_rmse[pair] = -1
             self.__optuna_period_rmse[pair] = -1
@@ -299,7 +299,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         X_test,
         y_test,
         test_weights,
-    ) -> tuple[dict | None, float | None]:
+    ) -> tuple[Dict | None, float | None]:
         study_name = f"hp-{dk.pair}"
         storage = self.optuna_storage(dk)
         pruner = optuna.pruners.HyperbandPruner()
@@ -370,7 +370,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         y_test,
         test_weights,
         model_training_parameters,
-    ) -> tuple[dict | None, float | None]:
+    ) -> tuple[Dict | None, float | None]:
         study_name = f"period-{dk.pair}"
         storage = self.optuna_storage(dk)
         pruner = optuna.pruners.HyperbandPruner()
@@ -422,7 +422,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         return params, study.best_value
 
     def optuna_save_best_params(
-        self, dk: FreqaiDataKitchen, namespace: str, best_params: dict
+        self, dk: FreqaiDataKitchen, namespace: str, best_params: Dict
     ) -> None:
         best_params_path = Path(
             dk.full_path
@@ -433,7 +433,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
     def optuna_load_best_params(
         self, dk: FreqaiDataKitchen, namespace: str
-    ) -> dict | None:
+    ) -> Dict | None:
         best_params_path = Path(
             dk.full_path
             / f"{dk.pair.split('/')[0]}_optuna_{namespace}_best_params.json"
