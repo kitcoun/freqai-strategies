@@ -240,14 +240,15 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
         pair = str(metadata.get("pair"))
-        label_period_candles = (
-            self.freqai_info["feature_parameters"]
-            .get(pair, {})
-            .get(
-                "label_period_candles",
-                self.freqai_info["feature_parameters"]["label_period_candles"],
-            )
-        )
+        # label_period_candles = (
+        #     self.freqai_info["feature_parameters"]
+        #     .get(pair, {})
+        #     .get(
+        #         "label_period_candles",
+        #         self.freqai_info["feature_parameters"]["label_period_candles"],
+        #     )
+        # )
+        label_period_candles = self.freqai_info["feature_parameters"]["label_period_candles"]
         dataframe[EXTREMA_COLUMN] = 0
         min_peaks, _ = find_peaks(
             -dataframe["low"].values,
