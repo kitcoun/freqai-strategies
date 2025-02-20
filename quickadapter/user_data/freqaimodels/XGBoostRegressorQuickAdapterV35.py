@@ -45,6 +45,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
         self.__optuna_config = self.freqai_info.get("optuna_hyperopt", {})
         self.__optuna_hyperopt: bool = (
             self.freqai_info.get("enabled", False)
@@ -55,6 +56,11 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         self.__optuna_period_rmse: dict[str, float] = {}
         self.__optuna_hp_params: dict[str, dict] = {}
         self.__optuna_period_params: dict[str, dict] = {}
+        for pair in self.pairs:
+            self.__optuna_hp_rmse[pair] = -1
+            self.__optuna_period_rmse[pair] = -1
+            self.__optuna_hp_params[pair] = {}
+            self.__optuna_period_params[pair] = {}
 
     def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
@@ -81,16 +87,12 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 dk, X, y, train_weights, X_test, y_test, test_weights
             )
             if optuna_hp_params:
-                if dk.pair not in self.__optuna_hp_params:
-                    self.__optuna_hp_params[dk.pair] = {}
                 self.__optuna_hp_params[dk.pair] = optuna_hp_params
                 model_training_parameters = {
                     **model_training_parameters,
                     **self.__optuna_hp_params[dk.pair],
                 }
             if optuna_hp_rmse:
-                if dk.pair not in self.__optuna_hp_rmse:
-                    self.__optuna_hp_rmse[dk.pair] = -1
                 self.__optuna_hp_rmse[dk.pair] = optuna_hp_rmse
 
             optuna_period_params, optuna_period_rmse = self.optuna_period_optimize(
@@ -104,12 +106,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 model_training_parameters,
             )
             if optuna_period_params:
-                if dk.pair not in self.__optuna_period_params:
-                    self.__optuna_period_params[dk.pair] = {}
                 self.__optuna_period_params[dk.pair] = optuna_period_params
             if optuna_period_rmse:
-                if dk.pair not in self.__optuna_period_rmse:
-                    self.__optuna_period_rmse[dk.pair] = -1
                 self.__optuna_period_rmse[dk.pair] = optuna_period_rmse
 
             if self.__optuna_period_params.get(dk.pair):
