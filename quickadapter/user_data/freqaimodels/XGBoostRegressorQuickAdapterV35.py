@@ -583,22 +583,15 @@ def period_objective(
         min_label_period_candles,
         max_label_period_candles,
     )
-    y_test = [
-        y_test.iloc[i : i + label_period_candles]
-        for i in range(0, len(y_test), label_period_candles)
-    ]
     y_pred = pd.Series(y_pred)
-    y_pred = [
-        y_pred.iloc[i : i + label_period_candles]
-        for i in range(0, len(y_pred), label_period_candles)
-    ]
     min_length = min(len(y_test), len(y_pred))
-    y_test = y_test[:min_length]
-    y_pred = y_pred[:min_length]
-    # trim last chunk if needed
-    last_chunk_min_length = min(len(y_test[-1]), len(y_pred[-1]))
-    y_test[-1] = y_test[-1][:last_chunk_min_length]
-    y_pred[-1] = y_pred[-1][:last_chunk_min_length]
+    remaining_candles = min_length % label_period_candles
+    if remaining_candles:
+        y_test = y_test.iloc[remaining_candles:]
+        y_pred = y_pred.iloc[remaining_candles:]
+    indices = range(0, min_length, label_period_candles)
+    y_test = [y_test.iloc[i : i + label_period_candles] for i in indices]
+    y_pred = [y_pred.iloc[i : i + label_period_candles] for i in indices]
 
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
