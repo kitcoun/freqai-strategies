@@ -125,9 +125,6 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.optuna_n_startup_trials: int = self.rl_config_optuna.get(
             "n_startup_trials", 10
         )
-        self.optuna_trial_params: Dict[str, list] = {}
-        for pair in self.pairs:
-            self.optuna_trial_params[pair] = []
         self.optuna_callback: Optional[MaskableTrialEvalCallback] = None
         self.unset_unsupported()
 
@@ -514,15 +511,12 @@ class ReforceXY(BaseReinforcementLearningModel):
         logger.info(
             "Best trial: %s. Score: %s", study.best_trial.number, study.best_trial.value
         )
-        logger.info(
-            "Best trial params: %s",
-            self.optuna_trial_params[dk.pair][study.best_trial.number],
-        )
+        logger.info("Best trial params: %s", study.best_trial.params)
         logger.info("-------------------------------------------------------")
 
         self.save_best_params(dk.pair, study.best_trial.params)
 
-        return self.optuna_trial_params[dk.pair][study.best_trial.number]
+        return study.best_trial.params
 
     def save_best_params(self, pair: str, best_params: Dict) -> None:
         """
@@ -531,7 +525,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         best_params_path = Path(
             self.full_path / f"{pair.split('/')[0]}_hyperopt_best_params.json"
         )
-        logger.info("saving to %s JSON file", best_params_path)
+        logger.info(f"{pair}: saving best params to %s JSON file", best_params_path)
         with best_params_path.open("w", encoding="utf-8") as write_file:
             json.dump(best_params, write_file, indent=4)
 
@@ -543,7 +537,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             self.full_path / f"{pair.split('/')[0]}_hyperopt_best_params.json"
         )
         if best_params_path.is_file():
-            logger.info("loading from %s JSON file", best_params_path)
+            logger.info(
+                f"{pair}: loading best params from %s JSON file", best_params_path
+            )
             with best_params_path.open("r", encoding="utf-8") as read_file:
                 best_params = json.load(read_file)
             return best_params
@@ -575,7 +571,6 @@ class ReforceXY(BaseReinforcementLearningModel):
             "------------ Hyperopt trial %d %s ------------", trial.number, dk.pair
         )
         logger.info("Trial %s params: %s", trial.number, params)
-        self.optuna_trial_params[dk.pair].append(params)
 
         model = self.MODELCLASS(
             self.policy_type,

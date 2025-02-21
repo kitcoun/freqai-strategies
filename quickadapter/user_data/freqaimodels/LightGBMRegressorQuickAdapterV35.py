@@ -444,13 +444,17 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 return json.load(read_file)
         return None
 
-    def optuna_study_delete(self, study_name: str, storage) -> None:
+    def optuna_study_delete(
+        self, study_name: str, storage: optuna.storages.BaseStorage
+    ) -> None:
         try:
             optuna.delete_study(study_name=study_name, storage=storage)
         except Exception:
             pass
 
-    def optuna_study_load(self, study_name: str, storage) -> optuna.study.Study | None:
+    def optuna_study_load(
+        self, study_name: str, storage: optuna.storages.BaseStorage
+    ) -> optuna.study.Study | None:
         try:
             study = optuna.load_study(study_name=study_name, storage=storage)
         except Exception:
