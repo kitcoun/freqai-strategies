@@ -155,7 +155,7 @@
       "verbose": 1
     },
     "rl_config": {
-      "model_type": "PPO",
+      "model_type": "MaskablePPO",
       "policy_type": "MlpPolicy",
       "model_reward_parameters": {
         "rr": 1,

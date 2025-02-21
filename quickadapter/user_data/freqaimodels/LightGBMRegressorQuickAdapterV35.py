@@ -286,14 +286,12 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         self,
         pair: str,
         study: optuna.study.Study,
-        previous_study: optuna.study.Study,
     ) -> None:
-        if self.optuna_study_has_best_params(previous_study):
-            study.enqueue_trial(previous_study.best_params)
-        elif self.__optuna_hp_params.get(pair):
+        study_namespace = "hp"
+        if self.__optuna_hp_params.get(pair):
             study.enqueue_trial(self.__optuna_hp_params[pair])
-        elif self.optuna_load_best_params(pair, "hp"):
-            study.enqueue_trial(self.optuna_load_best_params(pair, "hp"))
+        elif self.optuna_load_best_params(pair, study_namespace):
+            study.enqueue_trial(self.optuna_load_best_params(pair, study_namespace))
 
     def optuna_hp_optimize(
         self,
@@ -305,10 +303,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         y_test,
         test_weights,
     ) -> tuple[Dict | None, float | None]:
-        study_name = f"hp-{pair}"
+        study_namespace = "hp"
+        study_name = f"{study_namespace}-{pair}"
         storage = self.optuna_storage(pair)
         pruner = optuna.pruners.HyperbandPruner()
-        previous_study = self.optuna_study_load(study_name, storage)
         self.optuna_study_delete(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
@@ -320,7 +318,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        self.optuna_hp_enqueue_previous_best_trial(pair, study, previous_study)
+        self.optuna_hp_enqueue_previous_best_trial(pair, study)
         start = time.time()
         try:
             study.optimize(
@@ -340,30 +338,30 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 gc_after_trial=True,
             )
         except Exception as e:
-            logger.error(f"Optuna hp hyperopt failed: {e}", exc_info=True)
+            logger.error(
+                f"Optuna {study_namespace} hyperopt failed: {e}", exc_info=True
+            )
             return None, None
         time_spent = time.time() - start
-        logger.info(f"Optuna hp hyperopt done ({time_spent:.2f} secs)")
+        logger.info(f"Optuna {study_namespace} hyperopt done ({time_spent:.2f} secs)")
 
         params = study.best_params
-        self.optuna_save_best_params(pair, "hp", params)
+        self.optuna_save_best_params(pair, study_namespace, params)
         # log params
         for key, value in {"rmse": study.best_value, **params}.items():
-            logger.info(f"Optuna hp hyperopt | {key:>20s} : {value}")
+            logger.info(f"Optuna {study_namespace} hyperopt | {key:>20s} : {value}")
         return params, study.best_value
 
     def optuna_period_enqueue_previous_best_trial(
         self,
         pair: str,
         study: optuna.study.Study,
-        previous_study: optuna.study.Study,
     ) -> None:
-        if self.optuna_study_has_best_params(previous_study):
-            study.enqueue_trial(previous_study.best_params)
-        elif self.__optuna_period_params.get(pair):
+        study_namespace = "period"
+        if self.__optuna_period_params.get(pair):
             study.enqueue_trial(self.__optuna_period_params[pair])
-        elif self.optuna_load_best_params(pair, "period"):
-            study.enqueue_trial(self.optuna_load_best_params(pair, "period"))
+        elif self.optuna_load_best_params(pair, study_namespace):
+            study.enqueue_trial(self.optuna_load_best_params(pair, study_namespace))
 
     def optuna_period_optimize(
         self,
@@ -376,10 +374,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         test_weights,
         model_training_parameters,
     ) -> tuple[Dict | None, float | None]:
-        study_name = f"period-{pair}"
+        study_namespace = "period"
+        study_name = f"{study_namespace}-{pair}"
         storage = self.optuna_storage(pair)
         pruner = optuna.pruners.HyperbandPruner()
-        previous_study = self.optuna_study_load(study_name, storage)
         self.optuna_study_delete(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
@@ -391,7 +389,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        self.optuna_period_enqueue_previous_best_trial(pair, study, previous_study)
+        self.optuna_period_enqueue_previous_best_trial(pair, study)
         start = time.time()
         try:
             study.optimize(
@@ -414,16 +412,18 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 gc_after_trial=True,
             )
         except Exception as e:
-            logger.error(f"Optuna period hyperopt failed: {e}", exc_info=True)
+            logger.error(
+                f"Optuna {study_namespace} hyperopt failed: {e}", exc_info=True
+            )
             return None, None
         time_spent = time.time() - start
-        logger.info(f"Optuna period hyperopt done ({time_spent:.2f} secs)")
+        logger.info(f"Optuna {study_namespace} hyperopt done ({time_spent:.2f} secs)")
 
         params = study.best_params
-        self.optuna_save_best_params(pair, "period", params)
+        self.optuna_save_best_params(pair, study_namespace, params)
         # log params
         for key, value in {"rmse": study.best_value, **params}.items():
-            logger.info(f"Optuna period hyperopt | {key:>20s} : {value}")
+            logger.info(f"Optuna {study_namespace} hyperopt | {key:>20s} : {value}")
         return params, study.best_value
 
     def optuna_save_best_params(
