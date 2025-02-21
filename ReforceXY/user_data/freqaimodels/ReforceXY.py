@@ -339,15 +339,17 @@ class ReforceXY(BaseReinforcementLearningModel):
         logger.info("%s params: %s", self.model_type, model_params)
 
         if self.activate_tensorboard:
-            tb_path = Path(self.full_path / "tensorboard" / dk.pair.split("/")[0])
+            tensorboard_log_path = Path(
+                self.full_path / "tensorboard" / dk.pair.split("/")[0]
+            )
         else:
-            tb_path = None
+            tensorboard_log_path = None
 
         if dk.pair not in self.dd.model_dictionary or not self.continual_learning:
             model = self.MODELCLASS(
                 self.policy_type,
                 self.train_env,
-                tensorboard_log=tb_path,
+                tensorboard_log=tensorboard_log_path,
                 **model_params,
             )
         else:
@@ -523,7 +525,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         Save the best hyperparameters found during hyperparameter optimization
         """
         best_params_path = Path(
-            self.full_path / f"{pair.split('/')[0]}_hyperopt_best_params.json"
+            self.full_path / f"hyperopt-best-params-{pair.split('/')[0]}.json"
         )
         logger.info(f"{pair}: saving best params to %s JSON file", best_params_path)
         with best_params_path.open("w", encoding="utf-8") as write_file:
@@ -534,7 +536,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         Load the best hyperparameters found and saved during hyperparameter optimization
         """
         best_params_path = Path(
-            self.full_path / f"{pair.split('/')[0]}_hyperopt_best_params.json"
+            self.full_path / f"hyperopt-best-params-{pair.split('/')[0]}.json"
         )
         if best_params_path.is_file():
             logger.info(
@@ -563,9 +565,13 @@ class ReforceXY(BaseReinforcementLearningModel):
         params = {**self.model_training_parameters, **params}
 
         nan_encountered = False
-        tensorboard_log_path = Path(
-            self.full_path / "tensorboard" / dk.pair.split("/")[0]
-        )
+
+        if self.activate_tensorboard:
+            tensorboard_log_path = Path(
+                self.full_path / "tensorboard" / dk.pair.split("/")[0]
+            )
+        else:
+            tensorboard_log_path = None
 
         logger.info(
             "------------ Hyperopt trial %d %s ------------", trial.number, dk.pair

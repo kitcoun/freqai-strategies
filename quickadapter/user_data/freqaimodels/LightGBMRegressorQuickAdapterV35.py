@@ -430,14 +430,14 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         self, pair: str, namespace: str, best_params: Dict
     ) -> None:
         best_params_path = Path(
-            self.full_path / f"{pair.split('/')[0]}_optuna_{namespace}_best_params.json"
+            self.full_path / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
         )
         with best_params_path.open("w", encoding="utf-8") as write_file:
             json.dump(best_params, write_file, indent=4)
 
     def optuna_load_best_params(self, pair: str, namespace: str) -> Dict | None:
         best_params_path = Path(
-            self.full_path / f"{pair.split('/')[0]}_optuna_{namespace}_best_params.json"
+            self.full_path / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
         )
         if best_params_path.is_file():
             with best_params_path.open("r", encoding="utf-8") as read_file:
