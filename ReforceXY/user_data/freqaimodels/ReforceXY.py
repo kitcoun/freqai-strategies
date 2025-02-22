@@ -100,6 +100,10 @@ class ReforceXY(BaseReinforcementLearningModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
+        if not self.pairs:
+            raise ValueError(
+                "FreqAI model requires StaticPairList method defined in pairlists configuration and pair_whitelist defined in exchange section configuration"
+            )
         self.is_maskable: bool = (
             self.model_type == "MaskablePPO"
         )  # Enable action masking
@@ -697,8 +701,10 @@ class ReforceXY(BaseReinforcementLearningModel):
             elif trade_duration > max_trade_duration:
                 factor *= 0.5
             if pnl > self.profit_aim * self.rr:
-                factor *= self.rl_config.get("model_reward_parameters", {}).get(
-                    "win_reward_factor", 2
+                factor *= float(
+                    self.rl_config.get("model_reward_parameters", {}).get(
+                        "win_reward_factor", 2.0
+                    )
                 )
             return factor
 
@@ -719,7 +725,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             """
             # first, penalize if the action is not valid
             if not self._force_action and not self._is_valid(action):
-                return -2
+                return -2.0
 
             pnl = self.get_unrealized_profit()
             # mrr = self.get_most_recent_return()
@@ -763,16 +769,20 @@ class ReforceXY(BaseReinforcementLearningModel):
                 action == Actions.Long_enter.value
                 and self._position == Positions.Neutral
             ):
-                return 25
+                return 25.0
             if (
                 action == Actions.Short_enter.value
                 and self._position == Positions.Neutral
             ):
-                return 25
+                return 25.0
 
             # discourage agent from not entering trades
             if action == Actions.Neutral.value and self._position == Positions.Neutral:
-                return -1
+                return float(
+                    self.rl_config.get("model_reward_parameters", {}).get(
+                        "inaction", -1.0
+                    )
+                )
 
             # discourage sitting in position
             if (

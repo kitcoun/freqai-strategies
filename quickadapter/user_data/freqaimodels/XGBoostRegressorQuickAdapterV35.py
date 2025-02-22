@@ -46,6 +46,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
+        if not self.pairs:
+            raise ValueError(
+                "FreqAI model requires StaticPairList method defined in pairlists configuration and pair_whitelist defined in exchange section configuration"
+            )
         self.__optuna_config = self.freqai_info.get("optuna_hyperopt", {})
         self.__optuna_hyperopt: bool = (
             self.freqai_info.get("enabled", False)
