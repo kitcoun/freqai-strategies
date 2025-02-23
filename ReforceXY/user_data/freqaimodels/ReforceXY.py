@@ -732,7 +732,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 )
             return factor
 
-        def calculate_reward(self, action) -> float:
+        def calculate_reward(self, action: int) -> float:
             """
             An example reward function. This is the one function that users will likely
             wish to inject their own creativity into.
