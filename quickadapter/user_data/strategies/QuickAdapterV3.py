@@ -265,7 +265,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
         dataframe[EXTREMA_COLUMN] = (
             dataframe[EXTREMA_COLUMN]
-            .rolling(window=6, win_type="gaussian", center=True)
+            .rolling(window=5, win_type="gaussian", center=True)
             .mean(std=0.5)
         )
         return dataframe
