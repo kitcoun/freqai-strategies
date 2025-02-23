@@ -254,13 +254,14 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
     def optuna_storage(self, pair: str) -> optuna.storages.BaseStorage:
         storage_dir = str(self.full_path)
+        storage_filename = f"optuna-{pair.split('/')[0]}"
         storage_backend = self.__optuna_config.get("storage", "file")
         if storage_backend == "sqlite":
-            storage = f"sqlite:///{storage_dir}/optuna-{pair.split('/')[0]}.sqlite"
+            storage = f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
         elif storage_backend == "file":
             storage = optuna.storages.JournalStorage(
                 optuna.storages.journal.JournalFileBackend(
-                    f"{storage_dir}/optuna-{pair.split('/')[0]}.log"
+                    f"{storage_dir}/{storage_filename}.log"
                 )
             )
         return storage
@@ -308,8 +309,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         y_test,
         test_weights,
     ) -> tuple[Dict | None, float | None]:
+        _, identifier = str(self.full_path).rsplit("/", 1)
         study_namespace = "hp"
-        study_name = f"{study_namespace}-{pair}"
+        study_name = f"{identifier}-{study_namespace}-{pair}"
         storage = self.optuna_storage(pair)
         pruner = optuna.pruners.HyperbandPruner()
         self.optuna_study_delete(study_name, storage)
@@ -379,8 +381,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         test_weights,
         model_training_parameters,
     ) -> tuple[Dict | None, float | None]:
+        _, identifier = str(self.full_path).rsplit("/", 1)
         study_namespace = "period"
-        study_name = f"{study_namespace}-{pair}"
+        study_name = f"{identifier}-{study_namespace}-{pair}"
         storage = self.optuna_storage(pair)
         pruner = optuna.pruners.HyperbandPruner()
         self.optuna_study_delete(study_name, storage)
