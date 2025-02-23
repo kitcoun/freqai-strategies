@@ -597,6 +597,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         else:
             raise NotImplementedError
 
+        # Ensure that the sampled parameters take precedence
         params = {**self.model_training_parameters, **params}
 
         nan_encountered = False
