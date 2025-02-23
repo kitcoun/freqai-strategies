@@ -725,7 +725,10 @@ class ReforceXY(BaseReinforcementLearningModel):
             """
             # first, penalize if the action is not valid
             if not self._force_action and not self._is_valid(action):
-                return -2.0
+                self.tensorboard_log("invalid", category="actions")
+                return self.rl_config.get("model_reward_parameters", {}).get(
+                    "invalid_action", -2.0
+                )
 
             pnl = self.get_unrealized_profit()
             # mrr = self.get_most_recent_return()
@@ -796,7 +799,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                     )  # time aggressive (quadratic) and loss magnitude aware penalty
                 else:
                     self._non_profit_steps = 0
-                    return -1 * trade_duration / max_trade_duration
+                    return -1.0 * trade_duration / max_trade_duration
 
             # close long
             if action == Actions.Long_exit.value and self._position == Positions.Long:
@@ -1058,8 +1061,24 @@ class ReforceXY(BaseReinforcementLearningModel):
             """
             Get environment data from the first to the last trade
             """
+            # Check if history or trade_history is empty
+            if not self.history or not self.trade_history:
+                logger.warning("History or trade history is empty.")
+                return DataFrame()  # Return an empty DataFrame
+
             _history_df = DataFrame.from_dict(self.history)
             _trade_history_df = DataFrame.from_dict(self.trade_history)
+
+            # Check if 'tick' column exists in both DataFrames
+            if (
+                "tick" not in _history_df.columns
+                or "tick" not in _trade_history_df.columns
+            ):
+                logger.warning(
+                    "'tick' column is missing from history or trade history."
+                )
+                return DataFrame()  # Return an empty DataFrame
+
             _rollout_history = _history_df.merge(
                 _trade_history_df, on="tick", how="left"
             )
