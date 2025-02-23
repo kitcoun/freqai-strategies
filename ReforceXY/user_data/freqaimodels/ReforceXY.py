@@ -563,7 +563,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         best_params_filename = (
             f"hyperopt-best-params-{pair.split('/')[0]}"
             if pair
-            else "hyperopt-best-params.json"
+            else "hyperopt-best-params"
         )
         best_params_path = Path(self.full_path / f"{best_params_filename}.json")
         log_msg: str = (
