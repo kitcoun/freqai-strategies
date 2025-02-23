@@ -315,7 +315,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         train_df = data_dictionary["train_features"]
         train_timesteps = len(train_df)
         test_timesteps = len(data_dictionary["test_features"])
-        train_cycles = int(self.rl_config.get("train_cycles", 25))
+        train_cycles = int(self.rl_config.get("train_cycles", 250))
         total_timesteps = train_timesteps * train_cycles
         train_days = steps_to_days(train_timesteps, self.config["timeframe"])
         total_days = steps_to_days(total_timesteps, self.config["timeframe"])
@@ -374,8 +374,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
 
         model_filename = dk.model_filename if dk.model_filename else "best"
-        if Path(dk.data_path / f"{model_filename}_model.zip").is_file():
-            logger.info("Callback found a best model.")
+        model_path = Path(dk.data_path / f"{model_filename}_model.zip")
+        if model_path.is_file():
+            logger.info(f"Callback found a best model: {model_path}.")
             best_model = self.MODELCLASS.load(dk.data_path / f"{model_filename}_model")
             return best_model
 
@@ -792,12 +793,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
             # reward agent for entering trades
             if (
-                action == Actions.Long_enter.value
-                and self._position == Positions.Neutral
-            ):
-                return 25.0
-            if (
-                action == Actions.Short_enter.value
+                action in (Actions.Long_enter.value, Actions.Short_enter.value)
                 and self._position == Positions.Neutral
             ):
                 return 25.0
