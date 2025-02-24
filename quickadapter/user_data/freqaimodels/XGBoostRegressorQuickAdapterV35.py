@@ -326,6 +326,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             storage=storage,
         )
         self.optuna_hp_enqueue_previous_best_trial(pair, study)
+        logger.info(f"Optuna {study_namespace} hyperopt started")
         start = time.time()
         try:
             study.optimize(
@@ -340,7 +341,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     self.model_training_parameters,
                 ),
                 n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
-                n_jobs=self.__optuna_config.get("n_jobs", 1),
+                n_jobs=min(
+                    self.__optuna_config.get("n_jobs", 1),
+                    max(int(self.max_system_threads / 4), 1),
+                ),
                 timeout=self.__optuna_config.get("timeout", 3600),
                 gc_after_trial=True,
             )
@@ -398,6 +402,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             storage=storage,
         )
         self.optuna_period_enqueue_previous_best_trial(pair, study)
+        logger.info(f"Optuna {study_namespace} hyperopt started")
         start = time.time()
         try:
             study.optimize(
@@ -415,7 +420,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     model_training_parameters,
                 ),
                 n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
-                n_jobs=self.__optuna_config.get("n_jobs", 1),
+                n_jobs=min(
+                    self.__optuna_config.get("n_jobs", 1),
+                    max(int(self.max_system_threads / 4), 1),
+                ),
                 timeout=self.__optuna_config.get("timeout", 3600),
                 gc_after_trial=True,
             )
