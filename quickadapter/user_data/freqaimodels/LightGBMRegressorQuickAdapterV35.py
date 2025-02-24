@@ -71,9 +71,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             )
             self.freqai_info["feature_parameters"][pair] = {}
             self.freqai_info["feature_parameters"][pair]["label_period_candles"] = (
-                self.__optuna_period_params[pair].get(
-                    "label_period_candles", self.ft_params["label_period_candles"]
-                )
+                self.__optuna_period_params[
+                    pair
+                ].get("label_period_candles", self.ft_params["label_period_candles"])
             )
 
     def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
@@ -230,9 +230,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_period_params.get(pair, {}).get(
-                "label_period_candles", self.ft_params["label_period_candles"]
-            )
+            self.__optuna_period_params.get(
+                pair, {}
+            ).get("label_period_candles", self.ft_params["label_period_candles"])
         )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
             pair, -1
@@ -494,7 +494,7 @@ def log_sum_exp_min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ) -> tuple[float, float]:
     label_period_frequency: int = int(
-        fit_live_predictions_candles / label_period_candles
+        fit_live_predictions_candles / (label_period_candles * 2)
     )
     extrema = pred_df.tail(label_period_candles * label_period_frequency)[
         EXTREMA_COLUMN
@@ -516,7 +516,7 @@ def mean_min_max_pred(
     )
 
     label_period_frequency: int = int(
-        fit_live_predictions_candles / label_period_candles
+        fit_live_predictions_candles / (label_period_candles * 2)
     )
     min_pred = pred_df_sorted.iloc[-label_period_frequency:].mean()
     max_pred = pred_df_sorted.iloc[:label_period_frequency].mean()
@@ -533,7 +533,7 @@ def median_min_max_pred(
     )
 
     label_period_frequency: int = int(
-        fit_live_predictions_candles / label_period_candles
+        fit_live_predictions_candles / (label_period_candles * 2)
     )
     min_pred = pred_df_sorted.iloc[-label_period_frequency:].median()
     max_pred = pred_df_sorted.iloc[:label_period_frequency].median()
@@ -592,8 +592,8 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles = int(fit_live_predictions_candles / 6)
-    max_label_period_candles = int(fit_live_predictions_candles / 2)
+    min_label_period_candles = int(fit_live_predictions_candles / 20)
+    max_label_period_candles = int(fit_live_predictions_candles / 4)
     label_period_candles = trial.suggest_int(
         "label_period_candles",
         min_label_period_candles,
