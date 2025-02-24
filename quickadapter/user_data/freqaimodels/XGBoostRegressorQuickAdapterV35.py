@@ -201,6 +201,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = max_pred
 
         dk.data["labels_mean"], dk.data["labels_std"] = {}, {}
+        # for label in dk.label_list + dk.unique_class_list:
         for label in dk.label_list:
             if pred_df_full[label].dtype == object:
                 continue
