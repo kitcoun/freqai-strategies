@@ -38,8 +38,6 @@ class QuickAdapterV3(IStrategy):
     https://github.com/sponsors/robcaulk
     """
 
-    position_adjustment_enable = False
-
     stoploss = -0.02
     # Trailing stop:
     trailing_stop = True
@@ -58,9 +56,8 @@ class QuickAdapterV3(IStrategy):
         "stoploss_on_exchange_interval": 120,
     }
 
-    # Example specific variables
+    position_adjustment_enable = False
     max_entry_position_adjustment = 1
-    # This number is explained a bit further down
     max_dca_multiplier = 2
 
     minimal_roi = {"0": 0.03, "1000": -1}

@@ -272,9 +272,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         fit_live_predictions_candles: int,
         label_period_candles: int,
     ) -> tuple[float, float]:
-        predictions_smoothing = self.freqai_info.get(
-            "predictions_smoothing", "log-sum-exp"
-        )
+        predictions_smoothing = self.freqai_info.get("predictions_smoothing", "mean")
         if predictions_smoothing == "log-sum-exp":
             return log_sum_exp_min_max_pred(
                 pred_df, fit_live_predictions_candles, label_period_candles
