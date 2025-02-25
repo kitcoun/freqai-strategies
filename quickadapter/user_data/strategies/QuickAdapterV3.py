@@ -256,23 +256,11 @@ class QuickAdapterV3(IStrategy):
             dataframe["high"].values,
             order=label_period_candles,
         )
-        # min_peaks, _ = find_peaks(
-        #     -dataframe["low"].values,
-        #     distance=label_period_candles,
-        # )
-        # max_peaks, _ = find_peaks(
-        #     dataframe["high"].values,
-        #     distance=label_period_candles,
-        # )
         dataframe[EXTREMA_COLUMN] = 0
         for mp in min_peaks[0]:
             dataframe.at[mp, EXTREMA_COLUMN] = -1
         for mp in max_peaks[0]:
             dataframe.at[mp, EXTREMA_COLUMN] = 1
-        # for mp in min_peaks:
-        #     dataframe.at[mp, EXTREMA_COLUMN] = -1
-        # for mp in max_peaks:
-        #     dataframe.at[mp, EXTREMA_COLUMN] = 1
         dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
         dataframe[EXTREMA_COLUMN] = (
