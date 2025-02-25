@@ -638,9 +638,11 @@ def hp_objective(
     return error
 
 
-def real_soft_max(series: pd.Series) -> float:
-    return spy.special.logsumexp(series)
+def real_soft_max(series: pd.Series, beta=1.0) -> float:
+    maximum = series.max()
+    return maximum + spy.special.logsumexp(beta * (series - maximum)) / beta
 
 
-def real_soft_min(series: pd.Series) -> float:
-    return -spy.special.logsumexp(-series)
+def real_soft_min(series: pd.Series, beta=1.0) -> float:
+    minimum = series.min()
+    return minimum - spy.special.logsumexp(-beta * (series - minimum)) / beta
