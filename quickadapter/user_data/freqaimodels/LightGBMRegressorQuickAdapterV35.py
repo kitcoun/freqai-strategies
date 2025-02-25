@@ -12,7 +12,6 @@ import scipy as spy
 import optuna
 import sklearn
 import warnings
-import numpy as np
 
 N_TRIALS = 36
 TEST_SIZE = 0.1
@@ -497,9 +496,8 @@ def log_sum_exp_min_max_pred(
     extrema = pred_df.tail(label_period_candles * label_period_frequency)[
         EXTREMA_COLUMN
     ]
-    beta = 10.0
-    min_pred = smooth_min(extrema, beta=beta)
-    max_pred = smooth_max(extrema, beta=beta)
+    min_pred = real_soft_min(extrema)
+    max_pred = real_soft_max(extrema)
 
     return min_pred, max_pred
 
@@ -640,9 +638,9 @@ def hp_objective(
     return error
 
 
-def smooth_max(series: pd.Series, beta=1.0) -> float:
-    return np.log(np.sum(np.exp(beta * series))) / beta
+def real_soft_max(series: pd.Series) -> float:
+    return spy.special.logsumexp(series)
 
 
-def smooth_min(series: pd.Series, beta=1.0) -> float:
-    return -np.log(np.sum(np.exp(-beta * series))) / beta
+def real_soft_min(series: pd.Series) -> float:
+    return -spy.special.logsumexp(-series)
