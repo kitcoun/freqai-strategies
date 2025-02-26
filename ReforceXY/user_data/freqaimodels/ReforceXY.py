@@ -804,15 +804,27 @@ class ReforceXY(BaseReinforcementLearningModel):
                     )
                 )
 
-            # pnl aware reward for sitting in position
+            # pnl and duration aware reward for sitting in position
             if (
                 self._position in (Positions.Short, Positions.Long)
                 and action == Actions.Neutral.value
             ):
-                return (
-                    factor * pnl * np.exp(-0.05 * trade_duration)
-                    - trade_duration / max_trade_duration
-                )
+                # peak_pnl = np.max(self.get_most_recent_peak_pnl(), pnl)
+                # if peak_pnl > 0:
+                #     drawdown_penalty = 0.01 * factor * (peak_pnl - pnl)
+                # else:
+                #     drawdown_penalty = 0.0
+                lambda1 = 0.05
+                if pnl >= 0:
+                    return (
+                        factor * pnl * np.exp(-lambda1 * trade_duration)
+                        - trade_duration / max_trade_duration
+                    )
+                else:
+                    return (
+                        factor * pnl * (1 + lambda1 * trade_duration)
+                        - 2 * trade_duration / max_trade_duration
+                    )
 
             # close long
             if action == Actions.Long_exit.value and self._position == Positions.Long:
@@ -1022,6 +1034,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             if not self._last_closed_trade_tick:
                 return self._current_tick - self._start_tick
             return self._current_tick - self._last_closed_trade_tick
+
+        def get_most_recent_peak_pnl(self) -> float:
+            return (
+                np.max(self.history.get("pnl")) if self.history.get("pnl") else -np.inf
+            )
 
         def get_most_recent_return(self) -> float:
             """
