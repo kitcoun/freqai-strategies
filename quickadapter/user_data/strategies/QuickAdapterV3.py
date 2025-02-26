@@ -365,6 +365,7 @@ class QuickAdapterV3(IStrategy):
     ) -> bool:
         open_trades = Trade.get_trades(trade_filter=Trade.is_open.is_(True))
 
+        max_per_side_open_trades = self.freqai_info.get("max_per_side_open_trades", 5)
         num_shorts, num_longs = 0, 0
         for trade in open_trades:
             if "short" in trade.enter_tag:
@@ -372,21 +373,18 @@ class QuickAdapterV3(IStrategy):
             elif "long" in trade.enter_tag:
                 num_longs += 1
 
-        if side == "long" and num_longs >= 5:
-            return False
-
-        if side == "short" and num_shorts >= 5:
+        if (side == "long" and num_longs >= max_per_side_open_trades) or (
+            side == "short" and num_shorts >= max_per_side_open_trades
+        ):
             return False
 
         df, _ = self.dp.get_analyzed_dataframe(pair, self.timeframe)
         last_candle = df.iloc[-1].squeeze()
 
-        if side == "long":
-            if rate > (last_candle["close"] * (1 + 0.0025)):
-                return False
-        else:
-            if rate < (last_candle["close"] * (1 - 0.0025)):
-                return False
+        if (side == "long" and rate > last_candle["close"] * (1 + 0.0025)) or (
+            side == "short" and rate < last_candle["close"] * (1 - 0.0025)
+        ):
+            return False
 
         return True
 
