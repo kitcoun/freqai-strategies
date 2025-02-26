@@ -272,7 +272,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
     ) -> tuple[float, float]:
         predictions_smoothing = self.freqai_info.get("predictions_smoothing", "mean")
         if predictions_smoothing == "quantile":
-            return quantile_min_max_pred(
+            return self.quantile_min_max_pred(
                 pred_df, fit_live_predictions_candles, label_period_candles
             )
         elif predictions_smoothing == "mean":
@@ -490,6 +490,29 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         except ValueError:
             return False
 
+    def quantile_min_max_pred(
+        self,
+        pred_df: pd.DataFrame,
+        fit_live_predictions_candles: int,
+        label_period_candles: int,
+    ) -> tuple[float, float]:
+        pred_df_sorted = (
+            pred_df.select_dtypes(exclude=["object"])
+            .copy()
+            .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+        )
+
+        label_period_frequency: int = int(
+            fit_live_predictions_candles / (label_period_candles * 2)
+        )
+        min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(
+            self.freqai_info.get("min_quantile", 0.25)
+        )
+        max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(
+            self.freqai_info.get("max_quantile", 0.75)
+        )
+        return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
+
 
 def mean_min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
@@ -505,23 +528,6 @@ def mean_min_max_pred(
     )
     min_pred = pred_df_sorted.iloc[-label_period_frequency:].mean()
     max_pred = pred_df_sorted.iloc[:label_period_frequency].mean()
-    return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
-
-
-def quantile_min_max_pred(
-    pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
-) -> tuple[float, float]:
-    pred_df_sorted = (
-        pred_df.select_dtypes(exclude=["object"])
-        .copy()
-        .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
-    )
-
-    label_period_frequency: int = int(
-        fit_live_predictions_candles / (label_period_candles * 2)
-    )
-    min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(0.25)
-    max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(0.75)
     return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
@@ -555,7 +561,7 @@ def period_objective(
     candles_step,
     model_training_parameters,
 ) -> float:
-    min_train_window: int = 600
+    min_train_window: int = fit_live_predictions_candles * 2
     max_train_window: int = (
         len(X) if len(X) > min_train_window else (min_train_window + len(X))
     )

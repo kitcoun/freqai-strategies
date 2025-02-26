@@ -103,9 +103,9 @@ class QuickAdapterV3(IStrategy):
             },
             {
                 "method": "StoplossGuard",
-                "lookback_period_candles": fit_live_predictions_candles,
+                "lookback_period_candles": int(fit_live_predictions_candles / 2),
                 "trade_limit": 1,
-                "stop_duration_candles": fit_live_predictions_candles,
+                "stop_duration_candles": int(fit_live_predictions_candles / 2),
                 "only_per_pair": True,
             },
         ]
