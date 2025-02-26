@@ -47,13 +47,14 @@ class QuickAdapterV3(IStrategy):
 
     order_types = {
         "entry": "limit",
-        "exit": "market",
-        "emergency_exit": "market",
-        "force_exit": "market",
-        "force_entry": "market",
-        "stoploss": "market",
+        "exit": "limit",
+        "emergency_exit": "limit",
+        "force_exit": "limit",
+        "force_entry": "limit",
+        "stoploss": "limit",
         "stoploss_on_exchange": False,
         "stoploss_on_exchange_interval": 120,
+        "stoploss_on_exchange_limit_ratio": 0.99,
     }
 
     position_adjustment_enable = False
