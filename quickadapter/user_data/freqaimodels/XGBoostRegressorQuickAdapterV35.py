@@ -286,7 +286,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             )
         else:
             raise ValueError(
-                f"Invalid predictions_smoothing value '{predictions_smoothing}'"
+                f"Invalid predictions_smoothing value: '{predictions_smoothing}'"
             )
 
     def optuna_hp_enqueue_previous_best_trial(
