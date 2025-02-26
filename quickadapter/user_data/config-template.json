@@ -114,7 +114,7 @@
     "fit_live_predictions_candles": 300,
     "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
     "track_performance": false,
-    "predictions_smoothing": "mean",
+    "prediction_thresholds_smoothing": "mean",
     "outlier_threshold": 0.999,
     "optuna_hyperopt": {
       "enabled": true,

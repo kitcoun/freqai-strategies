@@ -270,22 +270,24 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         fit_live_predictions_candles: int,
         label_period_candles: int,
     ) -> tuple[float, float]:
-        predictions_smoothing = self.freqai_info.get("predictions_smoothing", "mean")
-        if predictions_smoothing == "quantile":
+        prediction_thresholds_smoothing = self.freqai_info.get(
+            "prediction_thresholds_smoothing", "mean"
+        )
+        if prediction_thresholds_smoothing == "quantile":
             return self.quantile_min_max_pred(
                 pred_df, fit_live_predictions_candles, label_period_candles
             )
-        elif predictions_smoothing == "mean":
+        elif prediction_thresholds_smoothing == "mean":
             return mean_min_max_pred(
                 pred_df, fit_live_predictions_candles, label_period_candles
             )
-        elif predictions_smoothing == "median":
+        elif prediction_thresholds_smoothing == "median":
             return median_min_max_pred(
                 pred_df, fit_live_predictions_candles, label_period_candles
             )
         else:
             raise ValueError(
-                f"Invalid predictions_smoothing value: '{predictions_smoothing}'"
+                f"Invalid prediction_thresholds_smoothing value: '{prediction_thresholds_smoothing}'"
             )
 
     def optuna_hp_enqueue_previous_best_trial(
