@@ -271,8 +271,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[float, float]:
         predictions_smoothing = self.freqai_info.get("predictions_smoothing", "mean")
-        if predictions_smoothing == "log-sum-exp":
-            return log_sum_exp_min_max_pred(
+        if predictions_smoothing == "quantile":
+            return quantile_min_max_pred(
                 pred_df, fit_live_predictions_candles, label_period_candles
             )
         elif predictions_smoothing == "mean":
@@ -282,6 +282,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         elif predictions_smoothing == "median":
             return median_min_max_pred(
                 pred_df, fit_live_predictions_candles, label_period_candles
+            )
+        else:
+            raise ValueError(
+                f"Invalid predictions_smoothing value: '{predictions_smoothing}'"
             )
 
     def optuna_hp_enqueue_previous_best_trial(
@@ -487,21 +491,6 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             return False
 
 
-def log_sum_exp_min_max_pred(
-    pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
-) -> tuple[float, float]:
-    label_period_frequency: int = int(
-        fit_live_predictions_candles / (label_period_candles * 2)
-    )
-    extrema = pred_df.tail(label_period_candles * label_period_frequency)[
-        EXTREMA_COLUMN
-    ]
-    min_pred = real_soft_min(extrema)
-    max_pred = real_soft_max(extrema)
-
-    return min_pred, max_pred
-
-
 def mean_min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
 ) -> tuple[float, float]:
@@ -516,6 +505,23 @@ def mean_min_max_pred(
     )
     min_pred = pred_df_sorted.iloc[-label_period_frequency:].mean()
     max_pred = pred_df_sorted.iloc[:label_period_frequency].mean()
+    return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
+
+
+def quantile_min_max_pred(
+    pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
+) -> tuple[float, float]:
+    pred_df_sorted = (
+        pred_df.select_dtypes(exclude=["object"])
+        .copy()
+        .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+    )
+
+    label_period_frequency: int = int(
+        fit_live_predictions_candles / (label_period_candles * 2)
+    )
+    min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(0.25)
+    max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(0.75)
     return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
@@ -636,13 +642,3 @@ def hp_objective(
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
     return error
-
-
-def real_soft_max(series: pd.Series, beta=1.0) -> float:
-    maximum = series.max()
-    return maximum + spy.special.logsumexp(beta * (series - maximum)) / beta
-
-
-def real_soft_min(series: pd.Series, beta=1.0) -> float:
-    minimum = series.min()
-    return minimum - spy.special.logsumexp(-beta * (series - minimum)) / beta
