@@ -809,7 +809,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self._position in (Positions.Short, Positions.Long)
                 and action == Actions.Neutral.value
             ):
-                peak_pnl = np.max(self.get_most_recent_peak_pnl(), pnl)
+                peak_pnl = max(self.get_most_recent_peak_pnl(), pnl)
                 if peak_pnl > 0:
                     drawdown_penalty = 0.01 * factor * (peak_pnl - pnl)
                 else:
