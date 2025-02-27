@@ -141,10 +141,11 @@
         "ETH/USDT"
       ],
       "include_timeframes": [
+        "5m",
         "15m",
         "1h",
         "4h",
-        "1d"
+        // "1d"
       ],
       "label_period_candles": 100,
       "include_shifted_candles": 6,
@@ -179,7 +180,7 @@
   },
   "bot_name": "freqtrade-quickadapter",
   "initial_state": "running",
-  "timeframe": "15m",
+  "timeframe": "5m",
   "force_entry_enable": false,
   "internals": {
     "process_throttle_secs": 5
