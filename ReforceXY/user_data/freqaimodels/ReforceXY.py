@@ -777,17 +777,19 @@ class ReforceXY(BaseReinforcementLearningModel):
             #     period=8,
             #     pair=self.pair,
             #     timeframe=self.config["timeframe"],
-            #     raw=True
+            #     raw=True,
             # )
 
             # # reward agent for entering trades when RSI is low
-            # if (action in (Actions.Long_enter.value, Actions.Short_enter.value)
-            #         and self._position == Positions.Neutral):
+            # if (
+            #     action in (Actions.Long_enter.value, Actions.Short_enter.value)
+            #     and self._position == Positions.Neutral
+            # ):
             #     if rsi_now < 40:
             #         factor = 40 / rsi_now
             #     else:
             #         factor = 1
-            #     return 25 * factor
+            #     return 25.0 * factor
 
             # reward agent for entering trades
             if (
