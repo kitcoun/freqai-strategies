@@ -363,30 +363,40 @@ class QuickAdapterV3(IStrategy):
         side: str,
         **kwargs,
     ) -> bool:
-        open_trades = Trade.get_trades(trade_filter=Trade.is_open.is_(True))
-
-        max_per_side_open_trades = self.freqai_info.get("max_per_side_open_trades", 5)
-        num_shorts, num_longs = 0, 0
-        for trade in open_trades:
-            if "short" in trade.enter_tag:
-                num_shorts += 1
-            elif "long" in trade.enter_tag:
-                num_longs += 1
-
-        if (side == "long" and num_longs >= max_per_side_open_trades) or (
-            side == "short" and num_shorts >= max_per_side_open_trades
-        ):
-            return False
+        max_open_trades_per_side = self.max_open_trades_per_side()
+        if max_open_trades_per_side >= 0:
+            open_trades = Trade.get_trades(trade_filter=Trade.is_open.is_(True))
+            num_shorts, num_longs = 0, 0
+            for trade in open_trades:
+                if "short" in trade.enter_tag:
+                    num_shorts += 1
+                elif "long" in trade.enter_tag:
+                    num_longs += 1
+            if (side == "long" and num_longs >= max_open_trades_per_side) or (
+                side == "short" and num_shorts >= max_open_trades_per_side
+            ):
+                return False
 
         df, _ = self.dp.get_analyzed_dataframe(pair, self.timeframe)
         last_candle = df.iloc[-1].squeeze()
-
         if (side == "long" and rate > last_candle["close"] * (1 + 0.0025)) or (
             side == "short" and rate < last_candle["close"] * (1 - 0.0025)
         ):
             return False
 
         return True
+
+    def max_open_trades_per_side(self) -> int:
+        max_open_trades = self.config.get("max_open_trades")
+        if max_open_trades < 0:
+            return -1
+        elif max_open_trades == 0 or max_open_trades == 1:
+            return max_open_trades
+        elif max_open_trades >= 2:
+            if self.can_short:
+                return max_open_trades // 2
+            else:
+                return max_open_trades
 
 
 def top_percent_change(dataframe: DataFrame, length: int) -> float:
