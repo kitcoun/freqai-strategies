@@ -225,7 +225,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-dist_to_s1"] = get_distance(dataframe["close"], dataframe["s1"])
         dataframe["%-dist_to_s2"] = get_distance(dataframe["close"], dataframe["s2"])
         dataframe["%-dist_to_s3"] = get_distance(dataframe["close"], dataframe["s3"])
-        dataframe["%-raw_price"] = dataframe["close"]
+        dataframe["%-raw_close"] = dataframe["close"]
         dataframe["%-raw_open"] = dataframe["open"]
         dataframe["%-raw_low"] = dataframe["low"]
         dataframe["%-raw_high"] = dataframe["high"]

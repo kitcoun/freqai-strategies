@@ -1240,7 +1240,7 @@ class InfoMetricsCallback(TensorboardCallback):
         }
         metric_dict = {
             "info/total_reward": 0,
-            "info/total_profit": 1,
+            "info/total_profit": 0,
             "info/trade_count": 0,
             "info/trade_duration": 0,
         }
