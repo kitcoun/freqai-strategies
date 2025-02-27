@@ -111,7 +111,7 @@
     "write_metrics_to_disk": false,
     "identifier": "quickadapter-xgboost",
     // "identifier": "quickadapter-lgbm",
-    "fit_live_predictions_candles": 300,
+    "fit_live_predictions_candles": 600,
     "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
     "track_performance": false,
     "prediction_thresholds_smoothing": "mean",
