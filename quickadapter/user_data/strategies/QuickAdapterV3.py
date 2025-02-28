@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
 
     process_only_new_candles = True
 
-    can_short = False
+    can_short = True
 
     @property
     def plot_config(self):
@@ -393,10 +393,19 @@ class QuickAdapterV3(IStrategy):
         elif max_open_trades == 0 or max_open_trades == 1:
             return max_open_trades
         elif max_open_trades >= 2:
-            if self.can_short:
+            if self.is_short_allowed():
                 return max_open_trades // 2
             else:
                 return max_open_trades
+
+    def is_short_allowed(self) -> bool:
+        trading_mode = self.config.get("trading_mode")
+        if trading_mode == "futures":
+            return True
+        elif trading_mode == "spot":
+            return False
+        else:
+            raise ValueError(f"Invalid trading_mode: {trading_mode}")
 
 
 def top_percent_change(dataframe: DataFrame, length: int) -> float:
