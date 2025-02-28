@@ -507,10 +507,10 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             fit_live_predictions_candles / (label_period_candles * 2)
         )
         min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(
-            self.freqai_info.get("min_quantile", 0.75)
+            self.freqai_info.get("min_quantile", 0.67)
         )
         max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(
-            self.freqai_info.get("max_quantile", 0.75)
+            self.freqai_info.get("max_quantile", 0.67)
         )
         return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
