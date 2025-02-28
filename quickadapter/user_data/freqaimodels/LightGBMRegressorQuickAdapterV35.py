@@ -309,7 +309,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         X_test,
         y_test,
         test_weights,
-    ) -> tuple[Dict | None, float | None]:
+    ) -> tuple[Dict, float] | tuple[None, None]:
         _, identifier = str(self.full_path).rsplit("/", 1)
         study_namespace = "hp"
         study_name = f"{identifier}-{study_namespace}-{pair}"
@@ -385,7 +385,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         y_test,
         test_weights,
         model_training_parameters,
-    ) -> tuple[Dict | None, float | None]:
+    ) -> tuple[Dict, float] | tuple[None, None]:
         _, identifier = str(self.full_path).rsplit("/", 1)
         study_namespace = "period"
         study_name = f"{identifier}-{study_namespace}-{pair}"
