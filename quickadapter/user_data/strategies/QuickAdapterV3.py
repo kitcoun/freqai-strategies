@@ -65,7 +65,9 @@ class QuickAdapterV3(IStrategy):
 
     process_only_new_candles = True
 
-    can_short = True
+    @property
+    def can_short(self):
+        return self.is_short_allowed()
 
     @property
     def plot_config(self):

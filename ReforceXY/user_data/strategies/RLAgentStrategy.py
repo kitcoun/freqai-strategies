@@ -23,7 +23,10 @@ class RLAgentStrategy(IStrategy):
     stoploss = -0.03
     use_exit_signal = True
     startup_candle_count: int = 300
-    can_short = False
+
+    @property
+    def can_short(self):
+        return self.is_short_allowed()
 
     # def feature_engineering_expand_all(
     #     self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
@@ -92,3 +95,12 @@ class RLAgentStrategy(IStrategy):
             df.loc[reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"] = 1
 
         return df
+
+    def is_short_allowed(self) -> bool:
+        trading_mode = self.config.get("trading_mode")
+        if trading_mode == "futures":
+            return True
+        elif trading_mode == "spot":
+            return False
+        else:
+            raise ValueError(f"Invalid trading_mode: {trading_mode}")

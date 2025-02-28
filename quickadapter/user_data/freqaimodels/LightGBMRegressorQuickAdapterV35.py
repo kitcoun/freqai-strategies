@@ -612,8 +612,10 @@ def period_objective(
     y_pred_length = len(y_pred)
     y_test = y_test.tail(y_test_length - (y_test_length % label_period_candles))
     y_pred = y_pred[-(y_pred_length - (y_pred_length % label_period_candles)) :]
-    y_test.reshape(len(y_test) // label_period_candles, label_period_candles)
-    y_pred.reshape(len(y_pred) // label_period_candles, label_period_candles)
+    y_test = y_test.to_numpy().reshape(
+        len(y_test) // label_period_candles, label_period_candles
+    )
+    y_pred = y_pred.reshape(len(y_pred) // label_period_candles, label_period_candles)
 
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
