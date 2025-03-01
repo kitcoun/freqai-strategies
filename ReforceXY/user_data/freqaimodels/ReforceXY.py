@@ -813,14 +813,14 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self._position in (Positions.Short, Positions.Long)
                 and action == Actions.Neutral.value
             ):
-                max_pnl = max(self.get_most_recent_max_pnl(), pnl)
-                if max_pnl > 0:
-                    drawdown_penalty = 0.01 * factor * (max_pnl - pnl)
-                else:
-                    drawdown_penalty = 0.0
                 lambda1 = 0.05
                 lambda2 = 0.1
                 if pnl >= 0:
+                    max_pnl = max(self.get_most_recent_max_pnl(), pnl)
+                    if max_pnl > 0:
+                        drawdown_penalty = 0.01 * factor * (max_pnl - pnl)
+                    else:
+                        drawdown_penalty = 0.0
                     return (
                         factor
                         * pnl
@@ -829,13 +829,9 @@ class ReforceXY(BaseReinforcementLearningModel):
                         - drawdown_penalty
                     )
                 else:
-                    return (
-                        factor
-                        * pnl
-                        * (1 + lambda1 * (trade_duration / max_trade_duration))
-                        - 2 * lambda2 * (trade_duration / max_trade_duration)
-                        - drawdown_penalty
-                    )
+                    return factor * pnl * (
+                        1 + lambda1 * (trade_duration / max_trade_duration)
+                    ) - 2 * lambda2 * (trade_duration / max_trade_duration)
 
             # close long
             if action == Actions.Long_exit.value and self._position == Positions.Long:

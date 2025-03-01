@@ -1,5 +1,8 @@
 {
   "$schema": "https://schema.freqtrade.io/schema.json",
+  "strategy": "QuickAdapterV3",
+  "freqaimodel": "XGBoostRegressorQuickAdapterV35",
+  // "freqaimodel": "LightGBMRegressorQuickAdapterV35",
   "max_open_trades": 10,
   "stake_currency": "USDT",
   "stake_amount": "unlimited",

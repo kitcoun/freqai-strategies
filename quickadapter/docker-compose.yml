@@ -30,6 +30,3 @@ services:
       trade
       --logfile /freqtrade/user_data/logs/freqtrade-quickadapter.log
       --db-url sqlite:////freqtrade/user_data/freqtrade-quickadapter-tradesv3.sqlite
-      --config /freqtrade/user_data/config.json
-      --freqaimodel XGBoostRegressorQuickAdapterV35
-      --strategy QuickAdapterV3

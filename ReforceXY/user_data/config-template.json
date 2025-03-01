@@ -1,5 +1,7 @@
 {
   "$schema": "https://schema.freqtrade.io/schema.json",
+  "strategy": "RLAgentStrategy",
+  "freqaimodel": "ReforceXY",
   "max_open_trades": 10,
   "stake_currency": "USDT",
   "stake_amount": "unlimited",
