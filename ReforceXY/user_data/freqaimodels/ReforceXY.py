@@ -122,9 +122,11 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.progressbar_callback: Optional[ProgressBarCallback] = None
         # Optuna hyperopt
         self.rl_config_optuna: dict = self.freqai_info.get("rl_config_optuna", {})
-        self.hyperopt: bool = self.freqai_info.get(
-            "enabled", False
-        ) and self.rl_config_optuna.get("enabled", False)
+        self.hyperopt: bool = (
+            self.freqai_info.get("enabled", False)
+            and self.rl_config_optuna.get("enabled", False)
+            and self.data_split_parameters.get("test_size", 0.1) > 0
+        )
         self.optuna_timeout_hours: float = self.rl_config_optuna.get("timeout_hours", 0)
         self.optuna_n_trials: int = self.rl_config_optuna.get("n_trials", 100)
         self.optuna_n_startup_trials: int = self.rl_config_optuna.get(
