@@ -483,7 +483,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         Runs hyperparameter optimization using Optuna and
         returns the best hyperparameters found merged with the user defined parameters
         """
-        _, identifier = str(self.full_path).rsplit("/", 1)
+        identifier = self.freqai_info.get("identifier")
         if self.rl_config_optuna.get("per_pair", False):
             study_name = f"{identifier}-{dk.pair}"
             storage = self.get_storage(dk.pair)
