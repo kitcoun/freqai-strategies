@@ -101,12 +101,14 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             )
             if optuna_hp_params:
                 self.__optuna_hp_params[dk.pair] = optuna_hp_params
+            if optuna_hp_rmse:
+                self.__optuna_hp_rmse[dk.pair] = optuna_hp_rmse
+
+            if self.__optuna_hp_params.get(dk.pair):
                 model_training_parameters = {
                     **model_training_parameters,
                     **self.__optuna_hp_params[dk.pair],
                 }
-            if optuna_hp_rmse:
-                self.__optuna_hp_rmse[dk.pair] = optuna_hp_rmse
 
             optuna_period_params, optuna_period_rmse = self.optuna_period_optimize(
                 dk.pair,
