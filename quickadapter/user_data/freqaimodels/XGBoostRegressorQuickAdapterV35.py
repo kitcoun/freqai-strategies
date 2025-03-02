@@ -507,12 +507,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         label_period_frequency: int = int(
             fit_live_predictions_candles / (label_period_candles * 2)
         )
-        min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(
-            self.freqai_info.get("min_quantile", 0.67)
-        )
-        max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(
-            self.freqai_info.get("max_quantile", 0.67)
-        )
+        q = self.freqai_info.get("quantile", 0.67)
+        min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(1 - q)
+        max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(q)
         return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
