@@ -231,6 +231,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             logger.info("Clip range linear schedule enabled, initial value: %s", _cr)
 
         net_arch = model_params.get("policy_kwargs", {}).get("net_arch", [128, 128])
+        if not model_params.get("policy_kwargs"):
+            model_params["policy_kwargs"] = {}
         model_params["policy_kwargs"].update(
             {
                 "net_arch": net_arch,
