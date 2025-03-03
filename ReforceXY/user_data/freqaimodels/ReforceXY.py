@@ -682,6 +682,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             self.timeout: int = self.rl_config.get("max_trade_duration_candles", 128)
             self._last_closed_position: Positions = None
             self._last_closed_trade_tick: int = 0
+            if self.add_state_info:
+                # STATE_INFO
+                self.state_features = ["pnl", "position", "trade_duration"]
             if self.force_actions:
                 logger.info(
                     "%s - take_profit: %s, stop_loss: %s, timeout: %s candles (%s days), observation_space: %s",
@@ -705,7 +708,6 @@ class ReforceXY(BaseReinforcementLearningModel):
             Resets the environment when the agent fails
             """
             super().reset_env(df, prices, window_size, reward_kwargs, starting_point)
-            self.state_features = ["pnl", "position", "trade_duration"]  # STATE_INFO
             if self.add_state_info:
                 self.total_features = self.signal_features.shape[1] + len(
                     self.state_features
@@ -1280,7 +1282,7 @@ class InfoMetricsCallback(TensorboardCallback):
             hparam_dict.update({"n_quantiles": self.model.n_quantiles})
         metric_dict = {
             "info/total_reward": 0,
-            "info/total_profit": 0,
+            "info/total_profit": 1,
             "info/trade_count": 0,
             "info/trade_duration": 0,
         }
