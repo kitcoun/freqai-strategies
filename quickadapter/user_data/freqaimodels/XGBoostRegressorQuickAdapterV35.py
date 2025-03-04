@@ -70,9 +70,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             )
             self.freqai_info["feature_parameters"][pair] = {}
             self.freqai_info["feature_parameters"][pair]["label_period_candles"] = (
-                self.__optuna_period_params[
-                    pair
-                ].get("label_period_candles", self.ft_params["label_period_candles"])
+                self.__optuna_period_params[pair].get(
+                    "label_period_candles", self.ft_params["label_period_candles"]
+                )
             )
 
     def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
@@ -231,9 +231,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_period_params.get(
-                pair, {}
-            ).get("label_period_candles", self.ft_params["label_period_candles"])
+            self.__optuna_period_params.get(pair, {}).get(
+                "label_period_candles", self.ft_params["label_period_candles"]
+            )
         )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
             pair, -1
