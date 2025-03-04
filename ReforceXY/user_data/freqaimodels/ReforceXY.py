@@ -273,7 +273,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             no_improvement_callback = StopTrainingOnNoModelImprovement(
                 max_no_improvement_evals=self.max_no_improvement_evals,
                 min_evals=self.min_evals,
-                verbose=1,
+                verbose=verbose,
             )
 
         if self.activate_tensorboard:

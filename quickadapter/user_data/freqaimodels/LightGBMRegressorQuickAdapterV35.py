@@ -274,22 +274,13 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         prediction_thresholds_smoothing = self.freqai_info.get(
             "prediction_thresholds_smoothing", "mean"
         )
-        if prediction_thresholds_smoothing == "quantile":
-            return self.quantile_min_max_pred(
-                pred_df, fit_live_predictions_candles, label_period_candles
-            )
-        elif prediction_thresholds_smoothing == "mean":
-            return mean_min_max_pred(
-                pred_df, fit_live_predictions_candles, label_period_candles
-            )
-        elif prediction_thresholds_smoothing == "median":
-            return median_min_max_pred(
-                pred_df, fit_live_predictions_candles, label_period_candles
-            )
-        else:
-            raise ValueError(
-                f"Invalid prediction_thresholds_smoothing value: '{prediction_thresholds_smoothing}'"
-            )
+        return {
+            "quantile": self.quantile_min_max_pred,
+            "mean": mean_min_max_pred,
+            "median": median_min_max_pred,
+        }[prediction_thresholds_smoothing](
+            pred_df, fit_live_predictions_candles, label_period_candles
+        )
 
     def optuna_hp_enqueue_previous_best_trial(
         self,

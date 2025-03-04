@@ -263,12 +263,7 @@ class QuickAdapterV3(IStrategy):
             dataframe.at[mp, EXTREMA_COLUMN] = 1
         dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
-        dataframe[EXTREMA_COLUMN] = (
-            dataframe[EXTREMA_COLUMN]
-            .rolling(window=5, win_type="gaussian", center=True)
-            .mean(std=0.5)
-        )
-        return dataframe
+        return self.smooth_extrema(dataframe, EXTREMA_COLUMN, 5)
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         dataframe = self.freqai.start(dataframe, metadata, self)
@@ -408,6 +403,30 @@ class QuickAdapterV3(IStrategy):
             return False
         else:
             raise ValueError(f"Invalid trading_mode: {trading_mode}")
+
+    def smooth_extrema(
+        self,
+        dataframe: DataFrame,
+        extrema_column: str,
+        window: int,
+        center: bool = True,
+        std: float = 0.5,
+    ) -> DataFrame:
+        extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
+        dataframe[extrema_column] = {
+            "gaussian": (
+                dataframe[extrema_column]
+                .rolling(window=window, win_type="gaussian", center=center)
+                .mean(std=std)
+            ),
+            "triang": (
+                dataframe[extrema_column]
+                .rolling(window=window, win_type="triang", center=center)
+                .mean()
+            ),
+            "ewma": dataframe[extrema_column].ewm(span=window).mean(),
+        }[extrema_smoothing]
+        return dataframe
 
 
 def top_percent_change(dataframe: DataFrame, length: int) -> float:
