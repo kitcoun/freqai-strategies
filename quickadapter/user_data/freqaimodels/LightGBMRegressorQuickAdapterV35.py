@@ -70,9 +70,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             )
             self.freqai_info["feature_parameters"][pair] = {}
             self.freqai_info["feature_parameters"][pair]["label_period_candles"] = (
-                self.__optuna_period_params[pair].get(
-                    "label_period_candles", self.ft_params["label_period_candles"]
-                )
+                self.__optuna_period_params[
+                    pair
+                ].get("label_period_candles", self.ft_params["label_period_candles"])
             )
 
     def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
@@ -230,9 +230,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_period_params.get(pair, {}).get(
-                "label_period_candles", self.ft_params["label_period_candles"]
-            )
+            self.__optuna_period_params.get(
+                pair, {}
+            ).get("label_period_candles", self.ft_params["label_period_candles"])
         )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
             pair, -1
@@ -499,7 +499,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         label_period_frequency: int = int(
             fit_live_predictions_candles / (label_period_candles * 2)
         )
-        q = self.freqai_info.get("quantile", 0.67)
+        q = self.freqai_info.get("quantile", 0.75)
         min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(1 - q)
         max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(q)
         return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
