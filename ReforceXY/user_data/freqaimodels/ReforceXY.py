@@ -1453,7 +1453,6 @@ def get_optimizer_class(optimizer_class_name: str) -> type[th.optim.Optimizer]:
     return {
         "adam": th.optim.Adam,
         "rmsprop": th.optim.RMSprop,
-        "sgd": th.optim.SGD,
     }[optimizer_class_name]
 
 
@@ -1489,7 +1488,7 @@ def sample_params_ppo(trial: Trial) -> Dict[str, Any]:
     )
     activation_fn = get_activation_fn(activation_fn_name)
     optimizer_class_name = trial.suggest_categorical(
-        "optimizer_class", ["adam", "rmsprop", "sgd"]
+        "optimizer_class", ["adam", "rmsprop"]
     )
     optimizer_class = get_optimizer_class(optimizer_class_name)
     return {
@@ -1549,7 +1548,7 @@ def sample_params_dqn(trial: Trial) -> Dict[str, Any]:
     )
     activation_fn = get_activation_fn(activation_fn_name)
     optimizer_class_name = trial.suggest_categorical(
-        "optimizer_class", ["adam", "rmsprop", "sgd"]
+        "optimizer_class", ["adam", "rmsprop"]
     )
     optimizer_class = get_optimizer_class(optimizer_class_name)
     return {
