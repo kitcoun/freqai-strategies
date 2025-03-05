@@ -5,6 +5,7 @@ import talib.abstract as ta
 from pandas import DataFrame, Series
 from technical import qtpylib
 from typing import Optional
+from freqtrade.exchange import timeframe_to_minutes
 from freqtrade.strategy.interface import IStrategy
 from technical.pivots_points import pivots_points
 from freqtrade.persistence import Trade
@@ -59,7 +60,10 @@ class QuickAdapterV3(IStrategy):
     max_entry_position_adjustment = 1
     max_dca_multiplier = 2
 
-    minimal_roi = {"0": 0.03, "1000": -1}
+    @property
+    def minimal_roi(self):
+        timeframe_minutes = timeframe_to_minutes(self.timeframe)
+        return {"0": 0.03, str(timeframe_minutes * 864): -1}
 
     process_only_new_candles = True
 
@@ -112,7 +116,10 @@ class QuickAdapterV3(IStrategy):
         ]
 
     use_exit_signal = True
-    startup_candle_count: int = 80
+
+    @property
+    def startup_candle_count(self):
+        return int(self.freqai_info.get("fit_live_predictions_candles", 100) / 2)
 
     def feature_engineering_expand_all(self, dataframe, period, **kwargs):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
