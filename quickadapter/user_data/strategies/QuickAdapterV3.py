@@ -37,6 +37,8 @@ class QuickAdapterV3(IStrategy):
     https://github.com/sponsors/robcaulk
     """
 
+    timeframe = "5m"
+
     stoploss = -0.02
     # Trailing stop:
     trailing_stop = True
@@ -60,10 +62,8 @@ class QuickAdapterV3(IStrategy):
     max_entry_position_adjustment = 1
     max_dca_multiplier = 2
 
-    @property
-    def minimal_roi(self):
-        timeframe_minutes = timeframe_to_minutes(self.timeframe)
-        return {"0": 0.03, str(timeframe_minutes * 864): -1}
+    timeframe_minutes = timeframe_to_minutes(timeframe)
+    minimal_roi = {"0": 0.03, str(timeframe_minutes * 864): -1}
 
     process_only_new_candles = True
 
