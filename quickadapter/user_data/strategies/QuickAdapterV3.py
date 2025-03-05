@@ -1,14 +1,12 @@
 import logging
 from functools import reduce
 import datetime
-from datetime import timedelta
 import talib.abstract as ta
 from pandas import DataFrame, Series
 from technical import qtpylib
 from typing import Optional
 from freqtrade.strategy.interface import IStrategy
 from technical.pivots_points import pivots_points
-from freqtrade.exchange import timeframe_to_prev_date
 from freqtrade.persistence import Trade
 from scipy.signal import argrelmin, argrelmax
 import numpy as np
@@ -322,29 +320,21 @@ class QuickAdapterV3(IStrategy):
         )
 
         last_candle = dataframe.iloc[-1].squeeze()
-        trade_date = timeframe_to_prev_date(
-            self.timeframe,
-            (trade.open_date_utc - timedelta(minutes=int(self.timeframe[:-1]))),
-        )
-        trade_candle = dataframe.loc[(dataframe["date"] == trade_date)]
-        if trade_candle.empty:
-            return None
-        trade_candle = trade_candle.squeeze()
-
-        entry_tag = trade.enter_tag
-
         if last_candle["DI_catch"] == 0:
             return "outlier_detected"
 
+        enter_tag = trade.enter_tag
         if (
-            last_candle[EXTREMA_COLUMN] < last_candle["minima_threshold"]
-            and entry_tag == "short"
+            enter_tag == "short"
+            and last_candle["do_predict"] == 1
+            and last_candle[EXTREMA_COLUMN] < last_candle["minima_threshold"]
         ):
             return "minima_detected_short"
 
         if (
-            last_candle[EXTREMA_COLUMN] > last_candle["maxima_threshold"]
-            and entry_tag == "long"
+            enter_tag == "long"
+            and last_candle["do_predict"] == 1
+            and last_candle[EXTREMA_COLUMN] > last_candle["maxima_threshold"]
         ):
             return "maxima_detected_long"
 
