@@ -553,9 +553,7 @@ def period_objective(
     model_training_parameters,
 ) -> float:
     min_train_window: int = fit_live_predictions_candles * 2
-    max_train_window: int = (
-        len(X) if len(X) > min_train_window else (min_train_window + len(X))
-    )
+    max_train_window: int = max(len(X), min_train_window)
     train_window = trial.suggest_int(
         "train_period_candles", min_train_window, max_train_window, step=candles_step
     )
@@ -564,11 +562,7 @@ def period_objective(
     train_weights = train_weights[-train_window:]
 
     min_test_window: int = int(min_train_window * test_size)
-    max_test_window: int = (
-        len(X_test)
-        if len(X_test) > min_test_window
-        else (min_test_window + len(X_test))
-    )
+    max_test_window: int = max(len(X_test), min_test_window)
     test_window = trial.suggest_int(
         "test_period_candles", min_test_window, max_test_window, step=candles_step
     )
@@ -591,12 +585,15 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles: int = fit_live_predictions_candles // 60
-    max_label_period_candles: int = fit_live_predictions_candles // 6
+    min_label_period_candles: int = max(fit_live_predictions_candles // 200, 10)
+    max_label_period_candles: int = max(
+        fit_live_predictions_candles // 6, min_label_period_candles
+    )
     label_period_candles = trial.suggest_int(
         "label_period_candles",
         min_label_period_candles,
         max_label_period_candles,
+        step=candles_step,
     )
     y_test_length = len(y_test)
     y_pred_length = len(y_pred)
