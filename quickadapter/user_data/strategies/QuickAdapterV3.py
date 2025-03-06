@@ -337,7 +337,6 @@ class QuickAdapterV3(IStrategy):
             and last_candle[EXTREMA_COLUMN] < last_candle["minima_threshold"]
         ):
             return "minima_detected_short"
-
         if (
             enter_tag == "long"
             and last_candle["do_predict"] == 1
