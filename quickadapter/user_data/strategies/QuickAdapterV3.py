@@ -268,7 +268,8 @@ class QuickAdapterV3(IStrategy):
             dataframe.at[mp, EXTREMA_COLUMN] = 1
         dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
-        return self.smooth_extrema(dataframe, EXTREMA_COLUMN, 5)
+        dataframe[EXTREMA_COLUMN] = self.smooth_extrema(dataframe[EXTREMA_COLUMN], 5)
+        return dataframe
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
         dataframe = self.freqai.start(dataframe, metadata, self)
@@ -402,28 +403,24 @@ class QuickAdapterV3(IStrategy):
 
     def smooth_extrema(
         self,
-        dataframe: DataFrame,
-        extrema_column: str,
+        series: Series,
         window: int,
         center: bool = True,
         std: float = 0.5,
-    ) -> DataFrame:
+    ) -> Series:
         extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
-        dataframe[extrema_column] = {
+        return {
             "gaussian": (
-                dataframe[extrema_column]
-                .rolling(window=window, win_type="gaussian", center=center)
-                .mean(std=std)
+                series.rolling(window=window, win_type="gaussian", center=center).mean(
+                    std=std
+                )
             ),
             "triang": (
-                dataframe[extrema_column]
-                .rolling(window=window, win_type="triang", center=center)
-                .mean()
+                series.rolling(window=window, win_type="triang", center=center).mean()
             ),
-            "ewma": dataframe[extrema_column].ewm(span=window).mean(),
-            "zlewma": zlewma(dataframe[extrema_column], length=window),
+            "ewma": series.ewm(span=window).mean(),
+            "zlewma": zlewma(series, length=window),
         }[extrema_smoothing]
-        return dataframe
 
 
 def top_percent_change(dataframe: DataFrame, length: int) -> float:
