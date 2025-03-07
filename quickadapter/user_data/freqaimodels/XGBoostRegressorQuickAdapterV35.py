@@ -271,7 +271,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         pred_df: pd.DataFrame,
         fit_live_predictions_candles: int,
         label_period_candles: int,
-    ) -> tuple[float, float]:
+    ) -> tuple[pd.Series, pd.Series]:
         prediction_thresholds_smoothing = self.freqai_info.get(
             "prediction_thresholds_smoothing", "mean"
         )
@@ -490,7 +490,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         pred_df: pd.DataFrame,
         fit_live_predictions_candles: int,
         label_period_candles: int,
-    ) -> tuple[float, float]:
+    ) -> tuple[pd.Series, pd.Series]:
         pred_df_sorted = (
             pred_df.select_dtypes(exclude=["object"])
             .copy()
@@ -508,7 +508,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
 def mean_min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
-) -> tuple[float, float]:
+) -> tuple[pd.Series, pd.Series]:
     pred_df_sorted = (
         pred_df.select_dtypes(exclude=["object"])
         .copy()
@@ -525,7 +525,7 @@ def mean_min_max_pred(
 
 def median_min_max_pred(
     pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
-) -> tuple[float, float]:
+) -> tuple[pd.Series, pd.Series]:
     pred_df_sorted = (
         pred_df.select_dtypes(exclude=["object"])
         .copy()
