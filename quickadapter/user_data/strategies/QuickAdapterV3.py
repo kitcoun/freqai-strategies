@@ -421,6 +421,7 @@ class QuickAdapterV3(IStrategy):
                 .mean()
             ),
             "ewma": dataframe[extrema_column].ewm(span=window).mean(),
+            "zlewma": zlewma(dataframe[extrema_column], length=window),
         }[extrema_smoothing]
         return dataframe
 
@@ -439,7 +440,7 @@ def top_percent_change(dataframe: DataFrame, length: int) -> float:
         ) / dataframe["close"]
 
 
-def chaikin_mf(df, periods=20):
+def chaikin_mf(df: DataFrame, periods=20):
     close = df["close"]
     low = df["low"]
     high = df["high"]
@@ -452,20 +453,29 @@ def chaikin_mf(df, periods=20):
 
 
 # VWAP bands
-def VWAPB(dataframe, window_size=20, num_of_std=1):
-    vwap = qtpylib.rolling_vwap(dataframe, window=window_size)
-    rolling_std = vwap.rolling(window=window_size).std()
+def VWAPB(dataframe: DataFrame, window=20, num_of_std=1):
+    vwap = qtpylib.rolling_vwap(dataframe, window=window)
+    rolling_std = vwap.rolling(window=window).std()
     vwap_low = vwap - (rolling_std * num_of_std)
     vwap_high = vwap + (rolling_std * num_of_std)
     return vwap_low, vwap, vwap_high
 
 
-def EWO(dataframe, sma1_length=5, sma2_length=35):
+def EWO(dataframe: DataFrame, sma1_length=5, sma2_length=35):
     sma1 = ta.EMA(dataframe, timeperiod=sma1_length)
     sma2 = ta.EMA(dataframe, timeperiod=sma2_length)
     smadif = (sma1 - sma2) / dataframe["close"] * 100
     return smadif
 
 
-def get_distance(p1, p2):
+def zlewma(series: Series, length: int):
+    """
+    Calculate the ZLEWMA (Zero Lag Exponential Weighted Moving Average) of a series.
+    """
+    lag = int(round((length - 1) / 2))
+    series = series + (series - series.shift(lag))
+    return series.ewm(span=length).mean()
+
+
+def get_distance(p1: float, p2: float):
     return abs((p1) - (p2))
