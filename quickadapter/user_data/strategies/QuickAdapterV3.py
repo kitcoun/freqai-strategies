@@ -337,6 +337,10 @@ class QuickAdapterV3(IStrategy):
             return "outlier_detected"
 
         enter_tag = trade.enter_tag
+        if (enter_tag == "long" or enter_tag == "short") and last_candle[
+            "do_predict"
+        ] == 2:
+            return "model_expired"
         if (
             enter_tag == "short"
             and last_candle["do_predict"] == 1
