@@ -164,14 +164,14 @@
         "profit_aim": 0.025,
         "win_reward_factor": 2
       },
-      "train_cycles": 250,
+      "train_cycles": 25,
       "add_state_info": true,
       "cpu_count": 6,
       "max_training_drawdown_pct": 0.02,
       "max_trade_duration_candles": 96, // Timeout exit value used with force_actions
       "force_actions": false, // Utilize minimal_roi, stoploss, and max_trade_duration_candles as TP/SL/Timeout in the environment
       "n_envs": 32, // Number of DummyVecEnv environments
-      "frame_staking": 4, // Number of VecFrameStack stacks (set > 1 to use)
+      "frame_stacking": 4, // Number of VecFrameStack stacks (set > 1 to use)
       "lr_schedule": false, // Enable learning rate linear schedule
       "cr_schedule": false, // Enable clip range linear schedule
       "max_no_improvement_evals": 0, // Maximum consecutive evaluations without a new best model

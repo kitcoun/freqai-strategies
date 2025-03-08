@@ -251,7 +251,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         return eval_set, eval_weights
 
-    def optuna_storage(self, pair: str) -> optuna.storages.BaseStorage:
+    def optuna_storage(self, pair: str) -> optuna.storages.BaseStorage | None:
         storage_dir = str(self.full_path)
         storage_filename = f"optuna-{pair.split('/')[0]}"
         storage_backend = self.__optuna_config.get("storage", "file")
@@ -278,7 +278,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             "quantile": self.quantile_min_max_pred,
             "mean": mean_min_max_pred,
             "median": median_min_max_pred,
-        }[prediction_thresholds_smoothing](
+        }.get(prediction_thresholds_smoothing, mean_min_max_pred)(
             pred_df, fit_live_predictions_candles, label_period_candles
         )
 

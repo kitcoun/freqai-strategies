@@ -429,7 +429,12 @@ class QuickAdapterV3(IStrategy):
             ),
             "ewma": series.ewm(span=window).mean(),
             "zlewma": zlewma(series, length=window),
-        }[extrema_smoothing]
+        }.get(
+            extrema_smoothing,
+            series.rolling(window=window, win_type="gaussian", center=center).mean(
+                std=std
+            ),
+        )
 
 
 def top_percent_change(dataframe: DataFrame, length: int) -> Series:
