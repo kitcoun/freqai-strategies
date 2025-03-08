@@ -464,7 +464,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             observation = observation.to_numpy(dtype=np.float32)
 
             if self.frame_stacking:
-                # FIXME: proper observation stacking need more work
+                # FIXME: proper observation stacking needs more work
                 observations = np.repeat(
                     observation, axis=1, repeats=self.frame_stacking
                 )
