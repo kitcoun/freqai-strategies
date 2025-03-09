@@ -65,7 +65,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         "freqaimodel": "ReforceXY",
         "strategy": "RLAgentStrategy",
         "minimal_roi": {"0": 0.03},                 // Take_profit exit value used with force_actions
-        "stoploss": -0.03,                          // Stop_loss exit value used with force_actions
+        "stoploss": -0.02,                          // Stop_loss exit value used with force_actions
         ...
         "freqai": {
             ...

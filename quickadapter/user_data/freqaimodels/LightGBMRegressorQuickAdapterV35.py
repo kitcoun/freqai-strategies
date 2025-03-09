@@ -308,7 +308,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         study_name = f"{identifier}-{study_namespace}-{pair}"
         storage = self.optuna_storage(pair)
         pruner = optuna.pruners.HyperbandPruner()
-        self.optuna_study_delete(study_name, storage)
+        if self.__optuna_config.get("continuous", True):
+            self.optuna_study_delete(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -319,7 +320,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        self.optuna_hp_enqueue_previous_best_trial(pair, study)
+        if self.__optuna_config.get("warm_start", True):
+            self.optuna_hp_enqueue_previous_best_trial(pair, study)
         logger.info(f"Optuna {study_namespace} hyperopt started")
         start = time.time()
         try:
@@ -384,7 +386,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         study_name = f"{identifier}-{study_namespace}-{pair}"
         storage = self.optuna_storage(pair)
         pruner = optuna.pruners.HyperbandPruner()
-        self.optuna_study_delete(study_name, storage)
+        if self.__optuna_config.get("continuous", True):
+            self.optuna_study_delete(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -395,7 +398,8 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
         )
-        self.optuna_period_enqueue_previous_best_trial(pair, study)
+        if self.__optuna_config.get("warm_start", True):
+            self.optuna_period_enqueue_previous_best_trial(pair, study)
         logger.info(f"Optuna {study_namespace} hyperopt started")
         start = time.time()
         try:

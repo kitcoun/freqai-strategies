@@ -20,9 +20,40 @@ class RLAgentStrategy(IStrategy):
     minimal_roi = {"0": 0.03}
 
     process_only_new_candles = True
-    stoploss = -0.03
+
+    stoploss = -0.02
+    # Trailing stop:
+    trailing_stop = True
+    trailing_stop_positive = 0.0099
+    trailing_stop_positive_offset = 0.01
+    trailing_only_offset_is_reached = True
+
     use_exit_signal = True
+
     startup_candle_count: int = 300
+
+    # @property
+    # def protections(self):
+    #     fit_live_predictions_candles = self.freqai_info.get(
+    #         "fit_live_predictions_candles", 100
+    #     )
+    #     return [
+    #         {"method": "CooldownPeriod", "stop_duration_candles": 4},
+    #         {
+    #             "method": "MaxDrawdown",
+    #             "lookback_period_candles": 48,
+    #             "trade_limit": 20,
+    #             "stop_duration_candles": 4,
+    #             "max_allowed_drawdown": 0.2,
+    #         },
+    #         {
+    #             "method": "StoplossGuard",
+    #             "lookback_period_candles": int(fit_live_predictions_candles / 2),
+    #             "trade_limit": 1,
+    #             "stop_duration_candles": int(fit_live_predictions_candles / 2),
+    #             "only_per_pair": True,
+    #         },
+    #     ]
 
     @property
     def can_short(self):
