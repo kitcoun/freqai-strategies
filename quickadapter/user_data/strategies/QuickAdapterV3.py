@@ -8,6 +8,7 @@ from typing import Optional
 from freqtrade.exchange import timeframe_to_minutes
 from freqtrade.strategy.interface import IStrategy
 from technical.pivots_points import pivots_points
+from technical.indicators import chaikin_money_flow
 from freqtrade.persistence import Trade
 from scipy.signal import argrelmin, argrelmax
 import numpy as np
@@ -129,7 +130,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-er-period"] = pta.er(dataframe["close"], length=period)
         dataframe["%-rocr-period"] = ta.ROCR(dataframe, timeperiod=period)
         dataframe["%-trix-period"] = ta.TRIX(dataframe, timeperiod=period)
-        dataframe["%-cmf-period"] = chaikin_mf(dataframe, periods=period)
+        dataframe["%-cmf-period"] = chaikin_money_flow(dataframe, period=period)
         dataframe["%-tcp-period"] = top_percent_change(dataframe, period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = qtpylib.chopiness(dataframe, period)
@@ -158,12 +159,16 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-kc_width"] = (
             dataframe["kc_upperband"] - dataframe["kc_lowerband"]
         ) / dataframe["kc_middleband"]
-        bollinger = qtpylib.bollinger_bands(
-            qtpylib.typical_price(dataframe), window=14, stds=2.2
+        (
+            dataframe["bb_upperband"],
+            dataframe["bb_middleband"],
+            dataframe["bb_lowerband"],
+        ) = ta.BBANDS(
+            ta.TYPPRICE(dataframe["high"], dataframe["low"], dataframe["close"]),
+            timeperiod=14,
+            nbdevup=2.2,
+            nbdevdn=2.2,
         )
-        dataframe["bb_lowerband"] = bollinger["lower"]
-        dataframe["bb_middleband"] = bollinger["mid"]
-        dataframe["bb_upperband"] = bollinger["upper"]
         dataframe["%-bb_width"] = (
             dataframe["bb_upperband"] - dataframe["bb_lowerband"]
         ) / dataframe["bb_middleband"]
@@ -435,22 +440,6 @@ class QuickAdapterV3(IStrategy):
         )
 
 
-def top_percent_change_open(dataframe: DataFrame, length: int) -> Series:
-    """
-    Percentage change of the current close relative to the maximum open price
-    over the lookback period.
-    :param dataframe: DataFrame The original OHLC dataframe
-    :param length: int The period length to look back
-    """
-    if length == 0:
-        return ((dataframe["close"] - dataframe["open"]) / dataframe["open"]).fillna(
-            0.0
-        )
-    else:
-        open_max = dataframe["open"].rolling(length).max()
-        return ((dataframe["close"] - open_max) / open_max).fillna(0.0)
-
-
 def top_percent_change(dataframe: DataFrame, length: int) -> Series:
     """
     Percentage change of the current close relative to the maximum close price
@@ -466,18 +455,6 @@ def top_percent_change(dataframe: DataFrame, length: int) -> Series:
         return ((dataframe["close"] - close_max) / close_max).fillna(0.0)
 
 
-def chaikin_mf(df: DataFrame, periods=20) -> Series:
-    close = df["close"]
-    low = df["low"]
-    high = df["high"]
-    volume = df["volume"]
-    mfv = ((close - low) - (high - close)) / (high - low)
-    mfv = mfv.fillna(0.0)
-    mfv *= volume
-    cmf = mfv.rolling(window=periods).sum() / volume.rolling(window=periods).sum()
-    return Series(cmf, name="cmf")
-
-
 # VWAP bands
 def VWAPB(dataframe: DataFrame, window=20, num_of_std=1) -> tuple:
     vwap = qtpylib.rolling_vwap(dataframe, window=window)
@@ -488,23 +465,34 @@ def VWAPB(dataframe: DataFrame, window=20, num_of_std=1) -> tuple:
 
 
 def EWO(
-    dataframe: DataFrame, sma1_length=5, sma2_length=34, normalize=False
+    dataframe: DataFrame, ma1_length=5, ma2_length=34, mode="sma", normalize=False
 ) -> DataFrame:
-    sma1 = ta.SMA(dataframe, timeperiod=sma1_length)
-    sma2 = ta.SMA(dataframe, timeperiod=sma2_length)
-    smadif = sma1 - sma2
+    ma_fn = {
+        "sma": ta.SMA,
+        "ema": ta.EMA,
+        "wma": ta.WMA,
+        "dema": ta.DEMA,
+        "tema": ta.TEMA,
+        "trima": ta.TRIMA,
+        "kama": ta.KAMA,
+        "mama": ta.MAMA,
+        "t3": ta.T3,
+    }.get(mode, ta.SMA)
+    ma1 = ma_fn(dataframe, timeperiod=ma1_length)
+    ma2 = ma_fn(dataframe, timeperiod=ma2_length)
+    madiff = ma1 - ma2
     if normalize:
-        smadif = ((smadif / dataframe["close"]) * 100).fillna(
+        madiff = ((madiff / dataframe["close"]) * 100).fillna(
             0.0
         )  # Optional normalization
-    return smadif
+    return madiff
 
 
 def zlewma(series: Series, length: int) -> Series:
     """
     Calculate the ZLEWMA (Zero Lag Exponential Weighted Moving Average) of a series.
     """
-    lag = int(round((length - 1) / 2))
+    lag = round((length - 1) // 2)
     series = series + (series - series.shift(lag))
     return series.ewm(span=length).mean()
 
