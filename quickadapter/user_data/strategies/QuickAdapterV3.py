@@ -328,11 +328,9 @@ class QuickAdapterV3(IStrategy):
         current_profit: float,
         **kwargs,
     ):
-        dataframe, _ = self.dp.get_analyzed_dataframe(
-            pair=pair, timeframe=self.timeframe
-        )
+        df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
 
-        last_candle = dataframe.iloc[-1].squeeze()
+        last_candle = df.iloc[-1].squeeze()
         if last_candle["DI_catch"] == 0:
             return "outlier_detected"
 
@@ -380,7 +378,7 @@ class QuickAdapterV3(IStrategy):
             ):
                 return False
 
-        df, _ = self.dp.get_analyzed_dataframe(pair, self.timeframe)
+        df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
         last_candle = df.iloc[-1].squeeze()
         if (side == "long" and rate > last_candle["close"] * (1 + 0.0025)) or (
             side == "short" and rate < last_candle["close"] * (1 - 0.0025)
@@ -437,9 +435,10 @@ class QuickAdapterV3(IStrategy):
         )
 
 
-def top_percent_change(dataframe: DataFrame, length: int) -> Series:
+def top_percent_change_open(dataframe: DataFrame, length: int) -> Series:
     """
-    Percentage change of the current close relative from the range maximum open price
+    Percentage change of the current close relative to the maximum open price
+    over the lookback period.
     :param dataframe: DataFrame The original OHLC dataframe
     :param length: int The period length to look back
     """
@@ -450,6 +449,21 @@ def top_percent_change(dataframe: DataFrame, length: int) -> Series:
     else:
         open_max = dataframe["open"].rolling(length).max()
         return ((dataframe["close"] - open_max) / open_max).fillna(0.0)
+
+
+def top_percent_change(dataframe: DataFrame, length: int) -> Series:
+    """
+    Percentage change of the current close relative to the maximum close price
+    over the lookback period.
+    :param dataframe: DataFrame The original OHLC dataframe
+    :param length: int The period length to look back (0 = previous candle)
+    """
+    if length == 0:
+        previous_close = dataframe["close"].shift(1)
+        return ((dataframe["close"] - previous_close) / previous_close).fillna(0.0)
+    else:
+        close_max = dataframe["close"].rolling(length).max()
+        return ((dataframe["close"] - close_max) / close_max).fillna(0.0)
 
 
 def chaikin_mf(df: DataFrame, periods=20) -> Series:
