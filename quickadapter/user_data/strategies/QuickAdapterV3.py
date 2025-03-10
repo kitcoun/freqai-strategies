@@ -140,9 +140,7 @@ class QuickAdapterV3(IStrategy):
             dataframe["close"], timeperiod=period
         )
         dataframe["%-atr-period"] = ta.ATR(dataframe, timeperiod=period)
-        dataframe["%-atr-periodp"] = (
-            dataframe["%-atr-period"] / dataframe["close"] * 1000
-        )
+        dataframe["%-atr-periodp"] = ta.NATR(dataframe, timeperiod=period)
         return dataframe
 
     def feature_engineering_expand_basic(self, dataframe, **kwargs):
