@@ -130,7 +130,9 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-er-period"] = pta.er(dataframe["close"], length=period)
         dataframe["%-rocr-period"] = ta.ROCR(dataframe, timeperiod=period)
         dataframe["%-trix-period"] = ta.TRIX(dataframe, timeperiod=period)
-        dataframe["%-cmf-period"] = chaikin_money_flow(dataframe, period=period)
+        dataframe["%-cmf-period"] = chaikin_money_flow(dataframe, period=period).fillna(
+            0.0
+        )
         dataframe["%-tcp-period"] = top_percent_change(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = qtpylib.chopiness(dataframe, period)
