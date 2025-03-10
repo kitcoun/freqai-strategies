@@ -475,7 +475,6 @@ def EWO(
         "tema": ta.TEMA,
         "trima": ta.TRIMA,
         "kama": ta.KAMA,
-        "mama": ta.MAMA,
         "t3": ta.T3,
     }.get(mode, ta.SMA)
     ma1 = ma_fn(dataframe, timeperiod=ma1_length)
