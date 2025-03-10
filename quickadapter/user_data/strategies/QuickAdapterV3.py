@@ -131,7 +131,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-rocr-period"] = ta.ROCR(dataframe, timeperiod=period)
         dataframe["%-trix-period"] = ta.TRIX(dataframe, timeperiod=period)
         dataframe["%-cmf-period"] = chaikin_money_flow(dataframe, period=period)
-        dataframe["%-tcp-period"] = top_percent_change(dataframe, period)
+        dataframe["%-tcp-period"] = top_percent_change(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = qtpylib.chopiness(dataframe, period)
         dataframe["%-linear-period"] = ta.LINEARREG_ANGLE(
@@ -148,6 +148,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
         # Added
+        # dataframe["%-ewo"] = EWO(dataframe=dataframe, mode="zlewma", normalize=True)
         psar = ta.SAR(
             dataframe["high"], dataframe["low"], acceleration=0.02, maximum=0.2
         )
@@ -431,7 +432,7 @@ class QuickAdapterV3(IStrategy):
                 series.rolling(window=window, win_type="triang", center=center).mean()
             ),
             "ewma": series.ewm(span=window).mean(),
-            "zlewma": zlewma(series, length=window),
+            "zlewma": zlewma(series=series, timeperiod=window),
         }.get(
             extrema_smoothing,
             series.rolling(window=window, win_type="gaussian", center=center).mean(
@@ -440,18 +441,18 @@ class QuickAdapterV3(IStrategy):
         )
 
 
-def top_percent_change(dataframe: DataFrame, length: int) -> Series:
+def top_percent_change(dataframe: DataFrame, period: int) -> Series:
     """
     Percentage change of the current close relative to the maximum close price
     over the lookback period.
-    :param dataframe: DataFrame The original OHLC dataframe
-    :param length: int The period length to look back (0 = previous candle)
+    :param dataframe: DataFrame The original OHLCV dataframe
+    :param period: int The period to look back (0 = previous candle)
     """
-    if length == 0:
+    if period == 0:
         previous_close = dataframe["close"].shift(1)
         return ((dataframe["close"] - previous_close) / previous_close).fillna(0.0)
     else:
-        close_max = dataframe["close"].rolling(length).max()
+        close_max = dataframe["close"].rolling(period).max()
         return ((dataframe["close"] - close_max) / close_max).fillna(0.0)
 
 
@@ -466,13 +467,14 @@ def VWAPB(dataframe: DataFrame, window=20, num_of_std=1) -> tuple:
 
 def EWO(
     dataframe: DataFrame, ma1_length=5, ma2_length=34, mode="sma", normalize=False
-) -> DataFrame:
+) -> Series:
     ma_fn = {
         "sma": ta.SMA,
         "ema": ta.EMA,
         "wma": ta.WMA,
         "dema": ta.DEMA,
         "tema": ta.TEMA,
+        "zlewma": ZLEMWA,
         "trima": ta.TRIMA,
         "kama": ta.KAMA,
         "t3": ta.T3,
@@ -487,13 +489,26 @@ def EWO(
     return madiff
 
 
-def zlewma(series: Series, length: int) -> Series:
+def ZLEMWA(dataframe: DataFrame, timeperiod: int) -> Series:
+    """
+    Calculate the close price ZLEWMA (Zero Lag Exponential Weighted Moving Average) series of an OHLCV dataframe.
+    :param dataframe: DataFrame The original OHLCV dataframe
+    :param timeperiod: int The period to look back
+    :return: Series The close price ZLEWMA series
+    """
+    return zlewma(series=dataframe["close"], timeperiod=timeperiod)
+
+
+def zlewma(series: Series, timeperiod: int) -> Series:
     """
     Calculate the ZLEWMA (Zero Lag Exponential Weighted Moving Average) of a series.
+    :param series: Series The original series
+    :param timeperiod: int The period to look back
+    :return: Series The ZLEWMA series
     """
-    lag = round((length - 1) // 2)
+    lag = int(round((timeperiod - 1) / 2))
     series = series + (series - series.shift(lag))
-    return series.ewm(span=length).mean()
+    return series.ewm(span=timeperiod).mean()
 
 
 def get_distance(p1: Series | float, p2: Series | float) -> Series | float:
