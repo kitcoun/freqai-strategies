@@ -470,7 +470,7 @@ def EWO(
         "wma": ta.WMA,
         "dema": ta.DEMA,
         "tema": ta.TEMA,
-        "zlewma": ZLEMWA,
+        "zlewma": ZLEWMA,
         "trima": ta.TRIMA,
         "kama": ta.KAMA,
         "t3": ta.T3,
@@ -485,7 +485,7 @@ def EWO(
     return madiff
 
 
-def ZLEMWA(dataframe: DataFrame, timeperiod: int) -> Series:
+def ZLEWMA(dataframe: DataFrame, timeperiod: int) -> Series:
     """
     Calculate the close price ZLEWMA (Zero Lag Exponential Weighted Moving Average) series of an OHLCV dataframe.
     :param dataframe: DataFrame The original OHLCV dataframe
