@@ -622,9 +622,9 @@ def period_objective(
         y_pred[i : i + label_period_candles]
         for i in np.arange(0, label_period_candles * n_windows, label_period_candles)
     ]
-    y_test = np.array([window for window in y_test_windows])
-    test_weights = np.concatenate(np.array([window for window in test_weights_windows]))
-    y_pred = np.array([window for window in y_pred_windows])
+    y_test = [window for window in y_test_windows]
+    test_weights = np.concatenate([window for window in test_weights_windows])
+    y_pred = [window for window in y_pred_windows]
 
     error = sklearn.metrics.root_mean_squared_error(
         y_test, y_pred, sample_weight=test_weights
