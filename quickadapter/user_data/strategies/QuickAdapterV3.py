@@ -134,7 +134,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-cmf-period"] = chaikin_money_flow(dataframe, period=period).fillna(
             0.0
         )
-        dataframe["%-tcp-period"] = top_percent_change(dataframe, period=period)
+        dataframe["%-tcp-period"] = top_change_percent(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = qtpylib.chopiness(dataframe, period)
         dataframe["%-linearreg-angle-period"] = ta.LINEARREG_ANGLE(
@@ -431,7 +431,7 @@ class QuickAdapterV3(IStrategy):
         )
 
 
-def top_percent_change(dataframe: DataFrame, period: int) -> Series:
+def top_change_percent(dataframe: DataFrame, period: int) -> Series:
     """
     Percentage change of the current close relative to the maximum close price
     over the lookback period.
