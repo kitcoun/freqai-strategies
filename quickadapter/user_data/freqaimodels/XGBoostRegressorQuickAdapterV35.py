@@ -9,7 +9,7 @@ from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 import pandas as pd
 import numpy as np
-import scipy as spy
+import scipy as sp
 import optuna
 import sklearn
 import warnings
@@ -209,7 +209,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             if not warmed_up:
                 f = [0, 0]
             else:
-                f = spy.stats.norm.fit(pred_df_full[label])
+                f = sp.stats.norm.fit(pred_df_full[label])
             dk.data["labels_mean"][label], dk.data["labels_std"][label] = f[0], f[1]
 
         # fit the DI_threshold
@@ -219,8 +219,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         else:
             di_values = pd.to_numeric(pred_df_full["DI_values"], errors="coerce")
             di_values = di_values.dropna()
-            f = spy.stats.weibull_min.fit(di_values)
-            cutoff = spy.stats.weibull_min.ppf(
+            f = sp.stats.weibull_min.fit(di_values)
+            cutoff = sp.stats.weibull_min.ppf(
                 self.freqai_info.get("outlier_threshold", 0.999), *f
             )
 
