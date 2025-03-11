@@ -390,13 +390,10 @@ class QuickAdapterV3(IStrategy):
         max_open_trades = self.config.get("max_open_trades")
         if max_open_trades < 0:
             return -1
-        elif max_open_trades == 0 or max_open_trades == 1:
+        if self.is_short_allowed():
+            return (max_open_trades + 1) // 2
+        else:
             return max_open_trades
-        elif max_open_trades >= 2:
-            if self.is_short_allowed():
-                return max_open_trades // 2
-            else:
-                return max_open_trades
 
     def is_short_allowed(self) -> bool:
         trading_mode = self.config.get("trading_mode")
@@ -495,12 +492,13 @@ def ZLEWMA(dataframe: DataFrame, timeperiod: int) -> Series:
 def zlewma(series: Series, timeperiod: int) -> Series:
     """
     Calculate the ZLEWMA (Zero Lag Exponential Weighted Moving Average) of a series.
+    Formula: ZLEWMA = EWMA(2*price - EWMA(price, N), N).
     :param series: Series The original series
     :param timeperiod: int The period to look back
     :return: Series The ZLEWMA series
     """
-    lag = int(round((timeperiod - 1) / 2))
-    series = series + (series - series.shift(lag))
+    ewma = series.ewm(span=timeperiod).mean()
+    series = 2 * series - ewma
     return series.ewm(span=timeperiod).mean()
 
 

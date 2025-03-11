@@ -8,6 +8,7 @@ import time
 from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 import pandas as pd
+import numpy as np
 import scipy as spy
 import optuna
 import sklearn
@@ -603,14 +604,16 @@ def period_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    y_test_length = len(y_test)
-    y_pred_length = len(y_pred)
-    y_test = y_test.tail(y_test_length - (y_test_length % label_period_candles))
-    y_pred = y_pred[-(y_pred_length - (y_pred_length % label_period_candles)) :]
-    y_test = y_test.to_numpy().reshape(
-        len(y_test) // label_period_candles, label_period_candles
-    )
-    y_pred = y_pred.reshape(len(y_pred) // label_period_candles, label_period_candles)
+    y_test_windows = [
+        y_test[i : i + label_period_candles]
+        for i in range(0, len(y_test) - label_period_candles + 1)
+    ]
+    y_pred_windows = [
+        y_pred[i : i + label_period_candles]
+        for i in range(0, len(y_pred) - label_period_candles + 1)
+    ]
+    y_test = np.array([window.mean() for window in y_test_windows])
+    y_pred = np.array([window.mean() for window in y_pred_windows])
 
     error = sklearn.metrics.root_mean_squared_error(y_test, y_pred)
 
