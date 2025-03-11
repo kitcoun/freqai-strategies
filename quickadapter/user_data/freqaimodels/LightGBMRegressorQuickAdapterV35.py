@@ -146,7 +146,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 ] = self.__optuna_period_params[dk.pair].get("label_period_candles")
 
         model = LGBMRegressor(
-            objective="regression", metric="rmse", **model_training_parameters
+            objective="regression", **model_training_parameters
         )
 
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
@@ -576,7 +576,7 @@ def period_objective(
 
     # Fit the model
     model = LGBMRegressor(
-        objective="regression", metric="rmse", **model_training_parameters
+        objective="regression", **model_training_parameters
     )
     model.fit(
         X=X,
@@ -630,7 +630,7 @@ def hp_objective(
 
     # Fit the model
     model = LGBMRegressor(
-        objective="regression", metric="rmse", **model_training_parameters
+        objective="regression", **model_training_parameters
     )
     model.fit(
         X=X,

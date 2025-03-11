@@ -124,6 +124,7 @@ class QuickAdapterV3(IStrategy):
 
     def feature_engineering_expand_all(self, dataframe, period, **kwargs):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
+        dataframe["%-aroonosc-period"] = ta.AROONOSC(dataframe, timeperiod=period)
         dataframe["%-mfi-period"] = ta.MFI(dataframe, timeperiod=period)
         dataframe["%-adx-period"] = ta.ADX(dataframe, window=period)
         dataframe["%-cci-period"] = ta.CCI(dataframe, timeperiod=period)
@@ -136,19 +137,18 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-tcp-period"] = top_percent_change(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = qtpylib.chopiness(dataframe, period)
-        dataframe["%-linear-period"] = ta.LINEARREG_ANGLE(
+        dataframe["%-linearreg-angle-period"] = ta.LINEARREG_ANGLE(
             dataframe["close"], timeperiod=period
         )
         dataframe["%-atr-period"] = ta.ATR(dataframe, timeperiod=period)
-        dataframe["%-atr-periodp"] = ta.NATR(dataframe, timeperiod=period)
+        dataframe["%-natr-period"] = ta.NATR(dataframe, timeperiod=period)
         return dataframe
 
     def feature_engineering_expand_basic(self, dataframe, **kwargs):
         dataframe["%-pct-change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
-        # Added
-        # dataframe["%-ewo"] = EWO(dataframe=dataframe, mode="zlewma", normalize=True)
+        dataframe["%-ewo"] = EWO(dataframe=dataframe, mode="zlewma", normalize=True)
         psar = ta.SAR(
             dataframe["high"], dataframe["low"], acceleration=0.02, maximum=0.2
         )
@@ -206,7 +206,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-vwap_width"] = (
             (dataframe["vwap_upperband"] - dataframe["vwap_lowerband"])
             / dataframe["vwap_middleband"]
-        ) * 100
+        )
         dataframe["%-dist_to_vwap_upperband"] = get_distance(
             dataframe["close"], dataframe["vwap_upperband"]
         )
