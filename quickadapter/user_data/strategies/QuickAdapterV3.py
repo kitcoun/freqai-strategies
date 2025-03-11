@@ -204,9 +204,8 @@ class QuickAdapterV3(IStrategy):
             dataframe["vwap_upperband"],
         ) = VWAPB(dataframe, 20, 1)
         dataframe["%-vwap_width"] = (
-            (dataframe["vwap_upperband"] - dataframe["vwap_lowerband"])
-            / dataframe["vwap_middleband"]
-        )
+            dataframe["vwap_upperband"] - dataframe["vwap_lowerband"]
+        ) / dataframe["vwap_middleband"]
         dataframe["%-dist_to_vwap_upperband"] = get_distance(
             dataframe["close"], dataframe["vwap_upperband"]
         )
