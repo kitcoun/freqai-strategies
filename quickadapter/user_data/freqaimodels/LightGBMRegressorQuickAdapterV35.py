@@ -8,7 +8,6 @@ import time
 from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 import pandas as pd
-import numpy as np
 import scipy as sp
 import optuna
 import sklearn
@@ -553,13 +552,13 @@ def period_objective(
     y_test,
     test_weights,
     test_size,
-    fit_live_predictions_candles,
-    candles_step,
+    fit_live_predictions_candles: int,
+    candles_step: int,
     model_training_parameters,
 ) -> float:
     min_train_window: int = fit_live_predictions_candles * 2
     max_train_window: int = max(len(X), min_train_window)
-    train_window = trial.suggest_int(
+    train_window: int = trial.suggest_int(
         "train_period_candles", min_train_window, max_train_window, step=candles_step
     )
     X = X.iloc[-train_window:]
@@ -568,7 +567,7 @@ def period_objective(
 
     min_test_window: int = int(min_train_window * test_size)
     max_test_window: int = max(len(X_test), min_test_window)
-    test_window = trial.suggest_int(
+    test_window: int = trial.suggest_int(
         "test_period_candles", min_test_window, max_test_window, step=candles_step
     )
     X_test = X_test.iloc[-test_window:]
@@ -592,36 +591,23 @@ def period_objective(
     max_label_period_candles: int = max(
         fit_live_predictions_candles // 6, min_label_period_candles
     )
-    label_period_candles = trial.suggest_int(
+    label_period_candles: int = trial.suggest_int(
         "label_period_candles",
         min_label_period_candles,
         max_label_period_candles,
         step=candles_step,
     )
-    label_period_candles_length = (
-        len(y_test) // label_period_candles
-    ) * label_period_candles
-    y_test = y_test.iloc[-label_period_candles_length:]
-    test_weights = test_weights[-label_period_candles_length:]
-    y_pred = y_pred[-label_period_candles_length:]
-    n_windows = len(y_test) // label_period_candles
-    y_test = [
-        y_test.iloc[i : i + label_period_candles].to_numpy()
-        for i in np.arange(0, label_period_candles * n_windows, label_period_candles)
-    ]
-    test_weights = [
-        test_weights[i : i + label_period_candles]
-        for i in np.arange(0, label_period_candles * n_windows, label_period_candles)
-    ]
-    y_pred = [
-        y_pred[i : i + label_period_candles]
-        for i in np.arange(0, label_period_candles * n_windows, label_period_candles)
-    ]
+    label_period_frequency: int = max(
+        1, int(fit_live_predictions_candles / (label_period_candles * 2))
+    )
+    label_window: int = label_period_candles * label_period_frequency
+    y_test = y_test.iloc[-label_window:].to_numpy()
+    test_weights = test_weights[-label_window:]
+    y_pred = y_pred[-label_window:]
 
-    error = 0.0
-    for y_t, y_p, t_w in zip(y_test, y_pred, test_weights):
-        error += sklearn.metrics.root_mean_squared_error(y_t, y_p, sample_weight=t_w)
-    error /= n_windows
+    error = sklearn.metrics.root_mean_squared_error(
+        y_test, y_pred, sample_weight=test_weights
+    )
 
     return error
 
