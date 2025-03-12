@@ -10,7 +10,7 @@ from freqtrade.strategy.interface import IStrategy
 from technical.pivots_points import pivots_points
 from technical.indicators import chaikin_money_flow
 from freqtrade.persistence import Trade
-from scipy.signal import argrelmin, argrelmax
+from scipy.signal import argrelmin, argrelmax, gaussian, convolve
 import numpy as np
 import pandas_ta as pta
 
@@ -418,9 +418,16 @@ class QuickAdapterV3(IStrategy):
                     std=std
                 )
             ),
+            "zero_phase_gaussian": zero_phase_gaussian(
+                series=series, window=window, std=std
+            ),
+            "boxcar": series.rolling(
+                window=window, win_type="boxcar", center=center
+            ).mean(),
             "triang": (
                 series.rolling(window=window, win_type="triang", center=center).mean()
             ),
+            "mm": series.rolling(window=window, center=center).median(),
             "ewma": series.ewm(span=window).mean(),
             "zlewma": zlewma(series=series, timeperiod=window),
         }.get(
@@ -492,14 +499,25 @@ def ZLEWMA(dataframe: DataFrame, timeperiod: int) -> Series:
 def zlewma(series: Series, timeperiod: int) -> Series:
     """
     Calculate the ZLEWMA (Zero Lag Exponential Weighted Moving Average) of a series.
-    Formula: ZLEWMA = EWMA(2*price - EWMA(price, N), N).
+    Formula: ZLEWMA = 2 * EWMA(price, N) - EWMA(EWMA(price, N), N).
     :param series: Series The original series
     :param timeperiod: int The period to look back
     :return: Series The ZLEWMA series
     """
     ewma = series.ewm(span=timeperiod).mean()
-    series = 2 * series - ewma
-    return series.ewm(span=timeperiod).mean()
+    return 2 * ewma - ewma.ewm(span=timeperiod).mean()
+
+
+def zero_phase_gaussian(series: Series, window: int, std: float) -> Series:
+    # Gaussian kernel
+    kernel = gaussian(window, std=std)
+    kernel /= kernel.sum()
+
+    # Forward-backward convolution for zero phase lag
+    padded_series = np.pad(series, (window // 2, window // 2), mode="edge")
+    smoothed = convolve(padded_series, kernel, mode="valid")
+    smoothed = convolve(smoothed[::-1], kernel, mode="valid")[::-1]
+    return Series(smoothed, index=series.index)
 
 
 def get_distance(p1: Series | float, p2: Series | float) -> Series | float:
