@@ -572,17 +572,6 @@ def period_objective(
     test_window = trial.suggest_int(
         "test_period_candles", min_test_window, max_test_window, step=candles_step
     )
-    min_label_period_candles: int = 10
-    max_label_period_candles: int = min(
-        max(fit_live_predictions_candles // 6, min_label_period_candles), test_window
-    )
-    label_period_candles = trial.suggest_int(
-        "label_period_candles",
-        min_label_period_candles,
-        max_label_period_candles,
-        step=candles_step,
-    )
-    test_window = (test_window // label_period_candles) * label_period_candles
     X_test = X_test.iloc[-test_window:]
     y_test = y_test.iloc[-test_window:]
     test_weights = test_weights[-test_window:]
@@ -605,6 +594,22 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
+    min_label_period_candles: int = 10
+    max_label_period_candles: int = max(
+        fit_live_predictions_candles // 6, min_label_period_candles
+    )
+    label_period_candles = trial.suggest_int(
+        "label_period_candles",
+        min_label_period_candles,
+        max_label_period_candles,
+        step=candles_step,
+    )
+    label_period_candles_length = (
+        len(y_test) // label_period_candles
+    ) * label_period_candles
+    y_test = y_test.iloc[-label_period_candles_length:]
+    test_weights = test_weights[-label_period_candles_length:]
+    y_pred = y_pred[-label_period_candles_length:]
     n_windows = len(y_test) // label_period_candles
     y_test = [
         y_test.iloc[i : i + label_period_candles].to_numpy()
