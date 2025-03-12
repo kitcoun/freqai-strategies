@@ -318,6 +318,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             pruner=pruner,
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
+            load_if_exists=not self.__optuna_config.get("continuous", True),
         )
         if self.__optuna_config.get("warm_start", True):
             self.optuna_hp_enqueue_previous_best_trial(pair, study)
@@ -396,6 +397,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             pruner=pruner,
             direction=optuna.study.StudyDirection.MINIMIZE,
             storage=storage,
+            load_if_exists=not self.__optuna_config.get("continuous", True),
         )
         if self.__optuna_config.get("warm_start", True):
             self.optuna_period_enqueue_previous_best_trial(pair, study)
