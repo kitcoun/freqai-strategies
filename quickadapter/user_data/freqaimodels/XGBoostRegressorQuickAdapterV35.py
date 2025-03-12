@@ -605,10 +605,7 @@ def period_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_period_frequency: int = max(
-        1, int(fit_live_predictions_candles / (label_period_candles * 2))
-    )
-    label_window: int = label_period_candles * label_period_frequency
+    label_window: int = label_period_candles * 2
     y_test = y_test.iloc[-label_window:].to_numpy()
     test_weights = test_weights[-label_window:]
     y_pred = y_pred[-label_window:]
