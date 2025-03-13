@@ -72,11 +72,11 @@ class QuickAdapterV3(IStrategy):
     process_only_new_candles = True
 
     @property
-    def can_short(self):
+    def can_short(self) -> bool:
         return self.is_short_allowed()
 
     @property
-    def plot_config(self):
+    def plot_config(self) -> dict:
         return {
             "main_plot": {},
             "subplots": {
@@ -97,7 +97,7 @@ class QuickAdapterV3(IStrategy):
         }
 
     @property
-    def protections(self):
+    def protections(self) -> list:
         fit_live_predictions_candles = self.freqai_info.get(
             "fit_live_predictions_candles", 100
         )
@@ -122,7 +122,7 @@ class QuickAdapterV3(IStrategy):
     use_exit_signal = True
 
     @property
-    def startup_candle_count(self):
+    def startup_candle_count(self) -> int:
         return int(self.freqai_info.get("fit_live_predictions_candles", 100) / 2)
 
     def bot_start(self, **kwargs) -> None:
