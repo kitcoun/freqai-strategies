@@ -1,6 +1,8 @@
+import json
 import logging
 from functools import reduce
 import datetime
+from pathlib import Path
 import talib.abstract as ta
 from pandas import DataFrame, Series
 from technical import qtpylib
@@ -121,6 +123,25 @@ class QuickAdapterV3(IStrategy):
     @property
     def startup_candle_count(self):
         return int(self.freqai_info.get("fit_live_predictions_candles", 100) / 2)
+
+    def __init__(self, config: dict) -> None:
+        super().__init__(config)
+        self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
+        if not self.pairs:
+            raise ValueError(
+                "FreqAI strategy requires StaticPairList method defined in pairlists configuration and pair_whitelist defined in exchange section configuration"
+            )
+        self.models_full_path = Path(
+            self.config["user_data_dir"]
+            / "models"
+            / f"{self.config.get('freqai', {}).get('identifier', 'no_id_provided')}"
+        )
+        self.__period_params: dict[str, dict] = {}
+        for pair in self.pairs:
+            self.__period_params[pair] = self.load_period_best_params(pair) or {}
+            logger.info(
+                f"Loaded period best params for {pair}: {self.__period_params[pair]}"
+            )
 
     def feature_engineering_expand_all(self, dataframe, period, **kwargs):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
@@ -249,13 +270,12 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
         pair = str(metadata.get("pair"))
-        label_period_candles = (
-            self.freqai_info["feature_parameters"]
-            .get(pair, {})
-            .get(
-                "label_period_candles",
-                self.freqai_info["feature_parameters"]["label_period_candles"],
-            )
+        label_period_candles = self.__period_params.get(pair, {}).get(
+            "label_period_candles",
+            self.freqai_info["feature_parameters"]["label_period_candles"],
+        )
+        logger.info(
+            f"label_period_candles: {label_period_candles} for {pair}"
         )
         min_peaks = argrelmin(
             dataframe["low"].values,
@@ -283,6 +303,17 @@ class QuickAdapterV3(IStrategy):
             0,
             1,
         )
+
+        # pair = str(metadata.get("pair"))
+        # self.__period_params[pair]["label_period_candles"] = dataframe[
+        #     "label_period_candles"
+        # ]
+        # logger.info(
+        #     f"label_period_candles: {self.__period_params[pair]['label_period_candles']}"
+        # )
+        # logger.info(
+        #     f"label_period_candles extra returns: {dataframe['label_period_candles']}"
+        # )
 
         dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
         dataframe["maxima_threshold"] = dataframe[MAXIMA_THRESHOLD_COLUMN]
@@ -438,6 +469,17 @@ class QuickAdapterV3(IStrategy):
                 std=std
             ),
         )
+
+    def load_period_best_params(self, pair: str) -> dict | None:
+        namespace = "period"
+        best_params_path = Path(
+            self.models_full_path
+            / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
+        )
+        if best_params_path.is_file():
+            with best_params_path.open("r", encoding="utf-8") as read_file:
+                return json.load(read_file)
+        return None
 
 
 def top_change_percent(dataframe: DataFrame, period: int) -> Series:

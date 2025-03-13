@@ -68,12 +68,6 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             self.__optuna_period_params[pair] = (
                 self.optuna_load_best_params(pair, "period") or {}
             )
-            self.freqai_info["feature_parameters"][pair] = {}
-            self.freqai_info["feature_parameters"][pair]["label_period_candles"] = (
-                self.__optuna_period_params[pair].get(
-                    "label_period_candles", self.ft_params["label_period_candles"]
-                )
-            )
 
     def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
@@ -139,11 +133,6 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 X_test = X_test.iloc[-test_window:]
                 y_test = y_test.iloc[-test_window:]
                 test_weights = test_weights[-test_window:]
-
-                # FIXME: find a better way to propagate optuna computed params to strategy
-                self.freqai_info["feature_parameters"][dk.pair][
-                    "label_period_candles"
-                ] = self.__optuna_period_params[dk.pair].get("label_period_candles")
 
         model = XGBRegressor(
             objective="reg:squarederror",
