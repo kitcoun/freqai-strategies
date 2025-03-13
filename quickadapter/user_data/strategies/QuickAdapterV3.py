@@ -427,7 +427,8 @@ class QuickAdapterV3(IStrategy):
             "triang": (
                 series.rolling(window=window, win_type="triang", center=center).mean()
             ),
-            "mm": series.rolling(window=window, center=center).median(),
+            "smm": series.rolling(window=window, center=center).median(),
+            "sma": series.rolling(window=window, center=center).mean(),
             "ewma": series.ewm(span=window).mean(),
             "zlewma": zlewma(series=series, timeperiod=window),
         }.get(
