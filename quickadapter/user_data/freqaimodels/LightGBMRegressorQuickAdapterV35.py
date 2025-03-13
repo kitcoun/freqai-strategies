@@ -152,6 +152,11 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
 
         return model
 
+    def get_label_period_candles(self, pair: str) -> int:
+        if self.__optuna_period_params.get(pair, {}).get("label_period_candles"):
+            return self.__optuna_period_params[pair]["label_period_candles"]
+        return self.ft_params["label_period_candles"]
+
     def fit_live_predictions(self, dk: FreqaiDataKitchen, pair: str) -> None:
         warmed_up = True
 
@@ -176,9 +181,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
             dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = -2
             dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = 2
         else:
-            label_period_candles = self.__optuna_period_params.get(pair, {}).get(
-                "label_period_candles", self.ft_params["label_period_candles"]
-            )
+            label_period_candles = self.get_label_period_candles(pair)
             min_pred, max_pred = self.min_max_pred(
                 pred_df_full,
                 num_candles,
@@ -217,9 +220,7 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["DI_cutoff"] = cutoff
 
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
-            self.__optuna_period_params.get(pair, {}).get(
-                "label_period_candles", self.ft_params["label_period_candles"]
-            )
+            self.get_label_period_candles(pair)
         )
         dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
             pair, -1

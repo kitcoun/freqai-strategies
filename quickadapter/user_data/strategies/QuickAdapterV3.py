@@ -265,24 +265,13 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-hour_of_day"] = (dataframe["date"].dt.hour + 1) / 25
         return dataframe
 
-    def get_label_period_candles(self, metadata, **kwargs) -> int:
-        pair = str(metadata.get("pair"))
+    def get_label_period_candles(self, pair: str) -> int:
         if self.__period_params.get(pair, {}).get("label_period_candles"):
-            label_period_candles = self.__period_params.get(pair, {}).get(
-                "label_period_candles",
-            )
-        else:
-            label_period_candles = self.freqai_info["feature_parameters"][
-                "label_period_candles"
-            ]
-        if label_period_candles < 1:
-            raise ValueError(
-                f"label_period_candles must be greater than 0, got {label_period_candles}"
-            )
-        return label_period_candles
+            return self.__period_params[pair]["label_period_candles"]
+        return self.freqai_info["feature_parameters"]["label_period_candles"]
 
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
-        label_period_candles = self.get_label_period_candles(metadata, **kwargs)
+        label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
         min_peaks = argrelmin(
             dataframe["low"].values,
             order=label_period_candles,
