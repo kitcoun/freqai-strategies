@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import Any, Dict
+from typing import Any
 from pathlib import Path
 
 from xgboost import XGBRegressor
@@ -33,7 +33,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
     experiments, with a an objective of helping the community make smarter choices in their
     ML journey.
 
-    This strategy is experimental (as with all strategies released to sponsors). Do *not* expect
+    This freqaimodel is experimental (as with all models released to sponsors). Do *not* expect
     returns. The goal is to demonstrate gratitude to people who support the project and to
     help them find a good starting point for their own creativity.
 
@@ -55,10 +55,10 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             and self.__optuna_config.get("enabled", False)
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
-        self.__optuna_hp_rmse: Dict[str, float] = {}
-        self.__optuna_period_rmse: Dict[str, float] = {}
-        self.__optuna_hp_params: Dict[str, Dict] = {}
-        self.__optuna_period_params: Dict[str, Dict] = {}
+        self.__optuna_hp_rmse: dict[str, float] = {}
+        self.__optuna_period_rmse: dict[str, float] = {}
+        self.__optuna_hp_params: dict[str, dict] = {}
+        self.__optuna_period_params: dict[str, dict] = {}
         for pair in self.pairs:
             self.__optuna_hp_rmse[pair] = -1
             self.__optuna_period_rmse[pair] = -1
@@ -75,7 +75,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                 )
             )
 
-    def fit(self, data_dictionary: Dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
+    def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
         User sets up the training and test data to fit their desired model here
         :param data_dictionary: the dictionary constructed by DataHandler to hold
@@ -303,7 +303,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         X_test,
         y_test,
         test_weights,
-    ) -> tuple[Dict, float] | tuple[None, None]:
+    ) -> tuple[dict, float] | tuple[None, None]:
         identifier = self.freqai_info.get("identifier")
         study_namespace = "hp"
         study_name = f"{identifier}-{study_namespace}-{pair}"
@@ -382,7 +382,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         y_test,
         test_weights,
         model_training_parameters,
-    ) -> tuple[Dict, float] | tuple[None, None]:
+    ) -> tuple[dict, float] | tuple[None, None]:
         identifier = self.freqai_info.get("identifier")
         study_namespace = "period"
         study_name = f"{identifier}-{study_namespace}-{pair}"
@@ -444,7 +444,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         return params, study.best_value
 
     def optuna_save_best_params(
-        self, pair: str, namespace: str, best_params: Dict
+        self, pair: str, namespace: str, best_params: dict
     ) -> None:
         best_params_path = Path(
             self.full_path / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
@@ -452,7 +452,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         with best_params_path.open("w", encoding="utf-8") as write_file:
             json.dump(best_params, write_file, indent=4)
 
-    def optuna_load_best_params(self, pair: str, namespace: str) -> Dict | None:
+    def optuna_load_best_params(self, pair: str, namespace: str) -> dict | None:
         best_params_path = Path(
             self.full_path / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
         )

@@ -10,7 +10,7 @@ from freqtrade.strategy.interface import IStrategy
 from technical.pivots_points import pivots_points
 from technical.indicators import chaikin_money_flow
 from freqtrade.persistence import Trade
-from scipy.signal import argrelmin, argrelmax, gaussian, convolve
+from scipy.signal import argrelmin, argrelmax
 import numpy as np
 import pandas_ta as pta
 
@@ -23,7 +23,7 @@ MAXIMA_THRESHOLD_COLUMN = "&s-maxima_threshold"
 
 class QuickAdapterV3(IStrategy):
     """
-    The following freqaimodel is released to sponsors of the non-profit FreqAI open-source project.
+    The following freqtrade strategy is released to sponsors of the non-profit FreqAI open-source project.
     If you find the FreqAI project useful, please consider supporting it by becoming a sponsor.
     We use sponsor money to help stimulate new features and to pay for running these public
     experiments, with a an objective of helping the community make smarter choices in their
@@ -286,6 +286,7 @@ class QuickAdapterV3(IStrategy):
 
         dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
         dataframe["maxima_threshold"] = dataframe[MAXIMA_THRESHOLD_COLUMN]
+
         return dataframe
 
     def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
@@ -418,9 +419,9 @@ class QuickAdapterV3(IStrategy):
                     std=std
                 )
             ),
-            "zero_phase_gaussian": zero_phase_gaussian(
-                series=series, window=window, std=std
-            ),
+            # "zero_phase_gaussian": zero_phase_gaussian(
+            #     series=series, window=window, std=std
+            # ),
             "boxcar": series.rolling(
                 window=window, win_type="boxcar", center=center
             ).mean(),
@@ -507,18 +508,6 @@ def zlewma(series: Series, timeperiod: int) -> Series:
     """
     ewma = series.ewm(span=timeperiod).mean()
     return 2 * ewma - ewma.ewm(span=timeperiod).mean()
-
-
-def zero_phase_gaussian(series: Series, window: int, std: float) -> Series:
-    # Gaussian kernel
-    kernel = gaussian(window, std=std)
-    kernel /= kernel.sum()
-
-    # Forward-backward convolution for zero phase lag
-    padded_series = np.pad(series, (window // 2, window // 2), mode="edge")
-    smoothed = convolve(padded_series, kernel, mode="valid")
-    smoothed = convolve(smoothed[::-1], kernel, mode="valid")[::-1]
-    return Series(smoothed, index=series.index)
 
 
 def get_distance(p1: Series | float, p2: Series | float) -> Series | float:
