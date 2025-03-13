@@ -124,8 +124,7 @@ class QuickAdapterV3(IStrategy):
     def startup_candle_count(self):
         return int(self.freqai_info.get("fit_live_predictions_candles", 100) / 2)
 
-    def __init__(self, config: dict) -> None:
-        super().__init__(config)
+    def bot_start(self, **kwargs) -> None:
         self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
         if not self.pairs:
             raise ValueError(
@@ -134,14 +133,11 @@ class QuickAdapterV3(IStrategy):
         self.models_full_path = Path(
             self.config["user_data_dir"]
             / "models"
-            / f"{self.config.get('freqai', {}).get('identifier', 'no_id_provided')}"
+            / f"{self.freqai_info.get('identifier', 'no_id_provided')}"
         )
         self.__period_params: dict[str, dict] = {}
         for pair in self.pairs:
             self.__period_params[pair] = self.load_period_best_params(pair) or {}
-            logger.info(
-                f"Loaded period best params for {pair}: {self.__period_params[pair]}"
-            )
 
     def feature_engineering_expand_all(self, dataframe, period, **kwargs):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
@@ -274,9 +270,6 @@ class QuickAdapterV3(IStrategy):
             "label_period_candles",
             self.freqai_info["feature_parameters"]["label_period_candles"],
         )
-        logger.info(
-            f"label_period_candles: {label_period_candles} for {pair}"
-        )
         min_peaks = argrelmin(
             dataframe["low"].values,
             order=label_period_candles,
@@ -304,16 +297,11 @@ class QuickAdapterV3(IStrategy):
             1,
         )
 
-        # pair = str(metadata.get("pair"))
-        # self.__period_params[pair]["label_period_candles"] = dataframe[
-        #     "label_period_candles"
-        # ]
-        # logger.info(
-        #     f"label_period_candles: {self.__period_params[pair]['label_period_candles']}"
-        # )
-        # logger.info(
-        #     f"label_period_candles extra returns: {dataframe['label_period_candles']}"
-        # )
+        if "label_period_candles" in dataframe.columns:
+            pair = str(metadata.get("pair"))
+            self.__period_params[pair]["label_period_candles"] = dataframe[
+                "label_period_candles"
+            ].iloc[-1]
 
         dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
         dataframe["maxima_threshold"] = dataframe[MAXIMA_THRESHOLD_COLUMN]
