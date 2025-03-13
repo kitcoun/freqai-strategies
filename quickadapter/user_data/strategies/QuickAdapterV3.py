@@ -12,7 +12,8 @@ from freqtrade.strategy.interface import IStrategy
 from technical.pivots_points import pivots_points
 from technical.indicators import chaikin_money_flow
 from freqtrade.persistence import Trade
-from scipy.signal import argrelmin, argrelmax
+from scipy.signal import argrelmin, argrelmax, convolve
+from scipy.signal.windows import gaussian
 import numpy as np
 import pandas_ta as pta
 
@@ -428,34 +429,35 @@ class QuickAdapterV3(IStrategy):
         self,
         series: Series,
         window: int,
-        center: bool = True,
         std: float = 0.5,
     ) -> Series:
         extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
         return {
             "gaussian": (
-                series.rolling(window=window, win_type="gaussian", center=center).mean(
-                    std=std
-                )
+                series.rolling(
+                    window=get_gaussian_window(std, True),
+                    win_type="gaussian",
+                    center=True,
+                ).mean(std=std)
             ),
-            # "zero_phase_gaussian": zero_phase_gaussian(
-            #     series=series, window=window, std=std
-            # ),
+            "zero_phase_gaussian": zero_phase_gaussian(series=series, std=std),
             "boxcar": series.rolling(
-                window=window, win_type="boxcar", center=center
+                window=get_odd_window(window), win_type="boxcar", center=True
             ).mean(),
             "triang": (
-                series.rolling(window=window, win_type="triang", center=center).mean()
+                series.rolling(
+                    window=get_odd_window(window), win_type="triang", center=True
+                ).mean()
             ),
-            "smm": series.rolling(window=window, center=center).median(),
-            "sma": series.rolling(window=window, center=center).mean(),
+            "smm": series.rolling(window=get_odd_window(window), center=True).median(),
+            "sma": series.rolling(window=get_odd_window(window), center=True).mean(),
             "ewma": series.ewm(span=window).mean(),
             "zlewma": zlewma(series=series, timeperiod=window),
         }.get(
             extrema_smoothing,
-            series.rolling(window=window, win_type="gaussian", center=center).mean(
-                std=std
-            ),
+            series.rolling(
+                window=get_gaussian_window(std, True), win_type="gaussian", center=True
+            ).mean(std=std),
         )
 
     def load_period_best_params(self, pair: str) -> dict | None:
@@ -538,6 +540,36 @@ def zlewma(series: Series, timeperiod: int) -> Series:
     """
     ewma = series.ewm(span=timeperiod).mean()
     return 2 * ewma - ewma.ewm(span=timeperiod).mean()
+
+
+def zero_phase_gaussian(series: Series, std: float):
+    window = get_gaussian_window(std, True)
+
+    kernel = gaussian(window, std=std)
+    kernel /= kernel.sum()
+
+    padding_length = window - 1
+    padded_series = np.pad(series.values, (padding_length, padding_length), mode="edge")
+
+    forward = convolve(padded_series, kernel, mode="valid")
+    backward = convolve(forward[::-1], kernel, mode="valid")[::-1]
+
+    return Series(backward, index=series.index)
+
+
+def get_gaussian_window(std: float, center: bool) -> int:
+    if std <= 0:
+        raise ValueError("Standard deviation must be greater than 0")
+    window = int(6 * std + 1)
+    if center and window % 2 == 0:
+        window += 1
+    return max(3, window)
+
+
+def get_odd_window(window: int) -> int:
+    if window < 1:
+        raise ValueError("Window size must be greater than 0")
+    return window if window % 2 == 1 else window + 1
 
 
 def get_distance(p1: Series | float, p2: Series | float) -> Series | float:
