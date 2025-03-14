@@ -593,18 +593,13 @@ def period_objective(
     y_test = y_test.iloc[-fit_live_predictions_candles:].to_numpy()
     test_weights = test_weights[-fit_live_predictions_candles:]
     y_pred = y_pred[-fit_live_predictions_candles:]
-    y_test = [
-        y_test[i : i + label_period_candles]
-        for i in range(0, len(y_test), label_period_candles)
-    ]
+    label_window: int = label_period_candles * 2
+    y_test = [y_test[i : i + label_window] for i in range(0, len(y_test), label_window)]
     test_weights = [
-        test_weights[i : i + label_period_candles]
-        for i in range(0, len(test_weights), label_period_candles)
+        test_weights[i : i + label_window]
+        for i in range(0, len(test_weights), label_window)
     ]
-    y_pred = [
-        y_pred[i : i + label_period_candles]
-        for i in range(0, len(y_pred), label_period_candles)
-    ]
+    y_pred = [y_pred[i : i + label_window] for i in range(0, len(y_pred), label_window)]
 
     error = 0.0
     for y_t, y_p, t_w in zip(y_test, y_pred, test_weights):
