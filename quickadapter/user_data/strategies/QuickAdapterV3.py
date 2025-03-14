@@ -97,7 +97,7 @@ class QuickAdapterV3(IStrategy):
         }
 
     @property
-    def protections(self) -> list:
+    def protections(self) -> list[dict]:
         fit_live_predictions_candles = self.freqai_info.get(
             "fit_live_predictions_candles", 100
         )
@@ -166,7 +166,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-pct-change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
-        dataframe["%-ewo"] = EWO(dataframe=dataframe, mode="zlewma", normalize=True)
+        dataframe["%-ewo"] = EWO(dataframe=dataframe, ma_mode="zlewma", normalize=True)
         psar = ta.SAR(
             dataframe["high"], dataframe["low"], acceleration=0.02, maximum=0.2
         )
@@ -299,11 +299,10 @@ class QuickAdapterV3(IStrategy):
             1,
         )
 
-        if "label_period_candles" in dataframe.columns:
-            pair = str(metadata.get("pair"))
-            self.__period_params[pair]["label_period_candles"] = dataframe[
-                "label_period_candles"
-            ].iloc[-1]
+        pair = str(metadata.get("pair"))
+        self.__period_params[pair]["label_period_candles"] = dataframe[
+            "label_period_candles"
+        ].iloc[-1]
 
         dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
         dataframe["maxima_threshold"] = dataframe[MAXIMA_THRESHOLD_COLUMN]
@@ -433,32 +432,27 @@ class QuickAdapterV3(IStrategy):
         std: float = 0.5,
     ) -> Series:
         extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
-        return {
-            "gaussian": (
-                series.rolling(
-                    window=get_gaussian_window(std, True),
-                    win_type="gaussian",
-                    center=True,
-                ).mean(std=std)
-            ),
+        smoothing_methods: dict = {
+            "gaussian": series.rolling(
+                window=get_gaussian_window(std, True),
+                win_type="gaussian",
+                center=True,
+            ).mean(std=std),
             "zero_phase_gaussian": zero_phase_gaussian(series=series, std=std),
             "boxcar": series.rolling(
                 window=get_odd_window(window), win_type="boxcar", center=True
             ).mean(),
-            "triang": (
-                series.rolling(
-                    window=get_odd_window(window), win_type="triang", center=True
-                ).mean()
-            ),
+            "triang": series.rolling(
+                window=get_odd_window(window), win_type="triang", center=True
+            ).mean(),
             "smm": series.rolling(window=get_odd_window(window), center=True).median(),
             "sma": series.rolling(window=get_odd_window(window), center=True).mean(),
             "ewma": series.ewm(span=window).mean(),
             "zlewma": zlewma(series=series, timeperiod=window),
-        }.get(
+        }
+        return smoothing_methods.get(
             extrema_smoothing,
-            series.rolling(
-                window=get_gaussian_window(std, True), win_type="gaussian", center=True
-            ).mean(std=std),
+            smoothing_methods["gaussian"],
         )
 
     def load_period_best_params(self, pair: str) -> dict | None:
@@ -498,9 +492,9 @@ def VWAPB(dataframe: DataFrame, window=20, num_of_std=1) -> tuple:
 
 
 def EWO(
-    dataframe: DataFrame, ma1_length=5, ma2_length=34, mode="sma", normalize=False
+    dataframe: DataFrame, ma1_length=5, ma2_length=34, ma_mode="sma", normalize=False
 ) -> Series:
-    ma_fn = {
+    ma_modes: dict = {
         "sma": ta.SMA,
         "ema": ta.EMA,
         "wma": ta.WMA,
@@ -510,7 +504,8 @@ def EWO(
         "trima": ta.TRIMA,
         "kama": ta.KAMA,
         "t3": ta.T3,
-    }.get(mode, ta.SMA)
+    }
+    ma_fn = ma_modes.get(ma_mode, ma_modes["sma"])
     ma1 = ma_fn(dataframe, timeperiod=ma1_length)
     ma2 = ma_fn(dataframe, timeperiod=ma2_length)
     madiff = ma1 - ma2

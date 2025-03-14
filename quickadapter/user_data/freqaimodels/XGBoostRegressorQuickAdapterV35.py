@@ -265,13 +265,14 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         prediction_thresholds_smoothing = self.freqai_info.get(
             "prediction_thresholds_smoothing", "mean"
         )
-        return {
+        smoothing_methods: dict = {
             "quantile": self.quantile_min_max_pred,
             "mean": mean_min_max_pred,
             "median": median_min_max_pred,
-        }.get(prediction_thresholds_smoothing, mean_min_max_pred)(
-            pred_df, fit_live_predictions_candles, label_period_candles
-        )
+        }
+        return smoothing_methods.get(
+            prediction_thresholds_smoothing, smoothing_methods["mean"]
+        )(pred_df, fit_live_predictions_candles, label_period_candles)
 
     def optuna_hp_enqueue_previous_best_trial(
         self,
