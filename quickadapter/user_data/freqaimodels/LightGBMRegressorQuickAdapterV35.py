@@ -174,7 +174,9 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 warmed_up = False
 
         pred_df_full = (
-            self.dd.historic_predictions[pair].tail(num_candles).reset_index(drop=True)
+            self.dd.historic_predictions[pair]
+            .iloc[-num_candles:]
+            .reset_index(drop=True)
         )
 
         if not warmed_up:
