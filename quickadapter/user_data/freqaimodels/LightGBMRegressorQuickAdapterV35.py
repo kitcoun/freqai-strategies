@@ -545,7 +545,7 @@ def period_objective(
     X_test,
     y_test,
     test_weights,
-    test_size,
+    test_size: float,
     fit_live_predictions_candles: int,
     candles_step: int,
     model_training_parameters,
