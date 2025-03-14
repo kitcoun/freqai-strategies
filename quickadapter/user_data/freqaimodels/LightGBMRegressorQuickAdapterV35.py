@@ -590,10 +590,13 @@ def period_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    y_test = y_test.iloc[-fit_live_predictions_candles:].to_numpy()
-    test_weights = test_weights[-fit_live_predictions_candles:]
-    y_pred = y_pred[-fit_live_predictions_candles:]
     label_window: int = label_period_candles * 2
+    label_windows_length: int = (
+        fit_live_predictions_candles // label_window
+    ) * label_window
+    y_test = y_test.iloc[-label_windows_length:].to_numpy()
+    test_weights = test_weights[-label_windows_length:]
+    y_pred = y_pred[-label_windows_length:]
     y_test = [y_test[i : i + label_window] for i in range(0, len(y_test), label_window)]
     test_weights = [
         test_weights[i : i + label_window]
