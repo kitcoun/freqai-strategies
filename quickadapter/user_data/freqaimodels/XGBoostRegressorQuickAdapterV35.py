@@ -297,7 +297,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         y_test,
         test_weights,
     ) -> tuple[dict, float] | tuple[None, None]:
-        identifier = self.freqai_info.get("identifier")
+        identifier = self.freqai_info.get("identifier", "no_id_provided")
         study_namespace = "hp"
         study_name = f"{identifier}-{study_namespace}-{pair}"
         storage = self.optuna_storage(pair)
@@ -376,7 +376,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         test_weights,
         model_training_parameters,
     ) -> tuple[dict, float] | tuple[None, None]:
-        identifier = self.freqai_info.get("identifier")
+        identifier = self.freqai_info.get("identifier", "no_id_provided")
         study_namespace = "period"
         study_name = f"{identifier}-{study_namespace}-{pair}"
         storage = self.optuna_storage(pair)
