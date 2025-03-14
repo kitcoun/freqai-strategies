@@ -583,7 +583,7 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles: int = fit_live_predictions_candles // 10
+    min_label_period_candles: int = fit_live_predictions_candles // 20
     max_label_period_candles: int = max(
         fit_live_predictions_candles // 6, min_label_period_candles
     )
