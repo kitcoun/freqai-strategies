@@ -597,7 +597,7 @@ def period_objective(
         step=candles_step,
     )
     label_period_frequency: int = int(
-        fit_live_predictions_candles / label_period_candles
+        fit_live_predictions_candles / (label_period_candles * 2)
     )
     label_window: int = label_period_candles * label_period_frequency
     y_test = y_test.iloc[-label_window:].to_numpy()
