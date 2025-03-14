@@ -1,5 +1,6 @@
 import logging
 import json
+from statistics import fmean
 from typing import Any
 from pathlib import Path
 
@@ -614,12 +615,12 @@ def period_objective(
     ]
     y_pred = [y_pred[i : i + label_window] for i in range(0, len(y_pred), label_window)]
 
-    error = 0.0
-    for y_t, y_p, t_w in zip(y_test, y_pred, test_weights):
-        error += sklearn.metrics.root_mean_squared_error(y_t, y_p, sample_weight=t_w)
-    error /= len(y_test)
+    errors = [
+        sklearn.metrics.root_mean_squared_error(y_t, y_p, sample_weight=t_w)
+        for y_t, y_p, t_w in zip(y_test, y_pred, test_weights)
+    ]
 
-    return error
+    return fmean(errors)
 
 
 def hp_objective(
