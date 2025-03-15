@@ -393,6 +393,9 @@ class QuickAdapterV3(IStrategy):
                     num_shorts += 1
                 elif "long" in trade.enter_tag:
                     num_longs += 1
+            total_open_trades = num_longs + num_shorts
+            if total_open_trades >= self.config.get("max_open_trades"):
+                return False
             if (side == "long" and num_longs >= max_open_trades_per_side) or (
                 side == "short" and num_shorts >= max_open_trades_per_side
             ):
@@ -412,7 +415,9 @@ class QuickAdapterV3(IStrategy):
         if max_open_trades < 0:
             return -1
         if self.is_short_allowed():
-            return (max_open_trades + 1) // 2
+            if max_open_trades % 2 == 1:
+                max_open_trades += 1
+            return max_open_trades // 2
         else:
             return max_open_trades
 

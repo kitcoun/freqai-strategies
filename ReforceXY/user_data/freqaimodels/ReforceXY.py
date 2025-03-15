@@ -347,7 +347,13 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         start = time.time()
         if self.hyperopt:
-            model_params = self.study(train_df, total_timesteps, dk)
+            best_trial_params = self.study(train_df, total_timesteps, dk)
+            if best_trial_params is None:
+                logger.error(
+                    "Hyperopt failed. Using default configured model params instead."
+                )
+                best_trial_params = self.get_model_params()
+            model_params = best_trial_params
         else:
             model_params = self.get_model_params()
         logger.info("%s params: %s", self.model_type, model_params)
@@ -495,9 +501,22 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
         return storage
 
+    def study_has_best_trial_params(self, study: Study | None) -> bool:
+        if not study:
+            return False
+        try:
+            _ = study.best_trial.params
+            return True
+        # file backend storage raises KeyError
+        except KeyError:
+            return False
+        # sqlite backend storage raises ValueError
+        except ValueError:
+            return False
+
     def study(
         self, train_df: DataFrame, total_timesteps: int, dk: FreqaiDataKitchen
-    ) -> Dict:
+    ) -> Dict | None:
         """
         Runs hyperparameter optimization using Optuna and
         returns the best hyperparameters found merged with the user defined parameters
@@ -526,6 +545,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             storage=storage,
             load_if_exists=True,
         )
+        hyperopt_failed = False
         start = time.time()
         try:
             study.optimize(
@@ -542,65 +562,95 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
         except KeyboardInterrupt:
             pass
+        except Exception as e:
+            time_spent = time.time() - start
+            logger.error(
+                f"Hyperopt {study_name} failed ({time_spent:.2f} secs): {e}",
+                exc_info=True,
+            )
+            hyperopt_failed = True
         time_spent = time.time() - start
+        if self.study_has_best_trial_params(study) is False:
+            logger.error(
+                f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no study best trial params found"
+            )
+            hyperopt_failed = True
+
+        if hyperopt_failed:
+            best_trial_params = self.load_best_trial_params(
+                dk.pair if self.rl_config_optuna.get("per_pair", False) else None
+            )
+            if best_trial_params is None:
+                logger.error(
+                    f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no previously saved best trial params found"
+                )
+                return None
+        else:
+            best_trial_params = study.best_trial.params
 
         logger.info(
-            "------------ Hyperopt results %s (%.2f secs) ------------",
+            "------------ Hyperopt %s results (%.2f secs) ------------",
             study_name,
             time_spent,
         )
         logger.info(
             "Best trial: %s. Score: %s", study.best_trial.number, study.best_trial.value
         )
-        logger.info("Best trial params: %s", study.best_trial.params)
+        logger.info("Best trial params: %s", best_trial_params)
         logger.info("-------------------------------------------------------")
 
-        self.save_best_params(
-            study.best_trial.params,
+        self.save_best_trial_params(
+            best_trial_params,
             dk.pair if self.rl_config_optuna.get("per_pair", False) else None,
         )
 
-        return {**self.model_training_parameters, **study.best_trial.params}
+        return {**self.model_training_parameters, **best_trial_params}
 
-    def save_best_params(self, best_params: Dict, pair: str | None = None) -> None:
+    def save_best_trial_params(
+        self, best_trial_params: Dict, pair: str | None = None
+    ) -> None:
         """
-        Save the best hyperparameters found during hyperparameter optimization
+        Save the best trial hyperparameters found during hyperparameter optimization
         """
-        best_params_filename = (
+        best_trial_params_filename = (
             f"hyperopt-best-params-{pair.split('/')[0]}"
             if pair
             else "hyperopt-best-params"
         )
-        best_params_path = Path(self.full_path / f"{best_params_filename}.json")
+        best_trial_params_path = Path(
+            self.full_path / f"{best_trial_params_filename}.json"
+        )
         log_msg: str = (
-            f"{pair}: saving best params to {best_params_path} JSON file"
+            f"{pair}: saving best params to {best_trial_params_path} JSON file"
             if pair
-            else f"saving best params to {best_params_path} JSON file"
+            else f"saving best params to {best_trial_params_path} JSON file"
         )
         logger.info(log_msg)
-        with best_params_path.open("w", encoding="utf-8") as write_file:
-            json.dump(best_params, write_file, indent=4)
+        with best_trial_params_path.open("w", encoding="utf-8") as write_file:
+            json.dump(best_trial_params, write_file, indent=4)
 
-    def load_best_params(self, pair: str | None = None) -> Dict | None:
+    def load_best_trial_params(self, pair: str | None = None) -> Dict | None:
         """
-        Load the best hyperparameters found and saved during hyperparameter optimization
+        Load the best trial hyperparameters found and saved during hyperparameter optimization
         """
-        best_params_filename = (
+        best_trial_params_filename = (
             f"hyperopt-best-params-{pair.split('/')[0]}"
             if pair
             else "hyperopt-best-params"
         )
-        best_params_path = Path(self.full_path / f"{best_params_filename}.json")
-        log_msg: str = (
-            f"{pair}: loading best params from {best_params_path} JSON file"
-            if pair
-            else f"loading best params from {best_params_path} JSON file"
+        best_trial_params_path = Path(
+            self.full_path / f"{best_trial_params_filename}.json"
         )
-        if best_params_path.is_file():
+        log_msg: str = (
+            f"{pair}: loading best params from {best_trial_params_path} JSON file"
+            if pair
+            else f"loading best params from {best_trial_params_path} JSON file"
+        )
+        if best_trial_params_path.is_file():
             logger.info(log_msg)
-            with best_params_path.open("r", encoding="utf-8") as read_file:
-                best_params = json.load(read_file)
-            return best_params
+            with best_trial_params_path.open("r", encoding="utf-8") as read_file:
+                best_trial_params = json.load(read_file)
+            return best_trial_params
         return None
 
     def objective(

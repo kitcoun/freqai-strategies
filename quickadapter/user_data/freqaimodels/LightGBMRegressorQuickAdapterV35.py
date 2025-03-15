@@ -338,11 +338,18 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 gc_after_trial=True,
             )
         except Exception as e:
+            time_spent = time.time() - start
             logger.error(
-                f"Optuna {study_namespace} hyperopt failed: {e}", exc_info=True
+                f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): {e}",
+                exc_info=True,
             )
             return None, None
         time_spent = time.time() - start
+        if self.optuna_study_has_best_params(study) is False:
+            logger.error(
+                f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
+            )
+            return None, None
         logger.info(f"Optuna {study_namespace} hyperopt done ({time_spent:.2f} secs)")
 
         params = study.best_params
@@ -420,11 +427,18 @@ class LightGBMRegressorQuickAdapterV35(BaseRegressionModel):
                 gc_after_trial=True,
             )
         except Exception as e:
+            time_spent = time.time() - start
             logger.error(
-                f"Optuna {study_namespace} hyperopt failed: {e}", exc_info=True
+                f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): {e}",
+                exc_info=True,
             )
             return None, None
         time_spent = time.time() - start
+        if self.optuna_study_has_best_params(study) is False:
+            logger.error(
+                f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
+            )
+            return None, None
         logger.info(f"Optuna {study_namespace} hyperopt done ({time_spent:.2f} secs)")
 
         params = study.best_params
@@ -583,7 +597,7 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles: int = fit_live_predictions_candles // 20
+    min_label_period_candles: int = max(fit_live_predictions_candles // 20, 20)
     max_label_period_candles: int = max(
         fit_live_predictions_candles // 6, min_label_period_candles
     )
@@ -600,12 +614,18 @@ def period_objective(
     y_test = y_test.iloc[-label_windows_length:].to_numpy()
     test_weights = test_weights[-label_windows_length:]
     y_pred = y_pred[-label_windows_length:]
-    y_test = [y_test[i : i + label_window] for i in range(0, len(y_test), label_window)]
+    y_test = [
+        y_test[i : i + label_window]
+        for i in range(0, label_windows_length, label_window)
+    ]
     test_weights = [
         test_weights[i : i + label_window]
-        for i in range(0, len(test_weights), label_window)
+        for i in range(0, label_windows_length, label_window)
     ]
-    y_pred = [y_pred[i : i + label_window] for i in range(0, len(y_pred), label_window)]
+    y_pred = [
+        y_pred[i : i + label_window]
+        for i in range(0, label_windows_length, label_window)
+    ]
 
     errors = [
         sklearn.metrics.root_mean_squared_error(y_t, y_p, sample_weight=t_w)
