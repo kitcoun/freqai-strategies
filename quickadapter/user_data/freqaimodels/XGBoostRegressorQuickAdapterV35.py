@@ -246,7 +246,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         return eval_set, eval_weights
 
     def optuna_storage(self, pair: str) -> optuna.storages.BaseStorage | None:
-        storage_dir = str(self.full_path)
+        storage_dir = self.full_path
         storage_filename = f"optuna-{pair.split('/')[0]}"
         storage_backend = self.__optuna_config.get("storage", "file")
         if storage_backend == "sqlite":

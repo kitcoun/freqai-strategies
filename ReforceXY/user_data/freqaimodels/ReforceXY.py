@@ -490,7 +490,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         """
         Get the storage for Optuna
         """
-        storage_dir = str(self.full_path)
+        storage_dir = self.full_path
         storage_filename = f"optuna-{pair.split('/')[0]}" if pair else "optuna"
         storage_backend = self.rl_config_optuna.get("storage", "sqlite")
         if storage_backend == "sqlite":
