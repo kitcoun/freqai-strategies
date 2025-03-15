@@ -487,7 +487,7 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
         return study
 
     def optuna_study_has_best_params(self, study: optuna.study.Study | None) -> bool:
-        if not study:
+        if study is None:
             return False
         try:
             _ = study.best_params

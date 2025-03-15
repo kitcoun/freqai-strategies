@@ -502,7 +502,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         return storage
 
     def study_has_best_trial_params(self, study: Study | None) -> bool:
-        if not study:
+        if study is None:
             return False
         try:
             _ = study.best_trial.params
