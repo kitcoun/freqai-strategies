@@ -420,7 +420,7 @@ class QuickAdapterV3(IStrategy):
         if trade.is_short:
             stoploss_price = entry_price + stoploss_distance
             stoploss_pct = (stoploss_price - current_rate) / current_rate
-        elif trade.is_long:
+        else:
             stoploss_price = entry_price - stoploss_distance
             stoploss_pct = (current_rate - stoploss_price) / current_rate
 
@@ -494,7 +494,7 @@ class QuickAdapterV3(IStrategy):
             take_profit_price = entry_price - take_profit_distance
             if current_rate <= take_profit_price:
                 return "take_profit_short"
-        elif trade.is_long:
+        else:
             take_profit_price = entry_price + take_profit_distance
             if current_rate >= take_profit_price:
                 return "take_profit_long"
