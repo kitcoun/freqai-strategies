@@ -43,12 +43,12 @@ class QuickAdapterV3(IStrategy):
     timeframe = "5m"
 
     stoploss = -0.02
+    use_custom_stoploss = True
     # Trailing stop:
-    trailing_stop = True
+    trailing_stop = False
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
-    use_custom_stoploss = True
 
     @property
     def stoploss_natr_ratio(self) -> float:
@@ -394,6 +394,10 @@ class QuickAdapterV3(IStrategy):
         current_profit: float,
         **kwargs,
     ) -> float | None:
+        # Trailing stoploss starts at 1% profit
+        if current_profit < 0.01:
+            return None
+
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
 
         if df.empty:
