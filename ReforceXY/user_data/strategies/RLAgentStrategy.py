@@ -24,8 +24,8 @@ class RLAgentStrategy(IStrategy):
     stoploss = -0.02
     # Trailing stop:
     trailing_stop = True
-    trailing_stop_positive = 0.0099
-    trailing_stop_positive_offset = 0.01
+    trailing_stop_positive = 0.01
+    trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
 
     use_exit_signal = True
@@ -100,30 +100,26 @@ class RLAgentStrategy(IStrategy):
     def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         enter_long_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 1]
 
-        if enter_long_conditions:
-            df.loc[
-                reduce(lambda x, y: x & y, enter_long_conditions),
-                ["enter_long", "enter_tag"],
-            ] = (1, "long")
+        df.loc[
+            reduce(lambda x, y: x & y, enter_long_conditions),
+            ["enter_long", "enter_tag"],
+        ] = (1, "long")
 
         enter_short_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 3]
 
-        if enter_short_conditions:
-            df.loc[
-                reduce(lambda x, y: x & y, enter_short_conditions),
-                ["enter_short", "enter_tag"],
-            ] = (1, "short")
+        df.loc[
+            reduce(lambda x, y: x & y, enter_short_conditions),
+            ["enter_short", "enter_tag"],
+        ] = (1, "short")
 
         return df
 
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         exit_long_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 2]
-        if exit_long_conditions:
-            df.loc[reduce(lambda x, y: x & y, exit_long_conditions), "exit_long"] = 1
+        df.loc[reduce(lambda x, y: x & y, exit_long_conditions), "exit_long"] = 1
 
         exit_short_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 4]
-        if exit_short_conditions:
-            df.loc[reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"] = 1
+        df.loc[reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"] = 1
 
         return df
 
