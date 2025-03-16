@@ -328,11 +328,12 @@ class QuickAdapterV3(IStrategy):
         )
 
         pair = str(metadata.get("pair"))
-        label_window = self.get_label_period_candles(pair) * 2
 
         self.__period_params[pair]["label_period_candles"] = dataframe[
             "label_period_candles"
         ].iloc[-1]
+
+        label_window = self.get_label_period_candles(pair) * 2
 
         dataframe["natr_ratio_labeling_window"] = pta.natr(
             dataframe["high"],
