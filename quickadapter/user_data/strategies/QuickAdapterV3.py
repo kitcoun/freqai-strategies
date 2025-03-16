@@ -692,4 +692,4 @@ def get_odd_window(window: int) -> int:
 
 
 def get_distance(p1: Series | float, p2: Series | float) -> Series | float:
-    return abs((p1) - (p2))
+    return abs(p1 - p2)
