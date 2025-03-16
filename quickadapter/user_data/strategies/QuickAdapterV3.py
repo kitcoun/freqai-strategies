@@ -380,10 +380,8 @@ class QuickAdapterV3(IStrategy):
     def get_stoploss_distance(
         self, entry_price: float, entry_natr: float, leverage: float
     ) -> float:
-        stoploss_natr_distance = (
-            entry_price * entry_natr * self.stoploss_natr_ratio
-        ) / leverage
-        return stoploss_natr_distance
+        stoploss_natr_distance = entry_price * entry_natr * self.stoploss_natr_ratio
+        return stoploss_natr_distance / leverage
 
     def custom_stoploss(
         self,
