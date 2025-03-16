@@ -475,7 +475,6 @@ class QuickAdapterV3(IStrategy):
         take_profit_distance = self.get_take_profit_distance(
             entry_price, entry_natr, trade.leverage
         )
-        entry_price = trade.open_rate
         if trade.is_short:
             take_profit_price = entry_price - take_profit_distance
             if current_rate <= take_profit_price:
