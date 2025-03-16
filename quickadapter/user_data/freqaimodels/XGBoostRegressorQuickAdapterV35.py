@@ -416,7 +416,6 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
                     X_test,
                     y_test,
                     test_weights,
-                    self.data_split_parameters.get("test_size", TEST_SIZE),
                     self.freqai_info.get("fit_live_predictions_candles", 100),
                     self.__optuna_config.get("candles_step", 10),
                     model_training_parameters,
@@ -562,7 +561,6 @@ def period_objective(
     X_test,
     y_test,
     test_weights,
-    test_size: float,
     fit_live_predictions_candles: int,
     candles_step: int,
     model_training_parameters,
@@ -576,9 +574,7 @@ def period_objective(
     y = y.iloc[-train_window:]
     train_weights = train_weights[-train_window:]
 
-    min_test_window: int = max(
-        int(min_train_window * test_size), fit_live_predictions_candles
-    )
+    min_test_window: int = fit_live_predictions_candles
     max_test_window: int = max(len(X_test), min_test_window)
     test_window: int = trial.suggest_int(
         "test_period_candles", min_test_window, max_test_window, step=candles_step

@@ -9,8 +9,8 @@ from technical import qtpylib
 from typing import Optional
 from freqtrade.exchange import timeframe_to_minutes
 from freqtrade.strategy.interface import IStrategy
+from freqtrade.exchange import timeframe_to_prev_date
 from technical.pivots_points import pivots_points
-from technical.indicators import chaikin_money_flow
 from freqtrade.persistence import Trade
 from scipy.signal import argrelmin, argrelmax, convolve
 from scipy.signal.windows import gaussian
@@ -46,9 +46,26 @@ class QuickAdapterV3(IStrategy):
     stoploss = -0.02
     # Trailing stop:
     trailing_stop = True
-    trailing_stop_positive = 0.0099
-    trailing_stop_positive_offset = 0.01
+    trailing_stop_positive = 0.01
+    trailing_stop_positive_offset = 0.09
     trailing_only_offset_is_reached = True
+    use_custom_stoploss = True
+
+    @property
+    def stoploss_natr_ratio(self) -> float:
+        return self.config.get("stoploss_natr_ratio", 0.025)
+
+    @property
+    def entry_natr_ratio(self) -> float:
+        return self.config.get("entry_pricing", {}).get("entry_natr_ratio", 0.0025)
+
+    # risk_reward_ratio = risk / reward
+    # risk_reward_ratio = 1.0 means 1:1
+    # risk_reward_ratio = 2.0 means 1:2
+    # ...
+    @property
+    def risk_reward_ratio(self) -> float:
+        return self.config.get("exit_pricing", {}).get("risk_reward_ratio", 2.0)
 
     order_types = {
         "entry": "limit",
@@ -62,12 +79,8 @@ class QuickAdapterV3(IStrategy):
         "stoploss_on_exchange_limit_ratio": 0.99,
     }
 
-    position_adjustment_enable = False
-    max_entry_position_adjustment = 1
-    max_dca_multiplier = 2
-
     timeframe_minutes = timeframe_to_minutes(timeframe)
-    minimal_roi = {"0": 0.03, str(timeframe_minutes * 864): -1}
+    minimal_roi = {str(timeframe_minutes * 864): -1}
 
     process_only_new_candles = True
 
@@ -149,12 +162,22 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-er-period"] = pta.er(dataframe["close"], length=period)
         dataframe["%-rocr-period"] = ta.ROCR(dataframe, timeperiod=period)
         dataframe["%-trix-period"] = ta.TRIX(dataframe, timeperiod=period)
-        dataframe["%-cmf-period"] = chaikin_money_flow(dataframe, period=period).fillna(
-            0.0
+        dataframe["%-cmf-period"] = pta.cmf(
+            dataframe["high"],
+            dataframe["low"],
+            dataframe["close"],
+            dataframe["volume"],
+            length=period,
+            fillna=0.0,
         )
         dataframe["%-tcp-period"] = top_change_percent(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
-        dataframe["%-chop-period"] = qtpylib.chopiness(dataframe, period)
+        dataframe["%-chop-period"] = pta.chop(
+            dataframe["high"],
+            dataframe["low"],
+            dataframe["close"],
+            length=period,
+        )
         dataframe["%-linearreg-angle-period"] = ta.LINEARREG_ANGLE(
             dataframe["close"], timeperiod=period
         )
@@ -171,10 +194,16 @@ class QuickAdapterV3(IStrategy):
             dataframe["high"], dataframe["low"], acceleration=0.02, maximum=0.2
         )
         dataframe["%-diff_to_psar"] = dataframe["close"] - psar
-        kc = qtpylib.keltner_channel(dataframe, window=14, atrs=2)
-        dataframe["kc_lowerband"] = kc["lower"]
-        dataframe["kc_middleband"] = kc["mid"]
-        dataframe["kc_upperband"] = kc["upper"]
+        kc = pta.kc(
+            dataframe["high"],
+            dataframe["low"],
+            dataframe["close"],
+            length=14,
+            scalar=2,
+        )
+        dataframe["kc_lowerband"] = kc["KCLe_14_2.0"]
+        dataframe["kc_middleband"] = kc["KCBe_14_2.0"]
+        dataframe["kc_upperband"] = kc["KCUe_14_2.0"]
         dataframe["%-kc_width"] = (
             dataframe["kc_upperband"] - dataframe["kc_lowerband"]
         ) / dataframe["kc_middleband"]
@@ -300,9 +329,21 @@ class QuickAdapterV3(IStrategy):
         )
 
         pair = str(metadata.get("pair"))
+        label_window = self.get_label_period_candles(pair) * 2
+
         self.__period_params[pair]["label_period_candles"] = dataframe[
             "label_period_candles"
         ].iloc[-1]
+
+        dataframe["natr_ratio_labeling_window"] = pta.natr(
+            dataframe["high"],
+            dataframe["low"],
+            dataframe["close"],
+            length=label_window,
+            scalar=1,
+            mamode="ema",
+        )
+        dataframe["s1_labeling_window"] = dataframe["low"].rolling(label_window).min()
 
         dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
         dataframe["maxima_threshold"] = dataframe[MAXIMA_THRESHOLD_COLUMN]
@@ -316,11 +357,10 @@ class QuickAdapterV3(IStrategy):
             df[EXTREMA_COLUMN] < df["minima_threshold"],
         ]
 
-        if enter_long_conditions:
-            df.loc[
-                reduce(lambda x, y: x & y, enter_long_conditions),
-                ["enter_long", "enter_tag"],
-            ] = (1, "long")
+        df.loc[
+            reduce(lambda x, y: x & y, enter_long_conditions),
+            ["enter_long", "enter_tag"],
+        ] = (1, "long")
 
         enter_short_conditions = [
             df["do_predict"] == 1,
@@ -328,16 +368,71 @@ class QuickAdapterV3(IStrategy):
             df[EXTREMA_COLUMN] > df["maxima_threshold"],
         ]
 
-        if enter_short_conditions:
-            df.loc[
-                reduce(lambda x, y: x & y, enter_short_conditions),
-                ["enter_short", "enter_tag"],
-            ] = (1, "short")
+        df.loc[
+            reduce(lambda x, y: x & y, enter_short_conditions),
+            ["enter_short", "enter_tag"],
+        ] = (1, "short")
 
         return df
 
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
+
+    def get_stoploss_distance(
+        self, entry_price: float, entry_natr: float, entry_s1: float
+    ) -> float:
+        stoploss_s1_distance = entry_s1 * 0.99
+        stoploss_natr_distance = entry_price * entry_natr * self.stoploss_natr_ratio
+        return max(stoploss_natr_distance, stoploss_s1_distance)
+
+    def custom_stoploss(
+        self,
+        pair: str,
+        trade: Trade,
+        current_time: datetime,
+        current_rate: float,
+        current_profit: float,
+        **kwargs,
+    ) -> float | None:
+        df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
+
+        if df.empty:
+            return None
+
+        entry_date = timeframe_to_prev_date(
+            self.timeframe,
+            (
+                trade.open_date_utc
+                - datetime.timedelta(minutes=int(self.timeframe[:-1]))
+            ),
+        )
+        entry_candle = df.loc[(df["date"] == entry_date)]
+        if entry_candle.empty:
+            return None
+        entry_candle = entry_candle.squeeze()
+        entry_natr = entry_candle["natr_ratio_labeling_window"]
+        entry_s1 = entry_candle["s1_labeling_window"]
+        entry_price = trade.open_rate
+        stoploss_distance = self.get_stoploss_distance(
+            entry_price, entry_natr, entry_s1
+        )
+
+        if trade.is_short:
+            stoploss_price = entry_price + stoploss_distance
+            stoploss_pct = (stoploss_price - current_rate) / current_rate
+        elif trade.is_long:
+            stoploss_price = entry_price - stoploss_distance
+            stoploss_pct = (current_rate - stoploss_price) / current_rate
+
+        return stoploss_pct
+
+    def get_take_profit_distance(
+        self, entry_price: float, entry_natr: float, entry_s1: float
+    ) -> float:
+        stoploss_distance = self.get_stoploss_distance(
+            entry_price, entry_natr, entry_s1
+        )
+        return stoploss_distance * self.risk_reward_ratio
 
     def custom_exit(
         self,
@@ -347,30 +442,62 @@ class QuickAdapterV3(IStrategy):
         current_rate: float,
         current_profit: float,
         **kwargs,
-    ):
+    ) -> str | None:
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
+
+        if df.empty:
+            return None
 
         last_candle = df.iloc[-1].squeeze()
         if last_candle["DI_catch"] == 0:
             return "outlier_detected"
 
-        enter_tag = trade.enter_tag
-        if (enter_tag == "long" or enter_tag == "short") and last_candle[
+        entry_tag = trade.enter_tag
+
+        if (entry_tag == "long" or entry_tag == "short") and last_candle[
             "do_predict"
         ] == 2:
             return "model_expired"
+
         if (
-            enter_tag == "short"
+            entry_tag == "short"
             and last_candle["do_predict"] == 1
             and last_candle[EXTREMA_COLUMN] < last_candle["minima_threshold"]
         ):
             return "minima_detected_short"
         if (
-            enter_tag == "long"
+            entry_tag == "long"
             and last_candle["do_predict"] == 1
             and last_candle[EXTREMA_COLUMN] > last_candle["maxima_threshold"]
         ):
             return "maxima_detected_long"
+
+        entry_date = timeframe_to_prev_date(
+            self.timeframe,
+            (
+                trade.open_date_utc
+                - datetime.timedelta(minutes=int(self.timeframe[:-1]))
+            ),
+        )
+        entry_candle = df.loc[(df["date"] == entry_date)]
+        if entry_candle.empty:
+            return None
+        entry_candle = entry_candle.squeeze()
+        entry_natr = entry_candle["natr_ratio_labeling_window"]
+        entry_s1 = entry_candle["s1_labeling_window"]
+        entry_price = trade.open_rate
+        take_profit_distance = self.get_take_profit_distance(
+            entry_price, entry_natr, entry_s1
+        )
+        entry_price = trade.open_rate
+        if trade.is_short:
+            take_profit_price = entry_price - take_profit_distance
+            if current_rate <= take_profit_price:
+                return "take_profit_short"
+        elif trade.is_long:
+            take_profit_price = entry_price + take_profit_distance
+            if current_rate >= take_profit_price:
+                return "take_profit_long"
 
     def confirm_trade_entry(
         self,
@@ -403,8 +530,15 @@ class QuickAdapterV3(IStrategy):
 
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
         last_candle = df.iloc[-1].squeeze()
-        if (side == "long" and rate > last_candle["close"] * (1 + 0.0025)) or (
-            side == "short" and rate < last_candle["close"] * (1 - 0.0025)
+        entry_price_fluctuation_threshold = (
+            last_candle["natr_ratio_labeling_window"] * self.entry_natr_ratio
+        )
+        if (
+            side == "long"
+            and rate > last_candle["close"] * (1 + entry_price_fluctuation_threshold)
+        ) or (
+            side == "short"
+            and rate < last_candle["close"] * (1 - entry_price_fluctuation_threshold)
         ):
             return False
 
@@ -481,10 +615,10 @@ def top_change_percent(dataframe: DataFrame, period: int) -> Series:
     """
     if period == 0:
         previous_close = dataframe["close"].shift(1)
-        return ((dataframe["close"] - previous_close) / previous_close).fillna(0.0)
+        return (dataframe["close"] - previous_close) / previous_close
     else:
         close_max = dataframe["close"].rolling(period).max()
-        return ((dataframe["close"] - close_max) / close_max).fillna(0.0)
+        return (dataframe["close"] - close_max) / close_max
 
 
 # VWAP bands
@@ -515,9 +649,7 @@ def EWO(
     ma2 = ma_fn(dataframe, timeperiod=ma2_length)
     madiff = ma1 - ma2
     if normalize:
-        madiff = ((madiff / dataframe["close"]) * 100).fillna(
-            0.0
-        )  # Optional normalization
+        madiff = (madiff / dataframe["close"]) * 100  # Optional normalization
     return madiff
 
 
