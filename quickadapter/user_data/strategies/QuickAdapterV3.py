@@ -40,6 +40,11 @@ class QuickAdapterV3(IStrategy):
     https://github.com/sponsors/robcaulk
     """
 
+    INTERFACE_VERSION = 3
+
+    def version(self) -> str:
+        return "3.1.0"
+
     timeframe = "5m"
 
     stoploss = -0.02

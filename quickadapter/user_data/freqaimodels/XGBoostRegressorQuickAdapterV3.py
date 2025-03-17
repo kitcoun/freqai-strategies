@@ -26,7 +26,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 logger = logging.getLogger(__name__)
 
 
-class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
+class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
     """
     The following freqaimodel is released to sponsors of the non-profit FreqAI open-source project.
     If you find the FreqAI project useful, please consider supporting it by becoming a sponsor.
@@ -42,6 +42,8 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
 
     https://github.com/sponsors/robcaulk
     """
+
+    version = "3.6.0"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -69,6 +71,9 @@ class XGBoostRegressorQuickAdapterV35(BaseRegressionModel):
             self.__optuna_period_params[pair] = (
                 self.optuna_load_best_params(pair, "period") or {}
             )
+        logger.info(
+            f"Initialized {self.__class__.__name__} model version {self.version}"
+        )
 
     def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
