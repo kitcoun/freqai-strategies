@@ -43,7 +43,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.0"
+        return "3.1.1"
 
     timeframe = "5m"
 
@@ -122,16 +122,16 @@ class QuickAdapterV3(IStrategy):
             {"method": "CooldownPeriod", "stop_duration_candles": 4},
             {
                 "method": "MaxDrawdown",
-                "lookback_period_candles": 48,
+                "lookback_period_candles": fit_live_predictions_candles,
                 "trade_limit": 20,
-                "stop_duration_candles": 4,
+                "stop_duration_candles": fit_live_predictions_candles,
                 "max_allowed_drawdown": 0.2,
             },
             {
                 "method": "StoplossGuard",
-                "lookback_period_candles": int(fit_live_predictions_candles / 2),
+                "lookback_period_candles": fit_live_predictions_candles,
                 "trade_limit": 1,
-                "stop_duration_candles": int(fit_live_predictions_candles / 2),
+                "stop_duration_candles": fit_live_predictions_candles,
                 "only_per_pair": True,
             },
         ]
@@ -140,7 +140,8 @@ class QuickAdapterV3(IStrategy):
 
     @property
     def startup_candle_count(self) -> int:
-        return int(self.freqai_info.get("fit_live_predictions_candles", 100) / 2)
+        # Match the predictions warmup period
+        return self.freqai_info.get("fit_live_predictions_candles", 100)
 
     def bot_start(self, **kwargs) -> None:
         self.pairs = self.config.get("exchange", {}).get("pair_whitelist")

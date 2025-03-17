@@ -41,16 +41,16 @@ class RLAgentStrategy(IStrategy):
     #         {"method": "CooldownPeriod", "stop_duration_candles": 4},
     #         {
     #             "method": "MaxDrawdown",
-    #             "lookback_period_candles": 48,
+    #             "lookback_period_candles": fit_live_predictions_candles,
     #             "trade_limit": 20,
-    #             "stop_duration_candles": 4,
+    #             "stop_duration_candles": fit_live_predictions_candles,
     #             "max_allowed_drawdown": 0.2,
     #         },
     #         {
     #             "method": "StoplossGuard",
-    #             "lookback_period_candles": int(fit_live_predictions_candles / 2),
+    #             "lookback_period_candles": fit_live_predictions_candles,
     #             "trade_limit": 1,
-    #             "stop_duration_candles": int(fit_live_predictions_candles / 2),
+    #             "stop_duration_candles": fit_live_predictions_candles,
     #             "only_per_pair": True,
     #         },
     #     ]
