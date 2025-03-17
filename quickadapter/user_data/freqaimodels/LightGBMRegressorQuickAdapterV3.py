@@ -637,7 +637,14 @@ def period_objective(
 
 
 def hp_objective(
-    trial, X, y, train_weights, X_test, y_test, test_weights, model_training_parameters
+    trial,
+    X,
+    y,
+    train_weights,
+    X_test,
+    y_test,
+    test_weights,
+    model_training_parameters,
 ) -> float:
     study_parameters = {
         "num_leaves": trial.suggest_int("num_leaves", 2, 256),

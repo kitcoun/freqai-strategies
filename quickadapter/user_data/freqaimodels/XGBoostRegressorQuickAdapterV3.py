@@ -645,7 +645,14 @@ def period_objective(
 
 
 def hp_objective(
-    trial, X, y, train_weights, X_test, y_test, test_weights, model_training_parameters
+    trial,
+    X,
+    y,
+    train_weights,
+    X_test,
+    y_test,
+    test_weights,
+    model_training_parameters,
 ) -> float:
     study_parameters = {
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
