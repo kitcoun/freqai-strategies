@@ -43,7 +43,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.1"
+        return "3.1.2"
 
     timeframe = "5m"
 
@@ -383,11 +383,9 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    def get_stoploss_distance(
-        self, entry_price: float, entry_natr: float, leverage: float
-    ) -> float:
-        stoploss_natr_distance = entry_price * entry_natr * self.stoploss_natr_ratio
-        return stoploss_natr_distance / leverage
+    def get_stoploss_distance(self, trade: Trade, entry_natr: float) -> float:
+        stoploss_natr_distance = trade.open_rate * entry_natr * self.stoploss_natr_ratio
+        return stoploss_natr_distance / trade.leverage
 
     def custom_stoploss(
         self,
@@ -413,26 +411,19 @@ class QuickAdapterV3(IStrategy):
             return None
         entry_candle = entry_candle.squeeze()
         entry_natr = entry_candle["natr_ratio_labeling_window"]
-        entry_price = trade.open_rate
-        stoploss_distance = self.get_stoploss_distance(
-            entry_price, entry_natr, trade.leverage
-        )
+        stoploss_distance = self.get_stoploss_distance(trade, entry_natr)
 
         if trade.is_short:
-            stoploss_price = entry_price + stoploss_distance
+            stoploss_price = trade.open_rate + stoploss_distance
             stoploss_pct = (stoploss_price - current_rate) / current_rate
         else:
-            stoploss_price = entry_price - stoploss_distance
+            stoploss_price = trade.open_rate - stoploss_distance
             stoploss_pct = (current_rate - stoploss_price) / current_rate
 
         return stoploss_pct
 
-    def get_take_profit_distance(
-        self, entry_price: float, entry_natr: float, leverage: float
-    ) -> float:
-        stoploss_distance = self.get_stoploss_distance(
-            entry_price, entry_natr, leverage
-        )
+    def get_take_profit_distance(self, trade: Trade, entry_natr: float) -> float:
+        stoploss_distance = self.get_stoploss_distance(trade, entry_natr)
         return stoploss_distance * self.risk_reward_ratio
 
     def custom_exit(
@@ -479,16 +470,13 @@ class QuickAdapterV3(IStrategy):
             return None
         entry_candle = entry_candle.squeeze()
         entry_natr = entry_candle["natr_ratio_labeling_window"]
-        entry_price = trade.open_rate
-        take_profit_distance = self.get_take_profit_distance(
-            entry_price, entry_natr, trade.leverage
-        )
+        take_profit_distance = self.get_take_profit_distance(trade, entry_natr)
         if trade.is_short:
-            take_profit_price = entry_price - take_profit_distance
+            take_profit_price = trade.open_rate - take_profit_distance
             if current_rate <= take_profit_price:
                 return "take_profit_short"
         else:
-            take_profit_price = entry_price + take_profit_distance
+            take_profit_price = trade.open_rate + take_profit_distance
             if current_rate >= take_profit_price:
                 return "take_profit_long"
 
@@ -522,6 +510,8 @@ class QuickAdapterV3(IStrategy):
                 return False
 
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
+        if df.empty:
+            return False
         last_candle = df.iloc[-1].squeeze()
         entry_price_fluctuation_threshold = (
             last_candle["natr_ratio_labeling_window"] * self.entry_natr_ratio
