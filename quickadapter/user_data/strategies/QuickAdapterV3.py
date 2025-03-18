@@ -3,6 +3,7 @@ import logging
 from functools import reduce
 import datetime
 from pathlib import Path
+from statistics import fmean
 import talib.abstract as ta
 from pandas import DataFrame, Series
 from technical import qtpylib
@@ -43,7 +44,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.4"
+        return "3.1.5"
 
     timeframe = "5m"
 
@@ -63,13 +64,17 @@ class QuickAdapterV3(IStrategy):
     def entry_natr_ratio(self) -> float:
         return self.config.get("entry_pricing", {}).get("entry_natr_ratio", 0.0025)
 
-    # risk_reward_ratio = risk / reward
-    # risk_reward_ratio = 1.0 means 1:1
-    # risk_reward_ratio = 2.0 means 1:2
+    # reward_risk_ratio = reward / risk
+    # reward_risk_ratio = 1.0 means 1:1 RR
+    # reward_risk_ratio = 2.0 means 1:2 RR
     # ...
     @property
-    def risk_reward_ratio(self) -> float:
-        return self.config.get("exit_pricing", {}).get("risk_reward_ratio", 2.0)
+    def reward_risk_ratio(self) -> float:
+        return self.config.get("exit_pricing", {}).get("reward_risk_ratio", 2.0)
+
+    @property
+    def natr_deviation_threshold(self) -> float:
+        return self.config.get("exit_pricing", {}).get("natr_deviation_threshold", 0.1)
 
     order_types = {
         "entry": "limit",
@@ -383,16 +388,29 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    def get_trade_entry_candle(self, df: DataFrame, trade: Trade) -> DataFrame | None:
+    def get_trade_entries(
+        self, df: DataFrame, trade: Trade
+    ) -> tuple[datetime.datetime, float | None, DataFrame | None]:
         entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
+
         entry_candle = df.loc[(df["date"] == entry_date)]
         if entry_candle.empty:
-            return None
-        return entry_candle.squeeze()
+            entry_candle = None
+        else:
+            entry_candle = entry_candle.squeeze()
 
-    def get_stoploss_distance(self, trade: Trade, entry_natr: float) -> float:
-        stoploss_natr_distance = trade.open_rate * entry_natr * self.stoploss_natr_ratio
-        return stoploss_natr_distance / trade.leverage
+        entry_natr = trade.metadata.get("entry_natr")
+        if not entry_natr:
+            if entry_candle is None:
+                entry_natr = None
+            else:
+                entry_natr = entry_candle["natr_ratio_labeling_window"]
+            trade.metadata["entry_natr"] = entry_natr
+
+        return entry_date, entry_natr, entry_candle
+
+    def get_stoploss_distance(self, trade: Trade, natr: float) -> float:
+        return trade.open_rate * natr * self.stoploss_natr_ratio
 
     def custom_stoploss(
         self,
@@ -412,24 +430,26 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        entry_candle = self.get_trade_entry_candle(df, trade)
-        if entry_candle is None:
+        entry_date, entry_natr, entry_candle = self.get_trade_entries(df, trade)
+        if entry_natr is None or entry_candle is None:
             return None
-        entry_natr = entry_candle["natr_ratio_labeling_window"]
-        stoploss_distance = self.get_stoploss_distance(trade, entry_natr)
-
+        entry_stoploss_distance = self.get_stoploss_distance(trade, entry_natr)
+        last_natr = df["natr_ratio_labeling_window"].iloc[-1]
+        dynamic_stoploss_distance = self.get_stoploss_distance(trade, last_natr)
         if trade.is_short:
-            stoploss_price = trade.open_rate + stoploss_distance
+            lowest_price = df["low"].loc[entry_date:].min()
+            stoploss_price = lowest_price + fmean(
+                [entry_stoploss_distance, dynamic_stoploss_distance]
+            )
             stoploss_pct = (stoploss_price - current_rate) / current_rate
         else:
-            stoploss_price = trade.open_rate - stoploss_distance
+            highest_price = df["high"].loc[entry_date:].max()
+            stoploss_price = highest_price - fmean(
+                [entry_stoploss_distance, dynamic_stoploss_distance]
+            )
             stoploss_pct = (current_rate - stoploss_price) / current_rate
 
         return stoploss_pct
-
-    def get_take_profit_distance(self, trade: Trade, entry_natr: float) -> float:
-        stoploss_distance = self.get_stoploss_distance(trade, entry_natr)
-        return stoploss_distance * self.risk_reward_ratio
 
     def custom_exit(
         self,
@@ -448,13 +468,10 @@ class QuickAdapterV3(IStrategy):
         last_candle = df.iloc[-1].squeeze()
         if last_candle["DI_catch"] == 0:
             return "outlier_detected"
+        if last_candle["do_predict"] == 2:
+            return "model_expired"
 
         entry_tag = trade.enter_tag
-
-        if (entry_tag == "long" or entry_tag == "short") and last_candle[
-            "do_predict"
-        ] == 2:
-            return "model_expired"
 
         if (
             entry_tag == "short"
@@ -469,19 +486,37 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        entry_candle = self.get_trade_entry_candle(df, trade)
-        if entry_candle is None:
+        _, entry_natr, _ = self.get_trade_entries(df, trade)
+        if entry_natr is None:
             return None
-        entry_natr = entry_candle["natr_ratio_labeling_window"]
-        take_profit_distance = self.get_take_profit_distance(trade, entry_natr)
+        last_natr = df["natr_ratio_labeling_window"].iloc[-1]
+        natr_deviation = (last_natr - entry_natr) / entry_natr
+        take_profit_distance_adjusted = False
+        if abs(natr_deviation) >= self.natr_deviation_threshold:
+            take_profit_distance = (
+                self.get_stoploss_distance(trade, last_natr) * self.reward_risk_ratio
+            )
+            take_profit_distance_adjusted = True
+        else:
+            take_profit_distance = (
+                self.get_stoploss_distance(trade, entry_natr) * self.reward_risk_ratio
+            )
         if trade.is_short:
             take_profit_price = trade.open_rate - take_profit_distance
             if current_rate <= take_profit_price:
-                return "take_profit_short"
+                return (
+                    "take_profit_adjusted_short"
+                    if take_profit_distance_adjusted
+                    else "take_profit_short"
+                )
         else:
             take_profit_price = trade.open_rate + take_profit_distance
             if current_rate >= take_profit_price:
-                return "take_profit_long"
+                return (
+                    "take_profit_adjusted_long"
+                    if take_profit_distance_adjusted
+                    else "take_profit_long"
+                )
 
     def confirm_trade_entry(
         self,
