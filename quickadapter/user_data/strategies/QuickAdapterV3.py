@@ -43,7 +43,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.3"
+        return "3.1.4"
 
     timeframe = "5m"
 
@@ -603,8 +603,8 @@ def top_change_percent(dataframe: DataFrame, period: int) -> Series:
         previous_close = dataframe["close"].shift(1)
         return (dataframe["close"] - previous_close) / previous_close
     else:
-        close_max = dataframe["close"].rolling(period).max()
-        return (dataframe["close"] - close_max) / close_max
+        previous_close_max = dataframe["close"].rolling(period).max().shift(1)
+        return (dataframe["close"] - previous_close_max) / previous_close_max
 
 
 # VWAP bands
