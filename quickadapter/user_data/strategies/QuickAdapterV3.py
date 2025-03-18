@@ -44,21 +44,30 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.5"
+        return "3.1.6"
 
     timeframe = "5m"
 
     stoploss = -0.02
     use_custom_stoploss = True
+
+    @property
+    def trailing_stoploss_positive_offset(self) -> float:
+        return self.config.get("trailing_stoploss_positive_offset", 0.01)
+
+    @property
+    def trailing_stoploss_only_offset_is_reached(self) -> bool:
+        return self.config.get("trailing_stoploss_only_offset_is_reached", True)
+
+    @property
+    def trailing_stoploss_natr_ratio(self) -> float:
+        return self.config.get("trailing_stoploss_natr_ratio", 0.025)
+
     # Trailing stop:
     trailing_stop = False
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
-
-    @property
-    def stoploss_natr_ratio(self) -> float:
-        return self.config.get("stoploss_natr_ratio", 0.025)
 
     @property
     def entry_natr_ratio(self) -> float:
@@ -405,7 +414,9 @@ class QuickAdapterV3(IStrategy):
             return 0.0
         last_natr = df["natr_ratio_labeling_window"].iloc[-1]
         return (
-            trade.open_rate * fmean([entry_natr, last_natr]) * self.stoploss_natr_ratio
+            trade.open_rate
+            * fmean([entry_natr, last_natr])
+            * self.trailing_stoploss_natr_ratio
         )
 
     def custom_stoploss(
@@ -417,8 +428,10 @@ class QuickAdapterV3(IStrategy):
         current_profit: float,
         **kwargs,
     ) -> float | None:
-        # Trailing stoploss starts at 1% profit
-        if current_profit < 0.01:
+        if (
+            self.trailing_stoploss_only_offset_is_reached
+            and current_profit < self.trailing_stoploss_positive_offset
+        ):
             return None
 
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
