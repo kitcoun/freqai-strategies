@@ -394,15 +394,15 @@ class QuickAdapterV3(IStrategy):
             return False
         entry_candle = entry_candle.squeeze()
 
-        entry_natr = trade.metadata.get("entry_natr")
+        entry_natr = trade.get_custom_data(key="entry_natr")
         if not entry_natr:
             entry_natr = entry_candle["natr_ratio_labeling_window"]
-            trade.metadata["entry_natr"] = entry_natr
+            trade.set_custom_data(key="entry_natr", value=entry_natr)
 
         return entry_date
 
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float:
-        entry_natr = trade.metadata.get("entry_natr")
+        entry_natr = trade.get_custom_data(key="entry_natr")
         last_natr = df["natr_ratio_labeling_window"].iloc[-1]
         return (
             trade.open_rate * fmean([entry_natr, last_natr]) * self.stoploss_natr_ratio
