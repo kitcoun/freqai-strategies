@@ -632,7 +632,9 @@ def EWO(
     ma2 = ma_fn(dataframe, timeperiod=ma2_length)
     madiff = ma1 - ma2
     if normalize:
-        madiff = (madiff / dataframe["close"]) * 100  # Optional normalization
+        madiff = (
+            madiff / dataframe["close"]
+        ) * 100  # Optional normalization with close price
     return madiff
 
 
