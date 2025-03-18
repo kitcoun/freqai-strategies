@@ -390,7 +390,7 @@ class QuickAdapterV3(IStrategy):
 
     def get_trade_entries(
         self, df: DataFrame, trade: Trade
-    ) -> tuple[datetime.datetime, float | None, DataFrame | None]:
+    ) -> tuple[datetime.datetime, float | None]:
         entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
 
         entry_candle = df.loc[(df["date"] == entry_date)]
@@ -407,7 +407,7 @@ class QuickAdapterV3(IStrategy):
                 entry_natr = entry_candle["natr_ratio_labeling_window"]
             trade.metadata["entry_natr"] = entry_natr
 
-        return entry_date, entry_natr, entry_candle
+        return entry_date, entry_natr
 
     def get_stoploss_distance(self, trade: Trade, natr: float) -> float:
         return trade.open_rate * natr * self.stoploss_natr_ratio
@@ -430,8 +430,8 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        entry_date, entry_natr, entry_candle = self.get_trade_entries(df, trade)
-        if entry_natr is None or entry_candle is None:
+        entry_date, entry_natr = self.get_trade_entries(df, trade)
+        if entry_natr is None:
             return None
         entry_stoploss_distance = self.get_stoploss_distance(trade, entry_natr)
         last_natr = df["natr_ratio_labeling_window"].iloc[-1]
@@ -486,7 +486,7 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        _, entry_natr, _ = self.get_trade_entries(df, trade)
+        _, entry_natr = self.get_trade_entries(df, trade)
         if entry_natr is None:
             return None
         last_natr = df["natr_ratio_labeling_window"].iloc[-1]
