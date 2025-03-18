@@ -43,7 +43,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.2"
+        return "3.1.3"
 
     timeframe = "5m"
 
@@ -570,7 +570,7 @@ class QuickAdapterV3(IStrategy):
             "smm": series.rolling(window=get_odd_window(window), center=True).median(),
             "sma": series.rolling(window=get_odd_window(window), center=True).mean(),
             "ewma": series.ewm(span=window).mean(),
-            "zlewma": zlewma(series=series, timeperiod=window),
+            "zlewma": pta.zlma(series, length=window, mamode="ema"),
         }
         return smoothing_methods.get(
             extrema_smoothing,
@@ -643,19 +643,7 @@ def ZLEWMA(dataframe: DataFrame, timeperiod: int) -> Series:
     :param timeperiod: int The period to look back
     :return: Series The close price ZLEWMA series
     """
-    return zlewma(series=dataframe["close"], timeperiod=timeperiod)
-
-
-def zlewma(series: Series, timeperiod: int) -> Series:
-    """
-    Calculate the ZLEWMA (Zero Lag Exponential Weighted Moving Average) of a series.
-    Formula: ZLEWMA = 2 * EWMA(price, N) - EWMA(EWMA(price, N), N).
-    :param series: Series The original series
-    :param timeperiod: int The period to look back
-    :return: Series The ZLEWMA series
-    """
-    ewma = series.ewm(span=timeperiod).mean()
-    return 2 * ewma - ewma.ewm(span=timeperiod).mean()
+    return pta.zlma(dataframe["close"], length=timeperiod, mamode="ema")
 
 
 def zero_phase_gaussian(series: Series, std: float):
