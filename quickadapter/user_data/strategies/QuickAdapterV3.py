@@ -384,25 +384,25 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    def build_trade_entries(
+    def get_trade_entry_natr(
         self, df: DataFrame, trade: Trade
     ) -> datetime.datetime | bool:
-        entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
-
-        entry_candle = df.loc[(df["date"] == entry_date)]
-        if entry_candle.empty:
-            return False
-        entry_candle = entry_candle.squeeze()
-
         entry_natr = trade.get_custom_data(key="entry_natr")
         if not entry_natr:
+            entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
+            entry_candle = df.loc[(df["date"] == entry_date)]
+            if entry_candle.empty:
+                return False
+            entry_candle = entry_candle.squeeze()
             entry_natr = entry_candle["natr_ratio_labeling_window"]
             trade.set_custom_data(key="entry_natr", value=entry_natr)
 
-        return entry_date
+        return entry_natr
 
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float:
-        entry_natr = trade.get_custom_data(key="entry_natr")
+        entry_natr = self.get_trade_entry_natr(df, trade)
+        if not entry_natr:
+            return 0.0
         last_natr = df["natr_ratio_labeling_window"].iloc[-1]
         return (
             trade.open_rate * fmean([entry_natr, last_natr]) * self.stoploss_natr_ratio
@@ -426,9 +426,7 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        entry_date = self.build_trade_entries(df, trade)
-        if not entry_date:
-            return None
+        entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
         stoploss_distance = self.get_trade_stoploss_distance(df, trade)
         if trade.is_short:
             lowest_price = df["low"].loc[entry_date:].min()
@@ -476,8 +474,6 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        if not self.build_trade_entries(df, trade):
-            return None
         take_profit_distance = (
             self.get_trade_stoploss_distance(df, trade) * self.reward_risk_ratio
         )
