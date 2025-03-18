@@ -383,6 +383,13 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
+    def get_trade_entry_candle(self, df: DataFrame, trade: Trade) -> DataFrame | None:
+        entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
+        entry_candle = df.loc[(df["date"] == entry_date)]
+        if entry_candle.empty:
+            return None
+        return entry_candle.squeeze()
+
     def get_stoploss_distance(self, trade: Trade, entry_natr: float) -> float:
         stoploss_natr_distance = trade.open_rate * entry_natr * self.stoploss_natr_ratio
         return stoploss_natr_distance / trade.leverage
@@ -405,11 +412,9 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
-        entry_candle = df.loc[(df["date"] == entry_date)]
-        if entry_candle.empty:
+        entry_candle = self.get_trade_entry_candle(df, trade)
+        if entry_candle is None:
             return None
-        entry_candle = entry_candle.squeeze()
         entry_natr = entry_candle["natr_ratio_labeling_window"]
         stoploss_distance = self.get_stoploss_distance(trade, entry_natr)
 
@@ -464,11 +469,9 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
-        entry_candle = df.loc[(df["date"] == entry_date)]
-        if entry_candle.empty:
+        entry_candle = self.get_trade_entry_candle(df, trade)
+        if entry_candle is None:
             return None
-        entry_candle = entry_candle.squeeze()
         entry_natr = entry_candle["natr_ratio_labeling_window"]
         take_profit_distance = self.get_take_profit_distance(trade, entry_natr)
         if trade.is_short:
