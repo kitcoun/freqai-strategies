@@ -4,7 +4,7 @@ from functools import reduce
 import datetime
 from pathlib import Path
 import talib.abstract as ta
-from pandas import DataFrame, Series
+from pandas import DataFrame, Series, isna
 from technical import qtpylib
 from typing import Optional
 from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
@@ -402,9 +402,17 @@ class QuickAdapterV3(IStrategy):
 
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float:
         entry_natr = self.get_trade_entry_natr(df, trade)
-        if entry_natr is None:
+        if isna(entry_natr):
             return 0.0
         return trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
+
+    def get_current_stoploss_distance(
+        self, df: DataFrame, current_rate: float
+    ) -> float:
+        current_natr = df["natr_ratio_labeling_window"].iloc[-1]
+        if isna(current_natr):
+            return 0.0
+        return current_rate * current_natr * self.trailing_stoploss_natr_ratio
 
     def custom_stoploss(
         self,
