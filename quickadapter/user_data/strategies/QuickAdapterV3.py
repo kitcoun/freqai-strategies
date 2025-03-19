@@ -43,7 +43,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.6"
+        return "3.1.7"
 
     timeframe = "5m"
 
@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
 
     @property
     def trailing_stoploss_natr_ratio(self) -> float:
-        return self.config.get("trailing_stoploss_natr_ratio", 0.025)
+        return self.config.get("trailing_stoploss_natr_ratio", 0.05)
 
     # Trailing stop:
     trailing_stop = False
@@ -392,24 +392,17 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    def get_trade_entry_natr(
-        self, df: DataFrame, trade: Trade
-    ) -> datetime.datetime | bool:
-        entry_natr = trade.get_custom_data(key="entry_natr")
-        if not entry_natr:
-            entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
-            entry_candle = df.loc[(df["date"] == entry_date)]
-            if entry_candle.empty:
-                return False
-            entry_candle = entry_candle.squeeze()
-            entry_natr = entry_candle["natr_ratio_labeling_window"]
-            trade.set_custom_data(key="entry_natr", value=entry_natr)
-
-        return entry_natr
+    def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> float | None:
+        entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
+        entry_candle = df.loc[(df["date"] == entry_date)]
+        if entry_candle.empty:
+            return None
+        entry_candle = entry_candle.squeeze()
+        return entry_candle["natr_ratio_labeling_window"]
 
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float:
         entry_natr = self.get_trade_entry_natr(df, trade)
-        if not entry_natr or entry_natr <= 0:
+        if entry_natr is None or entry_natr <= 0:
             return 0.0
         return trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
 
@@ -433,15 +426,12 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
         stoploss_distance = self.get_trade_stoploss_distance(df, trade)
         if trade.is_short:
-            lowest_price = df["low"].loc[entry_date:].min()
-            stoploss_price = lowest_price + stoploss_distance
+            stoploss_price = trade.open_rate + stoploss_distance
             stoploss_pct = (stoploss_price - current_rate) / current_rate
         else:
-            highest_price = df["high"].loc[entry_date:].max()
-            stoploss_price = highest_price - stoploss_distance
+            stoploss_price = trade.open_rate - stoploss_distance
             stoploss_pct = (current_rate - stoploss_price) / current_rate
 
         return stoploss_pct
