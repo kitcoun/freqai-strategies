@@ -610,10 +610,10 @@ class QuickAdapterV3(IStrategy):
 
 def top_change_percent(dataframe: DataFrame, period: int) -> Series:
     """
-    Percentage change of the current close relative to the maximum close price
-    over the lookback period.
+    Percentage change of the current close relative to the top close price in previous periods.
     :param dataframe: DataFrame The original OHLCV dataframe
-    :param period: int The period to look back (0 = previous candle)
+    :param period: int The period size to look back
+    :return: Series The percentage change series
     """
     if period == 0:
         previous_close = dataframe["close"].shift(1)
