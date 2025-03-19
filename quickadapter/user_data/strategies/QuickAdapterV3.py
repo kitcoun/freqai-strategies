@@ -3,7 +3,6 @@ import logging
 from functools import reduce
 import datetime
 from pathlib import Path
-from statistics import fmean
 import talib.abstract as ta
 from pandas import DataFrame, Series
 from technical import qtpylib
@@ -410,13 +409,9 @@ class QuickAdapterV3(IStrategy):
 
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float:
         entry_natr = self.get_trade_entry_natr(df, trade)
-        if not entry_natr:
+        if not entry_natr or entry_natr <= 0:
             return 0.0
-        last_natr = df["natr_ratio_labeling_window"].iloc[-1]
-        if not last_natr:
-            return 0.0
-        natr = fmean([entry_natr, last_natr])
-        return trade.open_rate * natr * self.trailing_stoploss_natr_ratio
+        return trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
 
     def custom_stoploss(
         self,
