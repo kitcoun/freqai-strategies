@@ -413,11 +413,10 @@ class QuickAdapterV3(IStrategy):
         if not entry_natr:
             return 0.0
         last_natr = df["natr_ratio_labeling_window"].iloc[-1]
-        return (
-            trade.open_rate
-            * fmean([entry_natr, last_natr])
-            * self.trailing_stoploss_natr_ratio
-        )
+        if not last_natr:
+            return 0.0
+        natr = fmean([entry_natr, last_natr])
+        return trade.open_rate * natr * self.trailing_stoploss_natr_ratio
 
     def custom_stoploss(
         self,
@@ -615,12 +614,14 @@ def top_change_percent(dataframe: DataFrame, period: int) -> Series:
     :param period: int The period size to look back
     :return: Series The percentage change series
     """
+    if period < 0:
+        raise ValueError("period must be greater than or equal to 0")
     if period == 0:
         previous_close = dataframe["close"].shift(1)
-        return (dataframe["close"] - previous_close) / previous_close
     else:
-        previous_close_max = dataframe["close"].rolling(period).max().shift(1)
-        return (dataframe["close"] - previous_close_max) / previous_close_max
+        previous_close = dataframe["close"].rolling(period).max().shift(1)
+
+    return (dataframe["close"] - previous_close) / previous_close
 
 
 # VWAP bands
