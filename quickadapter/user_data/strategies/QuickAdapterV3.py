@@ -44,7 +44,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.9"
+        return "3.1.10"
 
     timeframe = "5m"
 
@@ -404,7 +404,7 @@ class QuickAdapterV3(IStrategy):
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float:
         entry_natr = self.get_trade_entry_natr(df, trade)
         if isna(entry_natr):
-            return 0.0
+            return trade.open_rate * self.trailing_stoploss_positive_offset
         return trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
 
     def get_current_stoploss_distance(
@@ -412,14 +412,8 @@ class QuickAdapterV3(IStrategy):
     ) -> float:
         current_natr = df["natr_ratio_labeling_window"].iloc[-1]
         if isna(current_natr):
-            return 0.0
-        return (
-            max(
-                current_rate * current_natr,
-                current_rate * self.trailing_stoploss_positive_offset,
-            )
-            * self.trailing_stoploss_natr_ratio
-        )
+            return current_rate * self.trailing_stoploss_positive_offset
+        return current_rate * current_natr * self.trailing_stoploss_natr_ratio
 
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
