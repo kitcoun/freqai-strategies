@@ -43,7 +43,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.7"
+        return "3.1.8"
 
     timeframe = "5m"
 
@@ -402,7 +402,7 @@ class QuickAdapterV3(IStrategy):
 
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float:
         entry_natr = self.get_trade_entry_natr(df, trade)
-        if entry_natr is None or entry_natr <= 0:
+        if entry_natr is None:
             return 0.0
         return trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
 
