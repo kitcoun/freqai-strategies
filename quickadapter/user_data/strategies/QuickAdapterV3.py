@@ -9,6 +9,7 @@ from technical import qtpylib
 from typing import Optional
 from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
 from freqtrade.strategy.interface import IStrategy
+from freqtrade.strategy import stoploss_from_absolute
 from technical.pivots_points import pivots_points
 from freqtrade.persistence import Trade
 from scipy.signal import argrelmin, argrelmax, convolve
@@ -43,7 +44,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.8"
+        return "3.1.9"
 
     timeframe = "5m"
 
@@ -412,7 +413,21 @@ class QuickAdapterV3(IStrategy):
         current_natr = df["natr_ratio_labeling_window"].iloc[-1]
         if isna(current_natr):
             return 0.0
-        return current_rate * current_natr * self.trailing_stoploss_natr_ratio
+        return (
+            max(
+                current_rate * current_natr,
+                current_rate * self.trailing_stoploss_positive_offset,
+            )
+            * self.trailing_stoploss_natr_ratio
+        )
+
+    def get_stoploss_distance(
+        self, df: DataFrame, trade: Trade, current_rate: float
+    ) -> float:
+        return max(
+            self.get_trade_stoploss_distance(df, trade),
+            self.get_current_stoploss_distance(df, current_rate),
+        )
 
     def custom_stoploss(
         self,
@@ -434,15 +449,14 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        stoploss_distance = self.get_trade_stoploss_distance(df, trade)
-        if trade.is_short:
-            stoploss_price = trade.open_rate + stoploss_distance
-            stoploss_pct = (stoploss_price - current_rate) / current_rate
-        else:
-            stoploss_price = trade.open_rate - stoploss_distance
-            stoploss_pct = (current_rate - stoploss_price) / current_rate
-
-        return stoploss_pct
+        stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
+        sign = 1 if trade.is_short else -1
+        return stoploss_from_absolute(
+            current_rate + (sign * stoploss_distance),
+            current_rate=current_rate,
+            is_short=trade.is_short,
+            leverage=trade.leverage,
+        )
 
     def custom_exit(
         self,
@@ -480,7 +494,7 @@ class QuickAdapterV3(IStrategy):
             return "maxima_detected_long"
 
         take_profit_distance = (
-            self.get_trade_stoploss_distance(df, trade) * self.reward_risk_ratio
+            self.get_stoploss_distance(df, trade, current_rate) * self.reward_risk_ratio
         )
         if trade.is_short:
             take_profit_price = trade.open_rate - take_profit_distance
