@@ -43,7 +43,7 @@ class LightGBMRegressorQuickAdapterV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.0"
+    version = "3.6.1"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -647,6 +647,7 @@ def hp_objective(
     model_training_parameters,
 ) -> float:
     study_parameters = {
+        "n_estimators": trial.suggest_int("n_estimators", 100, 2000, step=10),
         "num_leaves": trial.suggest_int("num_leaves", 2, 256),
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
         "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
