@@ -1,0 +1,42 @@
+- = candle = { open, close, high, low, volume, natr_ratio_label_window, ... } dataframe
+
+Labeling window: 
+----------------
+
+[  label window   ] size can change because of HPO
+										  	
+										                                                               now
+										                                                                |
+-------------------------------------------------------------------------------------
+	      ][  label window   ][  label window   ][  label window   ][  label window   ]
+
+Price movement expectation over the labeling window:
+----------------------------------------------------
+
+trade candles = current candle date - trade candle date / timeframe (in the same time unit)
+
+		         trade candle	
+                              |
+-------------------------------       -> trade natr * trade open rate = expected price movement in the future label window candles
+[   trade natr label window   ]
+
+
+   trade candle	         current candle
+	|		        |
+---------------------------------     -> current natr * current rate = expected price movement in the future label window candles
+[   current natr label window   ]
+
+   trade candle	         		current candle
+	|		        	       |
+------------------------------------------------------------------   -> current natr * current rate * trade candles // label window  = expected price movement in the future
+[   current natr label window   ][   current natr label window   ]								       (trade candles // label window) label window candles  
+
+
+
+
+
+
+
+
+
+

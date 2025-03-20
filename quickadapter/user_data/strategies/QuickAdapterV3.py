@@ -44,7 +44,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.11"
+        return "3.1.12"
 
     timeframe = "5m"
 
@@ -398,12 +398,29 @@ class QuickAdapterV3(IStrategy):
         entry_candle = df.loc[(df["date"] == entry_date)]
         if entry_candle.empty:
             return None
-        return entry_candle.squeeze()
+        return entry_candle
+
+    def get_trade_candles(self, df: DataFrame, trade: Trade) -> int | None:
+        entry_candle = self.get_trade_entry_candle(df, trade)
+        if isna(entry_candle):
+            return None
+        entry_candle = entry_candle.squeeze()
+        entry_candle_date = entry_candle["date"]
+        current_candle_date = df["date"].iloc[-1]
+        if isna(current_candle_date):
+            return None
+        trade_duration_minutes = (
+            current_candle_date - entry_candle_date
+        ).total_seconds() / 60.0
+        return max(
+            int(trade_duration_minutes / timeframe_to_minutes(self.timeframe)), 1
+        )
 
     def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> float | None:
         entry_candle = self.get_trade_entry_candle(df, trade)
         if isna(entry_candle):
             return None
+        entry_candle = entry_candle.squeeze()
         return entry_candle["natr_ratio_labeling_window"]
 
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float | None:
@@ -423,11 +440,19 @@ class QuickAdapterV3(IStrategy):
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
     ) -> float | None:
-        trade_stoploss_distance = self.get_trade_stoploss_distance(df, trade)
-        current_stoploss_distance = self.get_current_stoploss_distance(df, current_rate)
-        if isna(trade_stoploss_distance) or isna(current_stoploss_distance):
+        label_window_frequency = self.get_trade_candles(df, trade) // (
+            self.get_label_period_candles(trade.pair) * 2
+        )
+        # trade_stoploss_distance = self.get_trade_stoploss_distance(df, trade)
+        current_stoploss_distance = self.get_current_stoploss_distance(
+            df, current_rate
+        ) / self.get_trade_candles(df, trade)
+        # if isna(trade_stoploss_distance) or isna(current_stoploss_distance):
+        #     return None
+        # return max(trade_stoploss_distance, current_stoploss_distance)
+        if isna(current_stoploss_distance):
             return None
-        return max(trade_stoploss_distance, current_stoploss_distance)
+        return current_stoploss_distance
 
     def custom_stoploss(
         self,
@@ -537,7 +562,7 @@ class QuickAdapterV3(IStrategy):
     ) -> bool:
         max_open_trades_per_side = self.max_open_trades_per_side()
         if max_open_trades_per_side >= 0:
-            open_trades = Trade.get_trades(trade_filter=Trade.is_open.is_(True))
+            open_trades = Trade.get_open_trades()
             num_shorts, num_longs = 0, 0
             for trade in open_trades:
                 if "short" in trade.enter_tag:
