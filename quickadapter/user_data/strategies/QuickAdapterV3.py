@@ -44,7 +44,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.10"
+        return "3.1.11"
 
     timeframe = "5m"
 
@@ -401,27 +401,28 @@ class QuickAdapterV3(IStrategy):
         entry_candle = entry_candle.squeeze()
         return entry_candle["natr_ratio_labeling_window"]
 
-    def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float:
+    def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float | None:
         entry_natr = self.get_trade_entry_natr(df, trade)
         if isna(entry_natr):
-            return trade.open_rate * self.trailing_stoploss_positive_offset
+            return None
         return trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
 
     def get_current_stoploss_distance(
         self, df: DataFrame, current_rate: float
-    ) -> float:
+    ) -> float | None:
         current_natr = df["natr_ratio_labeling_window"].iloc[-1]
         if isna(current_natr):
-            return current_rate * self.trailing_stoploss_positive_offset
+            return None
         return current_rate * current_natr * self.trailing_stoploss_natr_ratio
 
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
-    ) -> float:
-        return max(
-            self.get_trade_stoploss_distance(df, trade),
-            self.get_current_stoploss_distance(df, current_rate),
-        )
+    ) -> float | None:
+        trade_stoploss_distance = self.get_trade_stoploss_distance(df, trade)
+        current_stoploss_distance = self.get_current_stoploss_distance(df, current_rate)
+        if isna(trade_stoploss_distance) or isna(current_stoploss_distance):
+            return None
+        return max(trade_stoploss_distance, current_stoploss_distance)
 
     def custom_stoploss(
         self,
@@ -444,6 +445,15 @@ class QuickAdapterV3(IStrategy):
             return None
 
         stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
+        if isna(stoploss_distance):
+            return None
+        if stoploss_distance == 0:
+            logger.warning(
+                f"Stoploss distance is 0 for trade {trade.id} on pair {pair}. "
+                f"Current rate: {current_rate}, trade open rate: {trade.open_rate}, "
+                f"trade entry tag: {trade.enter_tag}"
+            )
+            return None
         sign = 1 if trade.is_short else -1
         return stoploss_from_absolute(
             current_rate + (sign * stoploss_distance),
@@ -490,6 +500,15 @@ class QuickAdapterV3(IStrategy):
         take_profit_distance = (
             self.get_stoploss_distance(df, trade, current_rate) * self.reward_risk_ratio
         )
+        if isna(take_profit_distance):
+            return None
+        if take_profit_distance == 0:
+            logger.warning(
+                f"Take profit distance is 0 for trade {trade.id} on pair {pair}. "
+                f"Current rate: {current_rate}, trade open rate: {trade.open_rate}, "
+                f"trade entry tag: {trade.enter_tag}"
+            )
+            return None
         if trade.is_short:
             take_profit_price = trade.open_rate - take_profit_distance
             if current_rate <= take_profit_price:
