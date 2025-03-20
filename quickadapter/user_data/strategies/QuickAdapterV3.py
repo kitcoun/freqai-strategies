@@ -331,7 +331,10 @@ class QuickAdapterV3(IStrategy):
             dataframe.at[mp, EXTREMA_COLUMN] = 1
         dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
-        dataframe[EXTREMA_COLUMN] = self.smooth_extrema(dataframe[EXTREMA_COLUMN], 5)
+        dataframe[EXTREMA_COLUMN] = self.smooth_extrema(
+            dataframe[EXTREMA_COLUMN],
+            self.freqai_info.get("extrema_smoothing_window", 5),
+        )
         return dataframe
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
