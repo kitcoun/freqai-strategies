@@ -393,12 +393,17 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> float | None:
+    def get_trade_entry_candle(self, df: DataFrame, trade: Trade) -> DataFrame | None:
         entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
         entry_candle = df.loc[(df["date"] == entry_date)]
         if entry_candle.empty:
             return None
-        entry_candle = entry_candle.squeeze()
+        return entry_candle.squeeze()
+
+    def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> float | None:
+        entry_candle = self.get_trade_entry_candle(df, trade)
+        if isna(entry_candle):
+            return None
         return entry_candle["natr_ratio_labeling_window"]
 
     def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float | None:
