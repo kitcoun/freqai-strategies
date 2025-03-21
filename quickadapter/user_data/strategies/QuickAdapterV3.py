@@ -625,7 +625,9 @@ class QuickAdapterV3(IStrategy):
                 win_type="gaussian",
                 center=True,
             ).mean(std=std),
-            "zero_phase_gaussian": zero_phase_gaussian(series=series, std=std),
+            "zero_phase_gaussian": zero_phase_gaussian(
+                series=series, window=gaussian_window, std=std
+            ),
             "boxcar": series.rolling(
                 window=odd_window, win_type="boxcar", center=True
             ).mean(),
@@ -715,9 +717,7 @@ def ZLEWMA(dataframe: DataFrame, timeperiod: int) -> Series:
     return pta.zlma(dataframe["close"], length=timeperiod, mamode="ema")
 
 
-def zero_phase_gaussian(series: Series, std: float):
-    window = get_gaussian_window(std, True)
-
+def zero_phase_gaussian(series: Series, window: int, std: float):
     kernel = gaussian(window, std=std)
     kernel /= kernel.sum()
 
