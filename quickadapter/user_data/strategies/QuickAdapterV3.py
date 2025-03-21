@@ -617,21 +617,23 @@ class QuickAdapterV3(IStrategy):
         extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
         if std is None:
             std = derive_gaussian_std_from_window(window)
+        gaussian_window = get_gaussian_window(std, True)
+        odd_window = get_odd_window(window)
         smoothing_methods: dict = {
             "gaussian": series.rolling(
-                window=get_gaussian_window(std, True),
+                window=gaussian_window,
                 win_type="gaussian",
                 center=True,
             ).mean(std=std),
             "zero_phase_gaussian": zero_phase_gaussian(series=series, std=std),
             "boxcar": series.rolling(
-                window=get_odd_window(window), win_type="boxcar", center=True
+                window=odd_window, win_type="boxcar", center=True
             ).mean(),
             "triang": series.rolling(
-                window=get_odd_window(window), win_type="triang", center=True
+                window=odd_window, win_type="triang", center=True
             ).mean(),
-            "smm": series.rolling(window=get_odd_window(window), center=True).median(),
-            "sma": series.rolling(window=get_odd_window(window), center=True).mean(),
+            "smm": series.rolling(window=odd_window, center=True).median(),
+            "sma": series.rolling(window=odd_window, center=True).mean(),
             "ewma": series.ewm(span=window).mean(),
             "zlewma": pta.zlma(series, length=window, mamode="ema"),
         }
