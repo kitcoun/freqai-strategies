@@ -173,7 +173,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
         dataframe["%-aroonosc-period"] = ta.AROONOSC(dataframe, timeperiod=period)
         dataframe["%-mfi-period"] = ta.MFI(dataframe, timeperiod=period)
-        dataframe["%-adx-period"] = ta.ADX(dataframe, window=period)
+        dataframe["%-adx-period"] = ta.ADX(dataframe, timeperiod=period)
         dataframe["%-cci-period"] = ta.CCI(dataframe, timeperiod=period)
         dataframe["%-er-period"] = pta.er(dataframe["close"], length=period)
         dataframe["%-rocr-period"] = ta.ROCR(dataframe, timeperiod=period)
