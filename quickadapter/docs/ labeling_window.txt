@@ -15,27 +15,34 @@ Labeling window:
 Price movement expectation over the labeling window:
 ----------------------------------------------------
 
-trade candles = current candle date - trade candle date / timeframe (in the same time unit)
+trade duration candles = (current candle date - trade candle date) // timeframe (in the same time unit)
 
-		                     trade candle
-                              |
--------------------------------       -> trade natr * trade open rate = expected price movement in the future label window candles
-[   trade natr label window   ]
+                           trade candle
+                                |
+		                      current candle
+                                |
+---------------------------------
+[   current natr label window   ]
 
+trade duration candles = 0
+expected price movement in the future label window candles = current natr * current rate
 
    trade candle	         current candle
 	      |		                    |
----------------------------------     -> current natr * current rate = expected price movement in the future label window candles
+---------------------------------
 [   current natr label window   ]
 
-   trade candle	         		current candle
-	      |		        	             |
-------------------------------------------------------------------   -> current natr * current rate * trade candles // label window  = expected price movement in the future (trade candles // label window candles) candles
+trade duration candles > 0
+expected price movement in the future label window candles = current natr * current rate
+expected price movement in the future trade candles window = current natr * current rate * trades duration candles / label window
+
+  trade 1 candle	         		  trade 2 candle            current candle
+	      |		        	                |                          |
+------------------------------------------------------------------
 [   current natr label window   ][   current natr label window   ]
 
 
-
-
+expected price movement in the future trade candles approximation = current natr * current rate * trade duration candles / label window
 
 
 

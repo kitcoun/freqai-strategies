@@ -3,6 +3,7 @@ import logging
 from functools import reduce
 import datetime
 from pathlib import Path
+from statistics import fmean
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
 from technical import qtpylib
@@ -61,7 +62,7 @@ class QuickAdapterV3(IStrategy):
 
     @property
     def trailing_stoploss_natr_ratio(self) -> float:
-        return self.config.get("trailing_stoploss_natr_ratio", 0.05)
+        return self.config.get("trailing_stoploss_natr_ratio", 0.025)
 
     # Trailing stop:
     trailing_stop = False
@@ -403,7 +404,14 @@ class QuickAdapterV3(IStrategy):
             return None
         return entry_candle
 
-    def get_trade_candles(self, df: DataFrame, trade: Trade) -> int | None:
+    def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> float | None:
+        entry_candle = self.get_trade_entry_candle(df, trade)
+        if isna(entry_candle):
+            return None
+        entry_candle = entry_candle.squeeze()
+        return entry_candle["natr_ratio_labeling_window"]
+
+    def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> int | None:
         entry_candle = self.get_trade_entry_candle(df, trade)
         if isna(entry_candle):
             return None
@@ -415,47 +423,41 @@ class QuickAdapterV3(IStrategy):
         trade_duration_minutes = (
             current_candle_date - entry_candle_date
         ).total_seconds() / 60.0
-        return max(
-            int(trade_duration_minutes / timeframe_to_minutes(self.timeframe)), 1
-        )
+        return trade_duration_minutes // timeframe_to_minutes(self.timeframe)
 
-    def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> float | None:
-        entry_candle = self.get_trade_entry_candle(df, trade)
-        if isna(entry_candle):
-            return None
-        entry_candle = entry_candle.squeeze()
-        return entry_candle["natr_ratio_labeling_window"]
+    def is_trade_duration_valid(self, df: DataFrame, trade: Trade) -> bool:
+        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+        if isna(trade_duration_candles):
+            return False
+        if trade_duration_candles == 0:
+            return False
+        return True
 
-    def get_trade_stoploss_distance(self, df: DataFrame, trade: Trade) -> float | None:
-        entry_natr = self.get_trade_entry_natr(df, trade)
-        if isna(entry_natr):
-            return None
-        return trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
-
-    def get_current_stoploss_distance(
-        self, df: DataFrame, current_rate: float
+    def get_stoploss_distance(
+        self, df: DataFrame, trade: Trade, current_rate: float
     ) -> float | None:
+        if self.is_trade_duration_valid(df, trade) is False:
+            return None
         current_natr = df["natr_ratio_labeling_window"].iloc[-1]
         if isna(current_natr):
             return None
         return current_rate * current_natr * self.trailing_stoploss_natr_ratio
 
-    def get_stoploss_distance(
-        self, df: DataFrame, trade: Trade, current_rate: float
-    ) -> float | None:
-        label_window_frequency = self.get_trade_candles(df, trade) // (
-            self.get_label_period_candles(trade.pair) * 2
-        )
-        # trade_stoploss_distance = self.get_trade_stoploss_distance(df, trade)
-        current_stoploss_distance = self.get_current_stoploss_distance(
-            df, current_rate
-        ) / self.get_trade_candles(df, trade)
-        # if isna(trade_stoploss_distance) or isna(current_stoploss_distance):
-        #     return None
-        # return max(trade_stoploss_distance, current_stoploss_distance)
-        if isna(current_stoploss_distance):
+    def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> float | None:
+        if self.is_trade_duration_valid(df, trade) is False:
             return None
-        return current_stoploss_distance
+        entry_natr = self.get_trade_entry_natr(df, trade)
+        if isna(entry_natr):
+            return None
+        current_natr = df["natr_ratio_labeling_window"].iloc[-1]
+        if isna(current_natr):
+            return None
+        return (
+            trade.open_rate
+            * max(entry_natr, fmean([entry_natr, current_natr]))
+            * self.trailing_stoploss_natr_ratio
+            * self.reward_risk_ratio
+        )
 
     def custom_stoploss(
         self,
@@ -481,11 +483,6 @@ class QuickAdapterV3(IStrategy):
         if isna(stoploss_distance):
             return None
         if stoploss_distance == 0:
-            logger.warning(
-                f"Stoploss distance is 0 for trade {trade.id} on pair {pair}. "
-                f"Current rate: {current_rate}, trade open rate: {trade.open_rate}, "
-                f"trade entry tag: {trade.enter_tag}"
-            )
             return None
         sign = 1 if trade.is_short else -1
         return stoploss_from_absolute(
@@ -530,17 +527,10 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        take_profit_distance = (
-            self.get_stoploss_distance(df, trade, current_rate) * self.reward_risk_ratio
-        )
+        take_profit_distance = self.get_take_profit_distance(df, trade)
         if isna(take_profit_distance):
             return None
         if take_profit_distance == 0:
-            logger.warning(
-                f"Take profit distance is 0 for trade {trade.id} on pair {pair}. "
-                f"Current rate: {current_rate}, trade open rate: {trade.open_rate}, "
-                f"trade entry tag: {trade.enter_tag}"
-            )
             return None
         if trade.is_short:
             take_profit_price = trade.open_rate - take_profit_distance
