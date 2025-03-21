@@ -195,7 +195,7 @@ class QuickAdapterV3(IStrategy):
             length=period,
         )
         dataframe["%-linearreg-angle-period"] = ta.LINEARREG_ANGLE(
-            dataframe["close"], timeperiod=period
+            dataframe, timeperiod=period
         )
         dataframe["%-atr-period"] = ta.ATR(dataframe, timeperiod=period)
         dataframe["%-natr-period"] = ta.NATR(dataframe, timeperiod=period)
@@ -206,9 +206,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
         dataframe["%-ewo"] = EWO(dataframe=dataframe, ma_mode="zlewma", normalize=True)
-        psar = ta.SAR(
-            dataframe["high"], dataframe["low"], acceleration=0.02, maximum=0.2
-        )
+        psar = ta.SAR(dataframe, acceleration=0.02, maximum=0.2)
         dataframe["%-diff_to_psar"] = dataframe["close"] - psar
         kc = pta.kc(
             dataframe["high"],
@@ -228,7 +226,7 @@ class QuickAdapterV3(IStrategy):
             dataframe["bb_middleband"],
             dataframe["bb_lowerband"],
         ) = ta.BBANDS(
-            ta.TYPPRICE(dataframe["high"], dataframe["low"], dataframe["close"]),
+            ta.TYPPRICE(dataframe),
             timeperiod=14,
             nbdevup=2.2,
             nbdevdn=2.2,
