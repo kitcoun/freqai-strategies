@@ -612,9 +612,11 @@ class QuickAdapterV3(IStrategy):
         self,
         series: Series,
         window: int,
-        std: float = 0.5,
+        std: Optional[float] = None,
     ) -> Series:
         extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
+        if std is None and extrema_smoothing in ["gaussian", "zero_phase_gaussian"]:
+            std = derive_gaussian_std_from_window(window)
         smoothing_methods: dict = {
             "gaussian": series.rolling(
                 window=get_gaussian_window(std, True),
@@ -733,6 +735,11 @@ def get_gaussian_window(std: float, center: bool) -> int:
     if center and window % 2 == 0:
         window += 1
     return max(3, window)
+
+
+def derive_gaussian_std_from_window(window: int) -> float:
+    # Assuming window = 6 * std + 1 => std = (window - 1) / 6
+    return (window - 1) / 6.0 if window > 1 else 0.5
 
 
 def get_odd_window(window: int) -> int:
