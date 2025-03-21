@@ -406,14 +406,14 @@ class QuickAdapterV3(IStrategy):
 
     def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> float | None:
         entry_candle = self.get_trade_entry_candle(df, trade)
-        if isna(entry_candle):
+        if entry_candle is None:
             return None
         entry_candle = entry_candle.squeeze()
         return entry_candle["natr_ratio_labeling_window"]
 
     def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> int | None:
         entry_candle = self.get_trade_entry_candle(df, trade)
-        if isna(entry_candle):
+        if entry_candle is None:
             return None
         entry_candle = entry_candle.squeeze()
         entry_candle_date = entry_candle["date"]
