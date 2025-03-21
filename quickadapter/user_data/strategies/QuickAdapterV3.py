@@ -615,7 +615,7 @@ class QuickAdapterV3(IStrategy):
         std: Optional[float] = None,
     ) -> Series:
         extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
-        if std is None and extrema_smoothing in ["gaussian", "zero_phase_gaussian"]:
+        if std is None:
             std = derive_gaussian_std_from_window(window)
         smoothing_methods: dict = {
             "gaussian": series.rolling(
@@ -729,6 +729,8 @@ def zero_phase_gaussian(series: Series, std: float):
 
 
 def get_gaussian_window(std: float, center: bool) -> int:
+    if std is None:
+        raise ValueError("Standard deviation cannot be None")
     if std <= 0:
         raise ValueError("Standard deviation must be greater than 0")
     window = int(6 * std + 1)
