@@ -25,27 +25,27 @@ trade duration candles = (current candle date - trade candle date) // timeframe 
 [   current natr label window   ]
 
 trade duration candles = 0
+expected trade price movement in the future label window candles from trade opening = trade natr * trade rate
 expected price movement in the future label window candles = current natr * current rate
 
    trade candle	         current candle
 	      |		                    |
 ---------------------------------
 [   current natr label window   ]
+        ]
 
 trade duration candles > 0
+expected trade price movement in the future label window candles from trade opening = trade natr * trade rate
+expected trade price movement in the future trade duration candles window from trade opening = trade natr * trade rate * trade duration candles / label window
 expected price movement in the future label window candles = current natr * current rate
-expected price movement in the future trade candles window = current natr * current rate * trades duration candles / label window
+expected price movement in the future trade duration candles window = current natr * current rate * trade duration candles / label window
 
   trade 1 candle	         		  trade 2 candle            current candle
 	      |		        	                |                          |
 ------------------------------------------------------------------
 [   current natr label window   ][   current natr label window   ]
+      [   trade 2 natr label window   ]
+        ]
 
-
-expected price movement in the future trade candles approximation = current natr * current rate * trade duration candles / label window
-
-
-
-
-
-
+expected trade price movement in the future trade duration candles window from trade opening approximation = trade natr * trade rate * trade duration candles / label window
+expected price movement in the future trade duration candles window approximation = current natr * current rate * trade duration candles / label window
