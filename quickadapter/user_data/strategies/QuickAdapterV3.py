@@ -612,24 +612,30 @@ class QuickAdapterV3(IStrategy):
         self,
         series: Series,
         window: int,
-        std: float = 0.5,
+        std: Optional[float] = None,
     ) -> Series:
         extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
+        if std is None:
+            std = derive_gaussian_std_from_window(window)
+        gaussian_window = get_gaussian_window(std, True)
+        odd_window = get_odd_window(window)
         smoothing_methods: dict = {
             "gaussian": series.rolling(
-                window=get_gaussian_window(std, True),
+                window=gaussian_window,
                 win_type="gaussian",
                 center=True,
             ).mean(std=std),
-            "zero_phase_gaussian": zero_phase_gaussian(series=series, std=std),
+            "zero_phase_gaussian": zero_phase_gaussian(
+                series=series, window=gaussian_window, std=std
+            ),
             "boxcar": series.rolling(
-                window=get_odd_window(window), win_type="boxcar", center=True
+                window=odd_window, win_type="boxcar", center=True
             ).mean(),
             "triang": series.rolling(
-                window=get_odd_window(window), win_type="triang", center=True
+                window=odd_window, win_type="triang", center=True
             ).mean(),
-            "smm": series.rolling(window=get_odd_window(window), center=True).median(),
-            "sma": series.rolling(window=get_odd_window(window), center=True).mean(),
+            "smm": series.rolling(window=odd_window, center=True).median(),
+            "sma": series.rolling(window=odd_window, center=True).mean(),
             "ewma": series.ewm(span=window).mean(),
             "zlewma": pta.zlma(series, length=window, mamode="ema"),
         }
@@ -711,9 +717,7 @@ def ZLEWMA(dataframe: DataFrame, timeperiod: int) -> Series:
     return pta.zlma(dataframe["close"], length=timeperiod, mamode="ema")
 
 
-def zero_phase_gaussian(series: Series, std: float):
-    window = get_gaussian_window(std, True)
-
+def zero_phase_gaussian(series: Series, window: int, std: float):
     kernel = gaussian(window, std=std)
     kernel /= kernel.sum()
 
@@ -727,12 +731,19 @@ def zero_phase_gaussian(series: Series, std: float):
 
 
 def get_gaussian_window(std: float, center: bool) -> int:
+    if std is None:
+        raise ValueError("Standard deviation cannot be None")
     if std <= 0:
         raise ValueError("Standard deviation must be greater than 0")
     window = int(6 * std + 1)
     if center and window % 2 == 0:
         window += 1
     return max(3, window)
+
+
+def derive_gaussian_std_from_window(window: int) -> float:
+    # Assuming window = 6 * std + 1 => std = (window - 1) / 6
+    return (window - 1) / 6.0 if window > 1 else 0.5
 
 
 def get_odd_window(window: int) -> int:
