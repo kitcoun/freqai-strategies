@@ -46,7 +46,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.13"
+        return "3.1.14"
 
     timeframe = "5m"
 
@@ -430,8 +430,7 @@ class QuickAdapterV3(IStrategy):
         ).total_seconds() / 60.0
         return trade_duration_minutes // timeframe_to_minutes(self.timeframe)
 
-    def is_trade_duration_valid(self, df: DataFrame, trade: Trade) -> bool:
-        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+    def is_trade_duration_valid(self, trade_duration_candles: int) -> bool:
         if isna(trade_duration_candles):
             return False
         if trade_duration_candles == 0:
@@ -441,7 +440,8 @@ class QuickAdapterV3(IStrategy):
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
     ) -> float | None:
-        if self.is_trade_duration_valid(df, trade) is False:
+        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+        if self.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         current_natr = df["natr_ratio_labeling_window"].iloc[-1]
         if isna(current_natr):
@@ -450,11 +450,12 @@ class QuickAdapterV3(IStrategy):
             current_rate
             * current_natr
             * self.trailing_stoploss_natr_ratio
-            * (1 / math.log1p(self.get_trade_duration_candles(df, trade)))
+            * (1 / math.log10(1 + trade_duration_candles))
         )
 
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> float | None:
-        if self.is_trade_duration_valid(df, trade) is False:
+        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+        if self.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         entry_natr = self.get_trade_entry_natr(df, trade)
         if isna(entry_natr):
@@ -466,7 +467,7 @@ class QuickAdapterV3(IStrategy):
             trade.open_rate
             * max(entry_natr, harmonic_mean([entry_natr, current_natr]))
             * self.trailing_stoploss_natr_ratio
-            * math.log1p(self.get_trade_duration_candles(df, trade))
+            * math.log10(9 + trade_duration_candles)
             * self.reward_risk_ratio
         )
 
@@ -518,10 +519,10 @@ class QuickAdapterV3(IStrategy):
             return None
 
         last_candle = df.iloc[-1].squeeze()
-        if last_candle["DI_catch"] == 0:
-            return "outlier_detected"
         if last_candle["do_predict"] == 2:
             return "model_expired"
+        if last_candle["DI_catch"] == 0:
+            return "outlier_detected"
 
         entry_tag = trade.enter_tag
 
@@ -669,7 +670,7 @@ class QuickAdapterV3(IStrategy):
 
 def top_change_percent(dataframe: DataFrame, period: int) -> Series:
     """
-    Percentage change of the current close relative to the top close price in previous periods.
+    Percentage change of the current close relative to the top close price in previous period.
     :param dataframe: DataFrame The original OHLCV dataframe
     :param period: int The period size to look back
     :return: Series The percentage change series
