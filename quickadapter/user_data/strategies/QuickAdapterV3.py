@@ -2,8 +2,9 @@ import json
 import logging
 from functools import reduce
 import datetime
+import math
 from pathlib import Path
-from statistics import fmean
+from statistics import harmonic_mean
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
 from technical import qtpylib
@@ -45,7 +46,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.12"
+        return "3.1.13"
 
     timeframe = "5m"
 
@@ -410,6 +411,12 @@ class QuickAdapterV3(IStrategy):
         return entry_candle["natr_ratio_labeling_window"]
 
     def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> int | None:
+        """
+        Get the number of candles since the trade entry.
+        :param df: DataFrame with the current data
+        :param trade: Trade object
+        :return: Number of candles since the trade entry
+        """
         entry_candle = self.get_trade_entry_candle(df, trade)
         if entry_candle is None:
             return None
@@ -439,7 +446,12 @@ class QuickAdapterV3(IStrategy):
         current_natr = df["natr_ratio_labeling_window"].iloc[-1]
         if isna(current_natr):
             return None
-        return current_rate * current_natr * self.trailing_stoploss_natr_ratio
+        return (
+            current_rate
+            * current_natr
+            * self.trailing_stoploss_natr_ratio
+            * (1 / math.log1p(self.get_trade_duration_candles(df, trade)))
+        )
 
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> float | None:
         if self.is_trade_duration_valid(df, trade) is False:
@@ -452,8 +464,9 @@ class QuickAdapterV3(IStrategy):
             return None
         return (
             trade.open_rate
-            * max(entry_natr, fmean([entry_natr, current_natr]))
+            * max(entry_natr, harmonic_mean([entry_natr, current_natr]))
             * self.trailing_stoploss_natr_ratio
+            * math.log1p(self.get_trade_duration_candles(df, trade))
             * self.reward_risk_ratio
         )
 
