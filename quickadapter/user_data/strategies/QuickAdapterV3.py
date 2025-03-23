@@ -670,19 +670,37 @@ class QuickAdapterV3(IStrategy):
 
 def top_change_percent(dataframe: DataFrame, period: int) -> Series:
     """
-    Percentage change of the current close relative to the top close price in previous period.
-    :param dataframe: DataFrame The original OHLCV dataframe
-    :param period: int The period size to look back
-    :return: Series The percentage change series
+    Percentage change of the current close relative to the top close price in the previous `period` bars.
+    :param dataframe: DataFrame OHLCV dataframe
+    :param period: int The previous period window size to look back (>=1)
+    :return: Series The top change percentage series
     """
-    if period < 0:
-        raise ValueError("period must be greater than or equal to 0")
-    if period == 0:
-        previous_close = dataframe["close"].shift(1)
-    else:
-        previous_close = dataframe["close"].rolling(period).max().shift(1)
+    if period < 1:
+        raise ValueError("period must be greater than or equal to 1")
 
-    return (dataframe["close"] - previous_close) / previous_close
+    previous_close_top = dataframe["close"].rolling(period).max().shift(1)
+
+    return (dataframe["close"] - previous_close_top) / previous_close_top
+
+
+def price_retracement_percent(dataframe: DataFrame, period: int) -> Series:
+    """
+    Calculate the percentage retracement of the current close within the high/low close price range
+    of the previous `period` bars.
+
+    :param dataframe: OHLCV DataFrame
+    :param period: Window size for calculating historical closes high/low (>=1)
+    :return: Retracement percentage series
+    """
+    if period < 1:
+        raise ValueError("period must be greater than or equal to 1")
+
+    previous_close_low = dataframe["close"].rolling(period).min().shift(1)
+    previous_close_high = dataframe["close"].rolling(period).max().shift(1)
+
+    return (dataframe["close"] - previous_close_low) / (
+        previous_close_high - previous_close_low
+    ).fillna(0.0)
 
 
 # VWAP bands
