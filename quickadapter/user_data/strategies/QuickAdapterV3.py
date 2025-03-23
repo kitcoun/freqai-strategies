@@ -188,6 +188,7 @@ class QuickAdapterV3(IStrategy):
             fillna=0.0,
         )
         dataframe["%-tcp-period"] = top_change_percent(dataframe, period=period)
+        # dataframe["%-bcp-period"] = bottom_change_percent(dataframe, period=period)
         # dataframe["%-prp-period"] = price_retracement_percent(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = pta.chop(
@@ -672,16 +673,37 @@ class QuickAdapterV3(IStrategy):
 def top_change_percent(dataframe: DataFrame, period: int) -> Series:
     """
     Percentage change of the current close relative to the top close price in the previous `period` bars.
-    :param dataframe: DataFrame OHLCV dataframe
-    :param period: int The previous period window size to look back (>=1)
-    :return: Series The top change percentage series
+
+    :param dataframe: OHLCV DataFrame
+    :param period: The previous period window size to look back (>=1)
+    :return: The top change percentage series
     """
     if period < 1:
         raise ValueError("period must be greater than or equal to 1")
 
-    previous_close_top = dataframe["close"].rolling(period).max().shift(1)
+    previous_close_top = (
+        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
+    )
 
     return (dataframe["close"] - previous_close_top) / previous_close_top
+
+
+def bottom_change_percent(dataframe: DataFrame, period: int) -> Series:
+    """
+    Percentage change of the current close relative to the bottom close price in the previous `period` bars.
+
+    :param dataframe: OHLCV DataFrame
+    :param period: The previous period window size to look back (>=1)
+    :return: The bottom change percentage series
+    """
+    if period < 1:
+        raise ValueError("period must be greater than or equal to 1")
+
+    previous_close_bottom = (
+        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
+    )
+
+    return (dataframe["close"] - previous_close_bottom) / previous_close_bottom
 
 
 def price_retracement_percent(dataframe: DataFrame, period: int) -> Series:
@@ -696,8 +718,12 @@ def price_retracement_percent(dataframe: DataFrame, period: int) -> Series:
     if period < 1:
         raise ValueError("period must be greater than or equal to 1")
 
-    previous_close_low = dataframe["close"].rolling(period).min().shift(1)
-    previous_close_high = dataframe["close"].rolling(period).max().shift(1)
+    previous_close_low = (
+        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
+    )
+    previous_close_high = (
+        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
+    )
 
     return (dataframe["close"] - previous_close_low) / (
         previous_close_high - previous_close_low
