@@ -2,8 +2,9 @@ import json
 import logging
 from functools import reduce
 import datetime
+import math
 from pathlib import Path
-from statistics import fmean
+from statistics import harmonic_mean
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
 from technical import qtpylib
@@ -45,7 +46,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.12"
+        return "3.1.14"
 
     timeframe = "5m"
 
@@ -173,7 +174,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
         dataframe["%-aroonosc-period"] = ta.AROONOSC(dataframe, timeperiod=period)
         dataframe["%-mfi-period"] = ta.MFI(dataframe, timeperiod=period)
-        dataframe["%-adx-period"] = ta.ADX(dataframe, window=period)
+        dataframe["%-adx-period"] = ta.ADX(dataframe, timeperiod=period)
         dataframe["%-cci-period"] = ta.CCI(dataframe, timeperiod=period)
         dataframe["%-er-period"] = pta.er(dataframe["close"], length=period)
         dataframe["%-rocr-period"] = ta.ROCR(dataframe, timeperiod=period)
@@ -195,7 +196,7 @@ class QuickAdapterV3(IStrategy):
             length=period,
         )
         dataframe["%-linearreg-angle-period"] = ta.LINEARREG_ANGLE(
-            dataframe["close"], timeperiod=period
+            dataframe, timeperiod=period
         )
         dataframe["%-atr-period"] = ta.ATR(dataframe, timeperiod=period)
         dataframe["%-natr-period"] = ta.NATR(dataframe, timeperiod=period)
@@ -206,9 +207,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
         dataframe["%-ewo"] = EWO(dataframe=dataframe, ma_mode="zlewma", normalize=True)
-        psar = ta.SAR(
-            dataframe["high"], dataframe["low"], acceleration=0.02, maximum=0.2
-        )
+        psar = ta.SAR(dataframe, acceleration=0.02, maximum=0.2)
         dataframe["%-diff_to_psar"] = dataframe["close"] - psar
         kc = pta.kc(
             dataframe["high"],
@@ -228,7 +227,7 @@ class QuickAdapterV3(IStrategy):
             dataframe["bb_middleband"],
             dataframe["bb_lowerband"],
         ) = ta.BBANDS(
-            ta.TYPPRICE(dataframe["high"], dataframe["low"], dataframe["close"]),
+            ta.TYPPRICE(dataframe),
             timeperiod=14,
             nbdevup=2.2,
             nbdevdn=2.2,
@@ -412,6 +411,12 @@ class QuickAdapterV3(IStrategy):
         return entry_candle["natr_ratio_labeling_window"]
 
     def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> int | None:
+        """
+        Get the number of candles since the trade entry.
+        :param df: DataFrame with the current data
+        :param trade: Trade object
+        :return: Number of candles since the trade entry
+        """
         entry_candle = self.get_trade_entry_candle(df, trade)
         if entry_candle is None:
             return None
@@ -425,8 +430,7 @@ class QuickAdapterV3(IStrategy):
         ).total_seconds() / 60.0
         return trade_duration_minutes // timeframe_to_minutes(self.timeframe)
 
-    def is_trade_duration_valid(self, df: DataFrame, trade: Trade) -> bool:
-        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+    def is_trade_duration_valid(self, trade_duration_candles: int) -> bool:
         if isna(trade_duration_candles):
             return False
         if trade_duration_candles == 0:
@@ -436,15 +440,22 @@ class QuickAdapterV3(IStrategy):
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
     ) -> float | None:
-        if self.is_trade_duration_valid(df, trade) is False:
+        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+        if self.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         current_natr = df["natr_ratio_labeling_window"].iloc[-1]
         if isna(current_natr):
             return None
-        return current_rate * current_natr * self.trailing_stoploss_natr_ratio
+        return (
+            current_rate
+            * current_natr
+            * self.trailing_stoploss_natr_ratio
+            * (1 / math.log10(1 + trade_duration_candles))
+        )
 
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> float | None:
-        if self.is_trade_duration_valid(df, trade) is False:
+        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+        if self.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         entry_natr = self.get_trade_entry_natr(df, trade)
         if isna(entry_natr):
@@ -454,8 +465,9 @@ class QuickAdapterV3(IStrategy):
             return None
         return (
             trade.open_rate
-            * max(entry_natr, fmean([entry_natr, current_natr]))
+            * max(entry_natr, harmonic_mean([entry_natr, current_natr]))
             * self.trailing_stoploss_natr_ratio
+            * math.log10(9 + trade_duration_candles)
             * self.reward_risk_ratio
         )
 
@@ -507,10 +519,10 @@ class QuickAdapterV3(IStrategy):
             return None
 
         last_candle = df.iloc[-1].squeeze()
-        if last_candle["DI_catch"] == 0:
-            return "outlier_detected"
         if last_candle["do_predict"] == 2:
             return "model_expired"
+        if last_candle["DI_catch"] == 0:
+            return "outlier_detected"
 
         entry_tag = trade.enter_tag
 
@@ -658,19 +670,37 @@ class QuickAdapterV3(IStrategy):
 
 def top_change_percent(dataframe: DataFrame, period: int) -> Series:
     """
-    Percentage change of the current close relative to the top close price in previous periods.
-    :param dataframe: DataFrame The original OHLCV dataframe
-    :param period: int The period size to look back
-    :return: Series The percentage change series
+    Percentage change of the current close relative to the top close price in the previous `period` bars.
+    :param dataframe: DataFrame OHLCV dataframe
+    :param period: int The previous period window size to look back (>=1)
+    :return: Series The top change percentage series
     """
-    if period < 0:
-        raise ValueError("period must be greater than or equal to 0")
-    if period == 0:
-        previous_close = dataframe["close"].shift(1)
-    else:
-        previous_close = dataframe["close"].rolling(period).max().shift(1)
+    if period < 1:
+        raise ValueError("period must be greater than or equal to 1")
 
-    return (dataframe["close"] - previous_close) / previous_close
+    previous_close_top = dataframe["close"].rolling(period).max().shift(1)
+
+    return (dataframe["close"] - previous_close_top) / previous_close_top
+
+
+def price_retracement_percent(dataframe: DataFrame, period: int) -> Series:
+    """
+    Calculate the percentage retracement of the current close within the high/low close price range
+    of the previous `period` bars.
+
+    :param dataframe: OHLCV DataFrame
+    :param period: Window size for calculating historical closes high/low (>=1)
+    :return: Retracement percentage series
+    """
+    if period < 1:
+        raise ValueError("period must be greater than or equal to 1")
+
+    previous_close_low = dataframe["close"].rolling(period).min().shift(1)
+    previous_close_high = dataframe["close"].rolling(period).max().shift(1)
+
+    return (dataframe["close"] - previous_close_low) / (
+        previous_close_high - previous_close_low
+    ).fillna(0.0)
 
 
 # VWAP bands
