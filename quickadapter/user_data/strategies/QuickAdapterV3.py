@@ -188,6 +188,7 @@ class QuickAdapterV3(IStrategy):
             fillna=0.0,
         )
         dataframe["%-tcp-period"] = top_change_percent(dataframe, period=period)
+        # dataframe["%-prp-period"] = price_retracement_percent(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = pta.chop(
             dataframe["high"],
