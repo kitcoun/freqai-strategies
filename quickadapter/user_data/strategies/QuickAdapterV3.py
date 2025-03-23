@@ -7,7 +7,6 @@ from pathlib import Path
 from statistics import harmonic_mean
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
-from technical import qtpylib
 from typing import Optional
 from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
 from freqtrade.strategy.interface import IStrategy
@@ -18,6 +17,8 @@ from scipy.signal import argrelmin, argrelmax, convolve
 from scipy.signal.windows import gaussian
 import numpy as np
 import pandas_ta as pta
+
+from Utils import ewo, vwapb
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,9 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-pct-change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
-        dataframe["%-ewo"] = EWO(dataframe=dataframe, ma_mode="zlewma", normalize=True)
+        dataframe["%-ewo"] = ewo(
+            dataframe=dataframe, mamode="ema", zero_lag=True, normalize=True
+        )
         psar = ta.SAR(dataframe, acceleration=0.02, maximum=0.2)
         dataframe["%-diff_to_psar"] = dataframe["close"] - psar
         kc = pta.kc(
@@ -261,12 +264,12 @@ class QuickAdapterV3(IStrategy):
             dataframe["%-macd"], dataframe["%-macdsignal"]
         )
         dataframe["%-dist_to_zerohist"] = get_distance(0, dataframe["%-macdhist"])
-        # VWAP
+        # VWAP bands
         (
             dataframe["vwap_lowerband"],
             dataframe["vwap_middleband"],
             dataframe["vwap_upperband"],
-        ) = VWAPB(dataframe, 20, 1)
+        ) = vwapb(dataframe, 20, 1)
         dataframe["%-vwap_width"] = (
             dataframe["vwap_upperband"] - dataframe["vwap_lowerband"]
         ) / dataframe["vwap_middleband"]
@@ -728,50 +731,6 @@ def price_retracement_percent(dataframe: DataFrame, period: int) -> Series:
     return (dataframe["close"] - previous_close_low) / (
         previous_close_high - previous_close_low
     ).fillna(0.0)
-
-
-# VWAP bands
-def VWAPB(dataframe: DataFrame, window=20, num_of_std=1) -> tuple:
-    vwap = qtpylib.rolling_vwap(dataframe, window=window)
-    rolling_std = vwap.rolling(window=window).std()
-    vwap_low = vwap - (rolling_std * num_of_std)
-    vwap_high = vwap + (rolling_std * num_of_std)
-    return vwap_low, vwap, vwap_high
-
-
-def EWO(
-    dataframe: DataFrame, ma1_length=5, ma2_length=34, ma_mode="sma", normalize=False
-) -> Series:
-    ma_modes: dict = {
-        "sma": ta.SMA,
-        "ema": ta.EMA,
-        "wma": ta.WMA,
-        "dema": ta.DEMA,
-        "tema": ta.TEMA,
-        "zlewma": ZLEWMA,
-        "trima": ta.TRIMA,
-        "kama": ta.KAMA,
-        "t3": ta.T3,
-    }
-    ma_fn = ma_modes.get(ma_mode, ma_modes["sma"])
-    ma1 = ma_fn(dataframe, timeperiod=ma1_length)
-    ma2 = ma_fn(dataframe, timeperiod=ma2_length)
-    madiff = ma1 - ma2
-    if normalize:
-        madiff = (
-            madiff / dataframe["close"]
-        ) * 100  # Optional normalization with close price
-    return madiff
-
-
-def ZLEWMA(dataframe: DataFrame, timeperiod: int) -> Series:
-    """
-    Calculate the close price ZLEWMA (Zero Lag Exponential Weighted Moving Average) series of an OHLCV dataframe.
-    :param dataframe: DataFrame The original OHLCV dataframe
-    :param timeperiod: int The period to look back
-    :return: Series The close price ZLEWMA series
-    """
-    return pta.zlma(dataframe["close"], length=timeperiod, mamode="ema")
 
 
 def zero_phase_gaussian(series: Series, window: int, std: float):
