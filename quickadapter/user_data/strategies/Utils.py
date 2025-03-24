@@ -194,42 +194,42 @@ def frama(series: pd.Series, period: int = 16, normalize: bool = False) -> pd.Se
     if period % 2 != 0:
         raise ValueError("FRAMA period must be even")
 
-    frama = np.full(len(series), np.nan)
+    frama = pd.Series(np.nan, index=series.index)
+
+    fractal_d = series.rolling(window=period, min_periods=period).apply(
+        lambda arr: fractal_dimension(arr, period, normalize), raw=True
+    )
+    alpha = np.exp(-4.6 * (fractal_d - 1))
 
     for i in range(period - 1, len(series)):
-        prices_array = series.iloc[i - period + 1 : i + 1].to_numpy()
-        D = fractal_dimension(prices_array, period, normalize)
-        alpha = np.exp(-4.6 * (D - 1))
-
-        if np.isnan(frama[i - 1]):
-            frama[i] = prices_array[-1]
+        if np.isnan(frama.iloc[i - 1]):
+            frama.iloc[i] = series.iloc[i]
         else:
-            frama[i] = alpha * prices_array[-1] + (1 - alpha) * frama[i - 1]
+            frama.iloc[i] = (
+                alpha.iloc[i] * series.iloc[i] + (1 - alpha.iloc[i]) * frama.iloc[i - 1]
+            )
 
-    return pd.Series(frama, index=series.index)
+    return frama
 
 
-def smma(
-    series: pd.Series, period: int, mamode="sma", zero_lag=False, offset=0
-) -> pd.Series:
+def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     """
     SMoothed Moving Average (SMMA).
 
     https://www.sierrachart.com/index.php?page=doc/StudiesReference.php&ID=173&Name=Moving_Average_-_Smoothed
     """
+    if period <= 0:
+        raise ValueError("period must be greater than 0")
     if len(series) < period:
         return pd.Series(index=series.index, dtype=float)
 
     if zero_lag:
         series = zero_lag_series(series, timeperiod=period)
-    smma = series.copy()
-    smma[: period - 1] = np.nan
-    smma.iloc[period - 1] = pd.Series(
-        get_ma_fn(mamode)(series.iloc[:period], timeperiod=period)
-    ).iloc[-1]
+    smma = pd.Series(index=series.index, dtype="float64")
+    smma.iloc[period - 1] = series.iloc[:period].mean()
 
     for i in range(period, len(series)):
-        smma.iat[i] = ((period - 1) * smma.iat[i - 1] + smma.iat[i]) / period
+        smma.iloc[i] = (smma.iloc[i - 1] * (period - 1) + series.iloc[i]) / period
 
     if offset != 0:
         smma = smma.shift(offset)
@@ -260,14 +260,16 @@ def ewo(
     """
     ma_fn = get_ma_fn(mamode)
     price_series = get_price_fn(pricemode)(dataframe)
+
     if zero_lag:
-        price_series_ma1_length = zero_lag_series(price_series, timeperiod=ma1_length)
-        price_series_ma2_length = zero_lag_series(price_series, timeperiod=ma2_length)
-        ma1 = ma_fn(price_series_ma1_length, timeperiod=ma1_length)
-        ma2 = ma_fn(price_series_ma2_length, timeperiod=ma2_length)
+        price_series_ma1 = zero_lag_series(price_series, timeperiod=ma1_length)
+        price_series_ma2 = zero_lag_series(price_series, timeperiod=ma2_length)
     else:
-        ma1 = ma_fn(price_series, timeperiod=ma1_length)
-        ma2 = ma_fn(price_series, timeperiod=ma2_length)
+        price_series_ma1 = price_series
+        price_series_ma2 = price_series
+
+    ma1 = ma_fn(price_series_ma1, timeperiod=ma1_length)
+    ma2 = ma_fn(price_series_ma2, timeperiod=ma2_length)
     madiff = ma1 - ma2
     if normalize:
         madiff = (madiff / price_series) * 100
@@ -283,7 +285,6 @@ def alligator(
     teeth_shift=5,
     lips_shift=3,
     pricemode="median",
-    mamode="sma",
     zero_lag=False,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
@@ -291,14 +292,10 @@ def alligator(
     """
     price_series = get_price_fn(pricemode)(df)
 
-    jaw = smma(price_series, period=jaw_period, mamode=mamode, zero_lag=zero_lag).shift(
-        jaw_shift
-    )
+    jaw = smma(price_series, period=jaw_period, zero_lag=zero_lag, offset=jaw_shift)
     teeth = smma(
-        price_series, period=teeth_period, mamode=mamode, zero_lag=zero_lag
-    ).shift(teeth_shift)
-    lips = smma(
-        price_series, period=lips_period, mamode=mamode, zero_lag=zero_lag
-    ).shift(lips_shift)
+        price_series, period=teeth_period, zero_lag=zero_lag, offset=teeth_shift
+    )
+    lips = smma(price_series, period=lips_period, zero_lag=zero_lag, offset=lips_shift)
 
     return jaw, teeth, lips

@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.0"
+        return "3.2.1"
 
     timeframe = "5m"
 
@@ -259,7 +259,7 @@ class QuickAdapterV3(IStrategy):
             non_zero_range(dataframe["high"], dataframe["low"])
         )
         dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
-            dataframe, pricemode="median", mamode="sma", zero_lag=True
+            dataframe, pricemode="median", zero_lag=True
         )
         dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
         dataframe["%-dist_to_teeth"] = get_distance(
