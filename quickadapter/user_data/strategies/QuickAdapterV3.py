@@ -19,6 +19,7 @@ import pandas_ta as pta
 
 from Utils import (
     ewo,
+    non_zero_range,
     vwapb,
     top_change_percent,
     get_distance,
@@ -55,7 +56,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.14"
+        return "3.1.15"
 
     timeframe = "5m"
 
@@ -194,7 +195,6 @@ class QuickAdapterV3(IStrategy):
             dataframe["close"],
             dataframe["volume"],
             length=period,
-            fillna=0.0,
         )
         dataframe["%-tcp-period"] = top_change_percent(dataframe, period=period)
         # dataframe["%-bcp-period"] = bottom_change_percent(dataframe, period=period)
@@ -252,12 +252,11 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-bb_width"] = (
             dataframe["bb_upperband"] - dataframe["bb_lowerband"]
         ) / dataframe["bb_middleband"]
-        dataframe["%-ibs"] = (
-            (dataframe["close"] - dataframe["low"])
-            / (dataframe["high"] - dataframe["low"])
-        ).fillna(0.0)
+        dataframe["%-ibs"] = (dataframe["close"] - dataframe["low"]) / (
+            non_zero_range(dataframe["high"], dataframe["low"])
+        )
         # dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
-        #     dataframe, zero_lag=True
+        #     dataframe, mamode="ema", zero_lag=True
         # )
         # dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
         # dataframe["%-dist_to_teeth"] = get_distance(
@@ -268,6 +267,9 @@ class QuickAdapterV3(IStrategy):
         # )
         # dataframe["%-spread_jaw_teeth"] = dataframe["jaw"] - dataframe["teeth"]
         # dataframe["%-spread_teeth_lips"] = dataframe["teeth"] - dataframe["lips"]
+        # dataframe["%-alligator_trend_strength"] = (
+        #     dataframe["lips"] - dataframe["teeth"]
+        # ) + (non_zero_range(dataframe["teeth"], dataframe["jaw"]))
         dataframe["zlema_50"] = pta.zlma(dataframe["close"], length=50, mamode="ema")
         dataframe["zlema_12"] = pta.zlma(dataframe["close"], length=12, mamode="ema")
         dataframe["zlema_26"] = pta.zlma(dataframe["close"], length=26, mamode="ema")

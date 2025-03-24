@@ -4,11 +4,20 @@ import pandas_ta as pta
 import talib.abstract as ta
 from scipy.signal import convolve
 from scipy.signal.windows import gaussian
+from sys import float_info
 from technical import qtpylib
 
 
 def get_distance(p1: pd.Series | float, p2: pd.Series | float) -> pd.Series | float:
     return abs(p1 - p2)
+
+
+def non_zero_range(s1: pd.Series, s2: pd.Series) -> pd.Series:
+    """Returns the difference of two series and adds epsilon to any zero values."""
+    diff = s1 - s2
+    if diff.eq(0).any().any():
+        diff += float_info.epsilon
+    return diff
 
 
 def get_gaussian_window(std: float, center: bool) -> int:
@@ -102,8 +111,8 @@ def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series
     )
 
     return (dataframe["close"] - previous_close_low) / (
-        previous_close_high - previous_close_low
-    ).fillna(0.0)
+        non_zero_range(previous_close_high, previous_close_low)
+    )
 
 
 # VWAP bands
