@@ -209,19 +209,15 @@ class QuickAdapterV3(IStrategy):
             dataframe["close"],
             length=period,
         )
-        dataframe["%-linearreg-angle-period"] = ta.LINEARREG_ANGLE(
+        dataframe["%-linearreg_angle-period"] = ta.LINEARREG_ANGLE(
             dataframe, timeperiod=period
         )
-        # dataframe["%-linearreg_angle-period"] = ta.LINEARREG_ANGLE(
-        #     dataframe, timeperiod=period
-        # )
         dataframe["%-atr-period"] = ta.ATR(dataframe, timeperiod=period)
         dataframe["%-natr-period"] = ta.NATR(dataframe, timeperiod=period)
         return dataframe
 
     def feature_engineering_expand_basic(self, dataframe, **kwargs):
-        dataframe["%-pct-change"] = dataframe["close"].pct_change()
-        # dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
+        dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
         dataframe["%-ewo"] = ewo(
@@ -263,7 +259,7 @@ class QuickAdapterV3(IStrategy):
             non_zero_range(dataframe["high"], dataframe["low"])
         )
         dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
-            dataframe, mamode="ema", zero_lag=True
+            dataframe, zero_lag=True
         )
         dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
         dataframe["%-dist_to_teeth"] = get_distance(
