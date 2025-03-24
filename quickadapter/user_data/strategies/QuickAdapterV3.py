@@ -222,8 +222,8 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-obv"] = ta.OBV(dataframe)
         dataframe["%-ewo"] = ewo(
             dataframe=dataframe,
-            mamode="ema",
             pricemode="close",
+            mamode="ema",
             zero_lag=True,
             normalize=True,
         )
