@@ -249,6 +249,9 @@ def ewo(
     zero_lag=False,
     normalize=False,
 ) -> pd.Series:
+    """
+    Calculate the Elliott Wave Oscillator (EWO) using two moving averages.
+    """
     price_series = get_price_fn(pricemode)(dataframe)
     ma_fn = get_ma_fn(mamode, zero_lag=zero_lag)
     ma1 = ma_fn(price_series, timeperiod=ma1_length)
