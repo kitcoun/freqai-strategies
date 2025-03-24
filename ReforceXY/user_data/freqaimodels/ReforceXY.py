@@ -501,7 +501,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
         return storage
 
-    def study_has_best_trial_params(self, study: Study | None) -> bool:
+    @staticmethod
+    def study_has_best_trial_params(study: Study | None) -> bool:
         if study is None:
             return False
         try:
@@ -570,7 +571,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             hyperopt_failed = True
         time_spent = time.time() - start
-        if self.study_has_best_trial_params(study) is False:
+        if ReforceXY.study_has_best_trial_params(study) is False:
             logger.error(
                 f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no study best trial params found"
             )
