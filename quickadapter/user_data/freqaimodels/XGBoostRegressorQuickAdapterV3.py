@@ -275,8 +275,8 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         )
         smoothing_methods: dict = {
             "quantile": self.quantile_min_max_pred,
-            "mean": mean_min_max_pred,
-            "median": median_min_max_pred,
+            "mean": XGBoostRegressorQuickAdapterV3.mean_min_max_pred,
+            "median": XGBoostRegressorQuickAdapterV3.median_min_max_pred,
         }
         return smoothing_methods.get(
             prediction_thresholds_smoothing, smoothing_methods["mean"]
@@ -309,7 +309,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         storage = self.optuna_storage(pair)
         pruner = optuna.pruners.HyperbandPruner()
         if self.__optuna_config.get("continuous", True):
-            self.optuna_study_delete(study_name, storage)
+            XGBoostRegressorQuickAdapterV3.optuna_study_delete(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -353,7 +353,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
             )
             return None, None
         time_spent = time.time() - start
-        if self.optuna_study_has_best_params(study) is False:
+        if XGBoostRegressorQuickAdapterV3.optuna_study_has_best_params(study) is False:
             logger.error(
                 f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
             )
@@ -395,7 +395,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         storage = self.optuna_storage(pair)
         pruner = optuna.pruners.HyperbandPruner()
         if self.__optuna_config.get("continuous", True):
-            self.optuna_study_delete(study_name, storage)
+            XGBoostRegressorQuickAdapterV3.optuna_study_delete(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
             sampler=optuna.samplers.TPESampler(
@@ -441,7 +441,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
             )
             return None, None
         time_spent = time.time() - start
-        if self.optuna_study_has_best_params(study) is False:
+        if XGBoostRegressorQuickAdapterV3.optuna_study_has_best_params(study) is False:
             logger.error(
                 f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
             )
@@ -473,16 +473,18 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
                 return json.load(read_file)
         return None
 
+    @staticmethod
     def optuna_study_delete(
-        self, study_name: str, storage: optuna.storages.BaseStorage
+        study_name: str, storage: optuna.storages.BaseStorage
     ) -> None:
         try:
             optuna.delete_study(study_name=study_name, storage=storage)
         except Exception:
             pass
 
+    @staticmethod
     def optuna_study_load(
-        self, study_name: str, storage: optuna.storages.BaseStorage
+        study_name: str, storage: optuna.storages.BaseStorage
     ) -> optuna.study.Study | None:
         try:
             study = optuna.load_study(study_name=study_name, storage=storage)
@@ -490,7 +492,8 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
             study = None
         return study
 
-    def optuna_study_has_best_params(self, study: optuna.study.Study | None) -> bool:
+    @staticmethod
+    def optuna_study_has_best_params(study: optuna.study.Study | None) -> bool:
         if study is None:
             return False
         try:
@@ -502,6 +505,44 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         # sqlite backend storage raises ValueError
         except ValueError:
             return False
+
+    @staticmethod
+    def mean_min_max_pred(
+        pred_df: pd.DataFrame,
+        fit_live_predictions_candles: int,
+        label_period_candles: int,
+    ) -> tuple[pd.Series, pd.Series]:
+        pred_df_sorted = (
+            pred_df.select_dtypes(exclude=["object"])
+            .copy()
+            .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+        )
+
+        label_period_frequency: int = int(
+            fit_live_predictions_candles / (label_period_candles * 2)
+        )
+        min_pred = pred_df_sorted.iloc[-label_period_frequency:].mean()
+        max_pred = pred_df_sorted.iloc[:label_period_frequency].mean()
+        return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
+
+    @staticmethod
+    def median_min_max_pred(
+        pred_df: pd.DataFrame,
+        fit_live_predictions_candles: int,
+        label_period_candles: int,
+    ) -> tuple[pd.Series, pd.Series]:
+        pred_df_sorted = (
+            pred_df.select_dtypes(exclude=["object"])
+            .copy()
+            .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+        )
+
+        label_period_frequency: int = int(
+            fit_live_predictions_candles / (label_period_candles * 2)
+        )
+        min_pred = pred_df_sorted.iloc[-label_period_frequency:].median()
+        max_pred = pred_df_sorted.iloc[:label_period_frequency].median()
+        return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
     def quantile_min_max_pred(
         self,
@@ -522,40 +563,6 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(1 - q)
         max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(q)
         return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
-
-
-def mean_min_max_pred(
-    pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
-) -> tuple[pd.Series, pd.Series]:
-    pred_df_sorted = (
-        pred_df.select_dtypes(exclude=["object"])
-        .copy()
-        .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
-    )
-
-    label_period_frequency: int = int(
-        fit_live_predictions_candles / (label_period_candles * 2)
-    )
-    min_pred = pred_df_sorted.iloc[-label_period_frequency:].mean()
-    max_pred = pred_df_sorted.iloc[:label_period_frequency].mean()
-    return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
-
-
-def median_min_max_pred(
-    pred_df: pd.DataFrame, fit_live_predictions_candles: int, label_period_candles: int
-) -> tuple[pd.Series, pd.Series]:
-    pred_df_sorted = (
-        pred_df.select_dtypes(exclude=["object"])
-        .copy()
-        .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
-    )
-
-    label_period_frequency: int = int(
-        fit_live_predictions_candles / (label_period_candles * 2)
-    )
-    min_pred = pred_df_sorted.iloc[-label_period_frequency:].median()
-    max_pred = pred_df_sorted.iloc[:label_period_frequency].median()
-    return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
 def period_objective(

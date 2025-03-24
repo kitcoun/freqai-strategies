@@ -13,12 +13,20 @@ from freqtrade.strategy.interface import IStrategy
 from freqtrade.strategy import stoploss_from_absolute
 from technical.pivots_points import pivots_points
 from freqtrade.persistence import Trade
-from scipy.signal import argrelmin, argrelmax, convolve
-from scipy.signal.windows import gaussian
+from scipy.signal import argrelmin, argrelmax
 import numpy as np
 import pandas_ta as pta
 
-from Utils import ewo, vwapb
+from Utils import (
+    ewo,
+    vwapb,
+    top_change_percent,
+    get_distance,
+    get_gaussian_window,
+    get_odd_window,
+    derive_gaussian_std_from_window,
+    zero_phase_gaussian,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +64,7 @@ class QuickAdapterV3(IStrategy):
 
     @property
     def trailing_stoploss_positive_offset(self) -> float:
-        return self.config.get("trailing_stoploss_positive_offset", 0.01)
+        return self.config.get("trailing_stoploss_positive_offset", 0.0075)
 
     @property
     def trailing_stoploss_only_offset_is_reached(self) -> bool:
@@ -210,7 +218,11 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
         dataframe["%-ewo"] = ewo(
-            dataframe=dataframe, mamode="ema", zero_lag=True, normalize=True
+            dataframe=dataframe,
+            mamode="ema",
+            pricemode="close",
+            zero_lag=True,
+            normalize=True,
         )
         psar = ta.SAR(dataframe, acceleration=0.02, maximum=0.2)
         dataframe["%-diff_to_psar"] = dataframe["close"] - psar
@@ -244,6 +256,18 @@ class QuickAdapterV3(IStrategy):
             (dataframe["close"] - dataframe["low"])
             / (dataframe["high"] - dataframe["low"])
         ).fillna(0.0)
+        # dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
+        #     dataframe, zero_lag=True
+        # )
+        # dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
+        # dataframe["%-dist_to_teeth"] = get_distance(
+        #     dataframe["close"], dataframe["teeth"]
+        # )
+        # dataframe["%-dist_to_lips"] = get_distance(
+        #     dataframe["close"], dataframe["lips"]
+        # )
+        # dataframe["%-spread_jaw_teeth"] = dataframe["jaw"] - dataframe["teeth"]
+        # dataframe["%-spread_teeth_lips"] = dataframe["teeth"] - dataframe["lips"]
         dataframe["zlema_50"] = pta.zlma(dataframe["close"], length=50, mamode="ema")
         dataframe["zlema_12"] = pta.zlma(dataframe["close"], length=12, mamode="ema")
         dataframe["zlema_26"] = pta.zlma(dataframe["close"], length=26, mamode="ema")
@@ -435,7 +459,8 @@ class QuickAdapterV3(IStrategy):
         ).total_seconds() / 60.0
         return trade_duration_minutes // timeframe_to_minutes(self.timeframe)
 
-    def is_trade_duration_valid(self, trade_duration_candles: int) -> bool:
+    @staticmethod
+    def is_trade_duration_valid(trade_duration_candles: int) -> bool:
         if isna(trade_duration_candles):
             return False
         if trade_duration_candles == 0:
@@ -446,7 +471,7 @@ class QuickAdapterV3(IStrategy):
         self, df: DataFrame, trade: Trade, current_rate: float
     ) -> float | None:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
-        if self.is_trade_duration_valid(trade_duration_candles) is False:
+        if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         current_natr = df["natr_ratio_labeling_window"].iloc[-1]
         if isna(current_natr):
@@ -455,12 +480,12 @@ class QuickAdapterV3(IStrategy):
             current_rate
             * current_natr
             * self.trailing_stoploss_natr_ratio
-            * (1 / math.log10(1 + trade_duration_candles))
+            * (1 / math.log10(1 + 0.25 * trade_duration_candles))
         )
 
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> float | None:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
-        if self.is_trade_duration_valid(trade_duration_candles) is False:
+        if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         entry_natr = self.get_trade_entry_natr(df, trade)
         if isna(entry_natr):
@@ -671,102 +696,3 @@ class QuickAdapterV3(IStrategy):
             with best_params_path.open("r", encoding="utf-8") as read_file:
                 return json.load(read_file)
         return None
-
-
-def top_change_percent(dataframe: DataFrame, period: int) -> Series:
-    """
-    Percentage change of the current close relative to the top close price in the previous `period` bars.
-
-    :param dataframe: OHLCV DataFrame
-    :param period: The previous period window size to look back (>=1)
-    :return: The top change percentage series
-    """
-    if period < 1:
-        raise ValueError("period must be greater than or equal to 1")
-
-    previous_close_top = (
-        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
-    )
-
-    return (dataframe["close"] - previous_close_top) / previous_close_top
-
-
-def bottom_change_percent(dataframe: DataFrame, period: int) -> Series:
-    """
-    Percentage change of the current close relative to the bottom close price in the previous `period` bars.
-
-    :param dataframe: OHLCV DataFrame
-    :param period: The previous period window size to look back (>=1)
-    :return: The bottom change percentage series
-    """
-    if period < 1:
-        raise ValueError("period must be greater than or equal to 1")
-
-    previous_close_bottom = (
-        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
-    )
-
-    return (dataframe["close"] - previous_close_bottom) / previous_close_bottom
-
-
-def price_retracement_percent(dataframe: DataFrame, period: int) -> Series:
-    """
-    Calculate the percentage retracement of the current close within the high/low close price range
-    of the previous `period` bars.
-
-    :param dataframe: OHLCV DataFrame
-    :param period: Window size for calculating historical closes high/low (>=1)
-    :return: Retracement percentage series
-    """
-    if period < 1:
-        raise ValueError("period must be greater than or equal to 1")
-
-    previous_close_low = (
-        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
-    )
-    previous_close_high = (
-        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
-    )
-
-    return (dataframe["close"] - previous_close_low) / (
-        previous_close_high - previous_close_low
-    ).fillna(0.0)
-
-
-def zero_phase_gaussian(series: Series, window: int, std: float):
-    kernel = gaussian(window, std=std)
-    kernel /= kernel.sum()
-
-    padding_length = window - 1
-    padded_series = np.pad(series.values, (padding_length, padding_length), mode="edge")
-
-    forward = convolve(padded_series, kernel, mode="valid")
-    backward = convolve(forward[::-1], kernel, mode="valid")[::-1]
-
-    return Series(backward, index=series.index)
-
-
-def get_gaussian_window(std: float, center: bool) -> int:
-    if std is None:
-        raise ValueError("Standard deviation cannot be None")
-    if std <= 0:
-        raise ValueError("Standard deviation must be greater than 0")
-    window = int(6 * std + 1)
-    if center and window % 2 == 0:
-        window += 1
-    return max(3, window)
-
-
-def derive_gaussian_std_from_window(window: int) -> float:
-    # Assuming window = 6 * std + 1 => std = (window - 1) / 6
-    return (window - 1) / 6.0 if window > 1 else 0.5
-
-
-def get_odd_window(window: int) -> int:
-    if window < 1:
-        raise ValueError("Window size must be greater than 0")
-    return window if window % 2 == 1 else window + 1
-
-
-def get_distance(p1: Series | float, p2: Series | float) -> Series | float:
-    return abs(p1 - p2)

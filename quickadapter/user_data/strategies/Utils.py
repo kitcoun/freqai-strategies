@@ -2,7 +2,108 @@ import numpy as np
 import pandas as pd
 import pandas_ta as pta
 import talib.abstract as ta
+from scipy.signal import convolve
+from scipy.signal.windows import gaussian
 from technical import qtpylib
+
+
+def get_distance(p1: pd.Series | float, p2: pd.Series | float) -> pd.Series | float:
+    return abs(p1 - p2)
+
+
+def get_gaussian_window(std: float, center: bool) -> int:
+    if std is None:
+        raise ValueError("Standard deviation cannot be None")
+    if std <= 0:
+        raise ValueError("Standard deviation must be greater than 0")
+    window = int(6 * std + 1)
+    if center and window % 2 == 0:
+        window += 1
+    return max(3, window)
+
+
+def get_odd_window(window: int) -> int:
+    if window < 1:
+        raise ValueError("Window size must be greater than 0")
+    return window if window % 2 == 1 else window + 1
+
+
+def derive_gaussian_std_from_window(window: int) -> float:
+    # Assuming window = 6 * std + 1 => std = (window - 1) / 6
+    return (window - 1) / 6.0 if window > 1 else 0.5
+
+
+def zero_phase_gaussian(series: pd.Series, window: int, std: float):
+    kernel = gaussian(window, std=std)
+    kernel /= kernel.sum()
+
+    padding_length = window - 1
+    padded_series = np.pad(series.values, (padding_length, padding_length), mode="edge")
+
+    forward = convolve(padded_series, kernel, mode="valid")
+    backward = convolve(forward[::-1], kernel, mode="valid")[::-1]
+
+    return pd.Series(backward, index=series.index)
+
+
+def top_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
+    """
+    Percentage change of the current close relative to the top close price in the previous `period` bars.
+
+    :param dataframe: OHLCV DataFrame
+    :param period: The previous period window size to look back (>=1)
+    :return: The top change percentage series
+    """
+    if period < 1:
+        raise ValueError("period must be greater than or equal to 1")
+
+    previous_close_top = (
+        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
+    )
+
+    return (dataframe["close"] - previous_close_top) / previous_close_top
+
+
+def bottom_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
+    """
+    Percentage change of the current close relative to the bottom close price in the previous `period` bars.
+
+    :param dataframe: OHLCV DataFrame
+    :param period: The previous period window size to look back (>=1)
+    :return: The bottom change percentage series
+    """
+    if period < 1:
+        raise ValueError("period must be greater than or equal to 1")
+
+    previous_close_bottom = (
+        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
+    )
+
+    return (dataframe["close"] - previous_close_bottom) / previous_close_bottom
+
+
+def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
+    """
+    Calculate the percentage retracement of the current close within the high/low close price range
+    of the previous `period` bars.
+
+    :param dataframe: OHLCV DataFrame
+    :param period: Window size for calculating historical closes high/low (>=1)
+    :return: Retracement percentage series
+    """
+    if period < 1:
+        raise ValueError("period must be greater than or equal to 1")
+
+    previous_close_low = (
+        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
+    )
+    previous_close_high = (
+        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
+    )
+
+    return (dataframe["close"] - previous_close_low) / (
+        previous_close_high - previous_close_low
+    ).fillna(0.0)
 
 
 # VWAP bands
@@ -26,84 +127,12 @@ def get_ma_fn(mamode: str, zero_lag=False) -> callable:
         "t3": ta.T3,
     }
     if zero_lag:
-        ma_fn = lambda df, timeperiod: pta.zlma(
-            df["close"], length=timeperiod, mamode=mamode
+        ma_fn = lambda series, timeperiod: pta.zlma(
+            series, length=timeperiod, mamode=mamode
         )
     else:
         ma_fn = mamodes.get(mamode, mamodes["sma"])
     return ma_fn
-
-
-def ewo(
-    dataframe: pd.DataFrame,
-    ma1_length=5,
-    ma2_length=34,
-    mamode="sma",
-    zero_lag=False,
-    normalize=False,
-) -> pd.Series:
-    ma_fn = get_ma_fn(mamode, zero_lag=zero_lag)
-    ma1 = ma_fn(dataframe, timeperiod=ma1_length)
-    ma2 = ma_fn(dataframe, timeperiod=ma2_length)
-    madiff = ma1 - ma2
-    if normalize:
-        madiff = (
-            madiff / dataframe["close"]
-        ) * 100  # Optional normalization with close price
-    return madiff
-
-
-def smma(
-    df: pd.DataFrame, period: int, mamode="sma", zero_lag=False, offset=0
-) -> pd.Series:
-    """
-    SMoothed Moving Average (SMMA).
-    """
-    close = df["close"]
-    if len(close) < period:
-        return pd.Series(index=close.index, dtype=float)
-
-    smma = close.copy()
-    smma[: period - 1] = np.nan
-    ma_fn = get_ma_fn(mamode, zero_lag=zero_lag)
-    smma.iloc[period - 1] = ma_fn(close[:period], timeperiod=period).iloc[-1]
-
-    for i in range(period, len(close)):
-        smma.iat[i] = ((period - 1) * smma.iat[i - 1] + smma.iat[i]) / period
-
-    if offset != 0:
-        smma = smma.shift(offset)
-
-    return smma
-
-
-def alligator(
-    df: pd.DataFrame,
-    jaw_period=13,
-    teeth_period=8,
-    lips_period=5,
-    jaw_shift=8,
-    teeth_shift=5,
-    lips_shift=3,
-    mamode="sma",
-    zero_lag=False,
-) -> tuple[pd.Series, pd.Series, pd.Series]:
-    """
-    Calculate Bill Williams' Alligator indicator lines.
-    """
-    median_price = (df["high"] + df["low"]) / 2
-
-    jaw = smma(median_price, period=jaw_period, mamode=mamode, zero_lag=zero_lag).shift(
-        jaw_shift
-    )
-    teeth = smma(
-        median_price, period=teeth_period, mamode=mamode, zero_lag=zero_lag
-    ).shift(teeth_shift)
-    lips = smma(
-        median_price, period=lips_period, mamode=mamode, zero_lag=zero_lag
-    ).shift(lips_shift)
-
-    return jaw, teeth, lips
 
 
 def fractal_dimension(
@@ -145,12 +174,12 @@ def fractal_dimension(
     return np.clip(D, 1.0, 2.0)
 
 
-def frama(prices: pd.Series, period: int = 16, normalize: bool = False) -> pd.Series:
+def frama(series: pd.Series, period: int = 16, normalize: bool = False) -> pd.Series:
     """
     Calculate FRAMA with optional normalization.
 
     Args:
-        prices: Pandas Series of closing prices.
+        series: Pandas Series of prices.
         period: Lookback window (default=16).
         normalize: Enable range normalization (default=False).
 
@@ -160,10 +189,10 @@ def frama(prices: pd.Series, period: int = 16, normalize: bool = False) -> pd.Se
     if period % 2 != 0:
         raise ValueError("FRAMA period must be even")
 
-    frama = np.full(len(prices), np.nan)
+    frama = np.full(len(series), np.nan)
 
-    for i in range(period - 1, len(prices)):
-        prices_array = prices.iloc[i - period + 1 : i + 1].to_numpy()
+    for i in range(period - 1, len(series)):
+        prices_array = series.iloc[i - period + 1 : i + 1].to_numpy()
         D = fractal_dimension(prices_array, period, normalize)
         alpha = np.exp(-4.6 * (D - 1))
 
@@ -172,4 +201,89 @@ def frama(prices: pd.Series, period: int = 16, normalize: bool = False) -> pd.Se
         else:
             frama[i] = alpha * prices_array[-1] + (1 - alpha) * frama[i - 1]
 
-    return pd.Series(frama, index=prices.index)
+    return pd.Series(frama, index=series.index)
+
+
+def smma(
+    series: pd.Series, period: int, mamode="sma", zero_lag=False, offset=0
+) -> pd.Series:
+    """
+    SMoothed Moving Average (SMMA).
+
+    https://www.sierrachart.com/index.php?page=doc/StudiesReference.php&ID=173&Name=Moving_Average_-_Smoothed
+    """
+    if len(series) < period:
+        return pd.Series(index=series.index, dtype=float)
+
+    smma = series.copy()
+    smma[: period - 1] = np.nan
+    ma_fn = get_ma_fn(mamode, zero_lag=zero_lag)
+    smma.iloc[period - 1] = pd.Series(
+        ma_fn(series.iloc[:period], timeperiod=period)
+    ).iloc[-1]
+
+    for i in range(period, len(series)):
+        smma.iat[i] = ((period - 1) * smma.iat[i - 1] + smma.iat[i]) / period
+
+    if offset != 0:
+        smma = smma.shift(offset)
+
+    return smma
+
+
+def get_price_fn(pricemode: str) -> callable:
+    pricemodes = {
+        "typical": lambda df: (df["high"] + df["low"] + df["close"]) / 3,
+        "median": lambda df: (df["high"] + df["low"]) / 2,
+        "close": lambda df: df["close"],
+    }
+    return pricemodes.get(pricemode, pricemodes["close"])
+
+
+def ewo(
+    dataframe: pd.DataFrame,
+    ma1_length=5,
+    ma2_length=34,
+    pricemode="close",
+    mamode="sma",
+    zero_lag=False,
+    normalize=False,
+) -> pd.Series:
+    price_series = get_price_fn(pricemode)(dataframe)
+    ma_fn = get_ma_fn(mamode, zero_lag=zero_lag)
+    ma1 = ma_fn(price_series, timeperiod=ma1_length)
+    ma2 = ma_fn(price_series, timeperiod=ma2_length)
+    madiff = ma1 - ma2
+    if normalize:
+        madiff = (madiff / price_series) * 100
+    return madiff
+
+
+def alligator(
+    df: pd.DataFrame,
+    jaw_period=13,
+    teeth_period=8,
+    lips_period=5,
+    jaw_shift=8,
+    teeth_shift=5,
+    lips_shift=3,
+    pricemode="median",
+    mamode="sma",
+    zero_lag=False,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """
+    Calculate Bill Williams' Alligator indicator lines.
+    """
+    price_series = get_price_fn(pricemode)(df)
+
+    jaw = smma(price_series, period=jaw_period, mamode=mamode, zero_lag=zero_lag).shift(
+        jaw_shift
+    )
+    teeth = smma(
+        price_series, period=teeth_period, mamode=mamode, zero_lag=zero_lag
+    ).shift(teeth_shift)
+    lips = smma(
+        price_series, period=lips_period, mamode=mamode, zero_lag=zero_lag
+    ).shift(lips_shift)
+
+    return jaw, teeth, lips
