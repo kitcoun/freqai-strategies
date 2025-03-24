@@ -18,8 +18,11 @@ import numpy as np
 import pandas_ta as pta
 
 from Utils import (
+    alligator,
+    bottom_change_percent,
     ewo,
     non_zero_range,
+    price_retracement_percent,
     vwapb,
     top_change_percent,
     get_distance,
@@ -56,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.15"
+        return "3.2.0"
 
     timeframe = "5m"
 
@@ -197,8 +200,8 @@ class QuickAdapterV3(IStrategy):
             length=period,
         )
         dataframe["%-tcp-period"] = top_change_percent(dataframe, period=period)
-        # dataframe["%-bcp-period"] = bottom_change_percent(dataframe, period=period)
-        # dataframe["%-prp-period"] = price_retracement_percent(dataframe, period=period)
+        dataframe["%-bcp-period"] = bottom_change_percent(dataframe, period=period)
+        dataframe["%-prp-period"] = price_retracement_percent(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = pta.chop(
             dataframe["high"],
@@ -255,21 +258,21 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-ibs"] = (dataframe["close"] - dataframe["low"]) / (
             non_zero_range(dataframe["high"], dataframe["low"])
         )
-        # dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
-        #     dataframe, mamode="ema", zero_lag=True
-        # )
-        # dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
-        # dataframe["%-dist_to_teeth"] = get_distance(
-        #     dataframe["close"], dataframe["teeth"]
-        # )
-        # dataframe["%-dist_to_lips"] = get_distance(
-        #     dataframe["close"], dataframe["lips"]
-        # )
-        # dataframe["%-spread_jaw_teeth"] = dataframe["jaw"] - dataframe["teeth"]
-        # dataframe["%-spread_teeth_lips"] = dataframe["teeth"] - dataframe["lips"]
-        # dataframe["%-alligator_trend_strength"] = (
-        #     dataframe["lips"] - dataframe["teeth"]
-        # ) + (non_zero_range(dataframe["teeth"], dataframe["jaw"]))
+        dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
+            dataframe, mamode="ema", zero_lag=True
+        )
+        dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
+        dataframe["%-dist_to_teeth"] = get_distance(
+            dataframe["close"], dataframe["teeth"]
+        )
+        dataframe["%-dist_to_lips"] = get_distance(
+            dataframe["close"], dataframe["lips"]
+        )
+        dataframe["%-spread_jaw_teeth"] = dataframe["jaw"] - dataframe["teeth"]
+        dataframe["%-spread_teeth_lips"] = dataframe["teeth"] - dataframe["lips"]
+        dataframe["%-alligator_trend_strength"] = (
+            dataframe["lips"] - dataframe["teeth"]
+        ) + (non_zero_range(dataframe["teeth"], dataframe["jaw"]))
         dataframe["zlema_50"] = pta.zlma(dataframe["close"], length=50, mamode="ema")
         dataframe["zlema_12"] = pta.zlma(dataframe["close"], length=12, mamode="ema")
         dataframe["zlema_26"] = pta.zlma(dataframe["close"], length=26, mamode="ema")
