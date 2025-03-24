@@ -69,7 +69,7 @@ class RLAgentStrategy(IStrategy):
     def feature_engineering_expand_basic(
         self, dataframe: DataFrame, metadata: dict, **kwargs
     ):
-        dataframe["%-pct-change"] = dataframe["close"].pct_change()
+        dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
 
         return dataframe

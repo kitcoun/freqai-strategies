@@ -260,7 +260,7 @@ class QuickAdapterV3(IStrategy):
             non_zero_range(dataframe["high"], dataframe["low"])
         )
         # dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
-        #     dataframe, mamode="ema", zero_lag=True
+        #     dataframe, zero_lag=True
         # )
         # dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
         # dataframe["%-dist_to_teeth"] = get_distance(
