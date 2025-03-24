@@ -271,9 +271,7 @@ class QuickAdapterV3(IStrategy):
         # )
         # dataframe["%-spread_jaw_teeth"] = dataframe["jaw"] - dataframe["teeth"]
         # dataframe["%-spread_teeth_lips"] = dataframe["teeth"] - dataframe["lips"]
-        # dataframe["%-alligator_trend_strength"] = (
-        #     dataframe["lips"] - dataframe["teeth"]
-        # ) + (non_zero_range(dataframe["teeth"], dataframe["jaw"]))
+        # dataframe["%-alligator_trend_strength"] = dataframe["lips"] - dataframe["jaw"]
         dataframe["zlema_50"] = pta.zlma(dataframe["close"], length=50, mamode="ema")
         dataframe["zlema_12"] = pta.zlma(dataframe["close"], length=12, mamode="ema")
         dataframe["zlema_26"] = pta.zlma(dataframe["close"], length=26, mamode="ema")
