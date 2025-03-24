@@ -209,12 +209,16 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-linearreg-angle-period"] = ta.LINEARREG_ANGLE(
             dataframe, timeperiod=period
         )
+        # dataframe["%-linearreg_angle-period"] = ta.LINEARREG_ANGLE(
+        #     dataframe, timeperiod=period
+        # )
         dataframe["%-atr-period"] = ta.ATR(dataframe, timeperiod=period)
         dataframe["%-natr-period"] = ta.NATR(dataframe, timeperiod=period)
         return dataframe
 
     def feature_engineering_expand_basic(self, dataframe, **kwargs):
         dataframe["%-pct-change"] = dataframe["close"].pct_change()
+        # dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
         dataframe["%-ewo"] = ewo(
