@@ -645,7 +645,7 @@ class QuickAdapterV3(IStrategy):
 
     def is_short_allowed(self) -> bool:
         trading_mode = self.config.get("trading_mode")
-        if trading_mode == "futures":
+        if trading_mode == "margin" or trading_mode == "futures":
             return True
         elif trading_mode == "spot":
             return False
