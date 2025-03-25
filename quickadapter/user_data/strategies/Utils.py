@@ -121,8 +121,9 @@ def vwapb(dataframe: pd.DataFrame, window=20, num_of_std=1) -> tuple:
     return vwap_low, vwap, vwap_high
 
 
-def zero_lag_series(series: pd.Series, timeperiod: int) -> pd.Series:
-    lag = int(0.5 * (timeperiod - 1))
+def zero_lag_series(series: pd.Series, period: int) -> pd.Series:
+    """Applies a zero lag filter to reduce MA lag."""
+    lag = int(0.5 * (period - 1))
     return 2 * series - series.shift(lag)
 
 
@@ -167,9 +168,9 @@ def _fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
     return np.clip(D, 1.0, 2.0)
 
 
-def frama(df: pd.DataFrame, period: int = 16) -> pd.Series:
+def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
     """
-    Original FRAMA implementation per Ehlers' paper.
+    Original FRAMA implementation per Ehlers' paper with optional zero lag.
     """
     if period % 2 != 0:
         raise ValueError("period must be even")
@@ -178,18 +179,18 @@ def frama(df: pd.DataFrame, period: int = 16) -> pd.Series:
     low = df["low"]
     close = df["close"]
 
+    if zero_lag:
+        high = zero_lag_series(high, period=period)
+        low = zero_lag_series(low, period=period)
+        close = zero_lag_series(close, period=period)
+
     fd = pd.Series(np.nan, index=close.index)
     for i in range(period, len(close)):
         window_high = high.iloc[i - period : i]
         window_low = low.iloc[i - period : i]
-
-        if len(window_high) != period:
-            continue
-
         fd.iloc[i] = _fractal_dimension(window_high.values, window_low.values, period)
 
-    alpha = np.exp(-4.6 * (fd - 1))
-    alpha = np.clip(alpha, 0.01, 1)
+    alpha = np.exp(-4.6 * (fd - 1)).clip(0.01, 1)
 
     frama = pd.Series(np.nan, index=close.index)
     frama.iloc[period - 1] = close.iloc[:period].mean()
@@ -215,7 +216,7 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
         return pd.Series(index=series.index, dtype=float)
 
     if zero_lag:
-        series = zero_lag_series(series, timeperiod=period)
+        series = zero_lag_series(series, period=period)
     smma = pd.Series(np.nan, index=series.index)
     smma.iloc[period - 1] = series.iloc[:period].mean()
 
@@ -253,8 +254,8 @@ def ewo(
     price_series = get_price_fn(pricemode)(dataframe)
 
     if zero_lag:
-        price_series_ma1 = zero_lag_series(price_series, timeperiod=ma1_length)
-        price_series_ma2 = zero_lag_series(price_series, timeperiod=ma2_length)
+        price_series_ma1 = zero_lag_series(price_series, period=ma1_length)
+        price_series_ma2 = zero_lag_series(price_series, period=ma2_length)
     else:
         price_series_ma1 = price_series
         price_series_ma2 = price_series
