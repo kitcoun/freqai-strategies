@@ -164,7 +164,7 @@ def _fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
     if (HL1 + HL2) == 0 or HL3 == 0:
         return 1.0
 
-    D = (np.log(HL1 + HL2) - np.log(HL3)) / np.log(2) + 1
+    D = (np.log(HL1 + HL2) - np.log(HL3)) / np.log(2)
     return np.clip(D, 1.0, 2.0)
 
 
