@@ -141,7 +141,7 @@ def get_ma_fn(mamode: str) -> callable:
     return mamodes.get(mamode, mamodes["sma"])
 
 
-def _fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
+def __fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
     """Original fractal dimension computation implementation per Ehlers' paper."""
     if period % 2 != 0:
         raise ValueError("period must be even")
@@ -188,7 +188,7 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
     for i in range(period, len(close)):
         window_high = high.iloc[i - period : i]
         window_low = low.iloc[i - period : i]
-        fd.iloc[i] = _fractal_dimension(window_high.values, window_low.values, period)
+        fd.iloc[i] = __fractal_dimension(window_high.values, window_low.values, period)
 
     alpha = np.exp(-4.6 * (fd - 1)).clip(0.01, 1)
 
@@ -231,8 +231,10 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
 
 def get_price_fn(pricemode: str) -> callable:
     pricemodes = {
-        "typical": lambda df: (df["high"] + df["low"] + df["close"]) / 3,
-        "median": lambda df: (df["high"] + df["low"]) / 2,
+        "average": ta.AVGPRICE,
+        "median": ta.MEDPRICE,
+        "typical": ta.TYPPRICE,
+        "weighted-close": ta.WCLPRICE,
         "close": lambda df: df["close"],
     }
     return pricemodes.get(pricemode, pricemodes["close"])
@@ -250,7 +252,6 @@ def ewo(
     """
     Calculate the Elliott Wave Oscillator (EWO) using two moving averages.
     """
-    ma_fn = get_ma_fn(mamode)
     price_series = get_price_fn(pricemode)(dataframe)
 
     if zero_lag:
@@ -260,6 +261,7 @@ def ewo(
         price_series_ma1 = price_series
         price_series_ma2 = price_series
 
+    ma_fn = get_ma_fn(mamode)
     ma1 = ma_fn(price_series_ma1, timeperiod=ma1_length)
     ma2 = ma_fn(price_series_ma2, timeperiod=ma2_length)
     madiff = ma1 - ma2
