@@ -342,7 +342,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
                     self.__optuna_config.get("n_jobs", 1),
                     max(int(self.max_system_threads / 4), 1),
                 ),
-                timeout=self.__optuna_config.get("timeout", 3600),
+                timeout=self.__optuna_config.get("timeout", 7200),
                 gc_after_trial=True,
             )
         except Exception as e:
@@ -430,7 +430,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
                     self.__optuna_config.get("n_jobs", 1),
                     max(int(self.max_system_threads / 4), 1),
                 ),
-                timeout=self.__optuna_config.get("timeout", 3600),
+                timeout=self.__optuna_config.get("timeout", 7200),
                 gc_after_trial=True,
             )
         except Exception as e:
