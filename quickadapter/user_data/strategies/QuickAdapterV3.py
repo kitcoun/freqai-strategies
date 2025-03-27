@@ -499,7 +499,7 @@ class QuickAdapterV3(IStrategy):
             trade.open_rate
             * max(entry_natr, harmonic_mean([entry_natr, current_natr]))
             * self.trailing_stoploss_natr_ratio
-            * math.log10(9 + trade_duration_candles)
+            * math.log10(8.75 + 1.25 * trade_duration_candles)
             * self.reward_risk_ratio
         )
 
