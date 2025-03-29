@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.2"
+        return "3.2.3"
 
     timeframe = "5m"
 
@@ -578,10 +578,12 @@ class QuickAdapterV3(IStrategy):
             return None
         if trade.is_short:
             take_profit_price = trade.open_rate - take_profit_distance
+            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
             if current_rate <= take_profit_price:
                 return "take_profit_short"
         else:
             take_profit_price = trade.open_rate + take_profit_distance
+            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
             if current_rate >= take_profit_price:
                 return "take_profit_long"
 
@@ -597,6 +599,9 @@ class QuickAdapterV3(IStrategy):
         side: str,
         **kwargs,
     ) -> bool:
+        open_trade_count = Trade.get_open_trade_count()
+        if open_trade_count >= self.config.get("max_open_trades"):
+            return False
         max_open_trades_per_side = self.max_open_trades_per_side()
         if max_open_trades_per_side >= 0:
             open_trades = Trade.get_open_trades()
@@ -606,9 +611,6 @@ class QuickAdapterV3(IStrategy):
                     num_shorts += 1
                 elif "long" in trade.enter_tag:
                     num_longs += 1
-            total_open_trades = num_longs + num_shorts
-            if total_open_trades >= self.config.get("max_open_trades"):
-                return False
             if (side == "long" and num_longs >= max_open_trades_per_side) or (
                 side == "short" and num_shorts >= max_open_trades_per_side
             ):
