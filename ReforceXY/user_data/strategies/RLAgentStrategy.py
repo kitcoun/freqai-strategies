@@ -23,7 +23,7 @@ class RLAgentStrategy(IStrategy):
 
     stoploss = -0.02
     # Trailing stop:
-    trailing_stop = True
+    trailing_stop = False
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True

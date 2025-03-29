@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.1"
+        return "3.2.2"
 
     timeframe = "5m"
 
@@ -68,7 +68,7 @@ class QuickAdapterV3(IStrategy):
 
     @property
     def trailing_stoploss_positive_offset(self) -> float:
-        return self.config.get("trailing_stoploss_positive_offset", 0.0075)
+        return self.config.get("trailing_stoploss_positive_offset", 0.005)
 
     @property
     def trailing_stoploss_only_offset_is_reached(self) -> bool:
@@ -499,7 +499,7 @@ class QuickAdapterV3(IStrategy):
             trade.open_rate
             * max(entry_natr, harmonic_mean([entry_natr, current_natr]))
             * self.trailing_stoploss_natr_ratio
-            * math.log10(8.75 + 1.25 * trade_duration_candles)
+            * math.log10(9 + trade_duration_candles)
             * self.reward_risk_ratio
         )
 
