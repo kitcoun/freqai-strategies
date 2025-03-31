@@ -43,7 +43,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.2"
+    version = "3.6.3"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
