@@ -23,7 +23,7 @@ class RLAgentStrategy(IStrategy):
 
     stoploss = -0.02
     # Trailing stop:
-    trailing_stop = True
+    trailing_stop = False
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
@@ -69,7 +69,7 @@ class RLAgentStrategy(IStrategy):
     def feature_engineering_expand_basic(
         self, dataframe: DataFrame, metadata: dict, **kwargs
     ):
-        dataframe["%-pct-change"] = dataframe["close"].pct_change()
+        dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
 
         return dataframe
@@ -125,7 +125,7 @@ class RLAgentStrategy(IStrategy):
 
     def is_short_allowed(self) -> bool:
         trading_mode = self.config.get("trading_mode")
-        if trading_mode == "futures":
+        if trading_mode == "margin" or trading_mode == "futures":
             return True
         elif trading_mode == "spot":
             return False

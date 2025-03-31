@@ -18,8 +18,11 @@ import numpy as np
 import pandas_ta as pta
 
 from Utils import (
+    alligator,
+    bottom_change_percent,
     ewo,
     non_zero_range,
+    price_retracement_percent,
     vwapb,
     top_change_percent,
     get_distance,
@@ -56,20 +59,12 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.1.15"
+        return "3.2.5"
 
     timeframe = "5m"
 
     stoploss = -0.02
     use_custom_stoploss = True
-
-    @property
-    def trailing_stoploss_positive_offset(self) -> float:
-        return self.config.get("trailing_stoploss_positive_offset", 0.0075)
-
-    @property
-    def trailing_stoploss_only_offset_is_reached(self) -> bool:
-        return self.config.get("trailing_stoploss_only_offset_is_reached", True)
 
     @property
     def trailing_stoploss_natr_ratio(self) -> float:
@@ -197,8 +192,8 @@ class QuickAdapterV3(IStrategy):
             length=period,
         )
         dataframe["%-tcp-period"] = top_change_percent(dataframe, period=period)
-        # dataframe["%-bcp-period"] = bottom_change_percent(dataframe, period=period)
-        # dataframe["%-prp-period"] = price_retracement_percent(dataframe, period=period)
+        dataframe["%-bcp-period"] = bottom_change_percent(dataframe, period=period)
+        dataframe["%-prp-period"] = price_retracement_percent(dataframe, period=period)
         dataframe["%-cti-period"] = pta.cti(dataframe["close"], length=period)
         dataframe["%-chop-period"] = pta.chop(
             dataframe["high"],
@@ -206,7 +201,7 @@ class QuickAdapterV3(IStrategy):
             dataframe["close"],
             length=period,
         )
-        dataframe["%-linearreg-angle-period"] = ta.LINEARREG_ANGLE(
+        dataframe["%-linearreg_angle-period"] = ta.LINEARREG_ANGLE(
             dataframe, timeperiod=period
         )
         dataframe["%-atr-period"] = ta.ATR(dataframe, timeperiod=period)
@@ -214,13 +209,13 @@ class QuickAdapterV3(IStrategy):
         return dataframe
 
     def feature_engineering_expand_basic(self, dataframe, **kwargs):
-        dataframe["%-pct-change"] = dataframe["close"].pct_change()
+        dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
         dataframe["%-ewo"] = ewo(
             dataframe=dataframe,
-            mamode="ema",
             pricemode="close",
+            mamode="ema",
             zero_lag=True,
             normalize=True,
         )
@@ -255,21 +250,18 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-ibs"] = (dataframe["close"] - dataframe["low"]) / (
             non_zero_range(dataframe["high"], dataframe["low"])
         )
-        # dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
-        #     dataframe, mamode="ema", zero_lag=True
-        # )
-        # dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
-        # dataframe["%-dist_to_teeth"] = get_distance(
-        #     dataframe["close"], dataframe["teeth"]
-        # )
-        # dataframe["%-dist_to_lips"] = get_distance(
-        #     dataframe["close"], dataframe["lips"]
-        # )
-        # dataframe["%-spread_jaw_teeth"] = dataframe["jaw"] - dataframe["teeth"]
-        # dataframe["%-spread_teeth_lips"] = dataframe["teeth"] - dataframe["lips"]
-        # dataframe["%-alligator_trend_strength"] = (
-        #     dataframe["lips"] - dataframe["teeth"]
-        # ) + (non_zero_range(dataframe["teeth"], dataframe["jaw"]))
+        dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
+            dataframe, pricemode="median", zero_lag=True
+        )
+        dataframe["%-dist_to_jaw"] = get_distance(dataframe["close"], dataframe["jaw"])
+        dataframe["%-dist_to_teeth"] = get_distance(
+            dataframe["close"], dataframe["teeth"]
+        )
+        dataframe["%-dist_to_lips"] = get_distance(
+            dataframe["close"], dataframe["lips"]
+        )
+        dataframe["%-spread_jaw_teeth"] = dataframe["jaw"] - dataframe["teeth"]
+        dataframe["%-spread_teeth_lips"] = dataframe["teeth"] - dataframe["lips"]
         dataframe["zlema_50"] = pta.zlma(dataframe["close"], length=50, mamode="ema")
         dataframe["zlema_12"] = pta.zlma(dataframe["close"], length=12, mamode="ema")
         dataframe["zlema_26"] = pta.zlma(dataframe["close"], length=26, mamode="ema")
@@ -383,15 +375,10 @@ class QuickAdapterV3(IStrategy):
             "label_period_candles"
         ].iloc[-1]
 
-        label_window = self.get_label_period_candles(pair) * 2
+        labeling_window = self.get_label_period_candles(pair) * 2
 
-        dataframe["natr_ratio_labeling_window"] = pta.natr(
-            dataframe["high"],
-            dataframe["low"],
-            dataframe["close"],
-            length=label_window,
-            scalar=1,
-            mamode="ema",
+        dataframe["natr_labeling_window"] = ta.NATR(
+            dataframe, timeperiod=labeling_window
         )
 
         dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
@@ -439,7 +426,7 @@ class QuickAdapterV3(IStrategy):
         if entry_candle is None:
             return None
         entry_candle = entry_candle.squeeze()
-        return entry_candle["natr_ratio_labeling_window"]
+        return entry_candle["natr_labeling_window"]
 
     def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> int | None:
         """
@@ -475,7 +462,7 @@ class QuickAdapterV3(IStrategy):
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
-        current_natr = df["natr_ratio_labeling_window"].iloc[-1]
+        current_natr = df["natr_labeling_window"].iloc[-1]
         if isna(current_natr):
             return None
         return (
@@ -492,7 +479,7 @@ class QuickAdapterV3(IStrategy):
         entry_natr = self.get_trade_entry_natr(df, trade)
         if isna(entry_natr):
             return None
-        current_natr = df["natr_ratio_labeling_window"].iloc[-1]
+        current_natr = df["natr_labeling_window"].iloc[-1]
         if isna(current_natr):
             return None
         return (
@@ -512,12 +499,6 @@ class QuickAdapterV3(IStrategy):
         current_profit: float,
         **kwargs,
     ) -> float | None:
-        if (
-            self.trailing_stoploss_only_offset_is_reached
-            and current_profit < self.trailing_stoploss_positive_offset
-        ):
-            return None
-
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
 
         if df.empty:
@@ -578,10 +559,12 @@ class QuickAdapterV3(IStrategy):
             return None
         if trade.is_short:
             take_profit_price = trade.open_rate - take_profit_distance
+            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
             if current_rate <= take_profit_price:
                 return "take_profit_short"
         else:
             take_profit_price = trade.open_rate + take_profit_distance
+            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
             if current_rate >= take_profit_price:
                 return "take_profit_long"
 
@@ -597,6 +580,9 @@ class QuickAdapterV3(IStrategy):
         side: str,
         **kwargs,
     ) -> bool:
+        open_trade_count = Trade.get_open_trade_count()
+        if open_trade_count >= self.config.get("max_open_trades"):
+            return False
         max_open_trades_per_side = self.max_open_trades_per_side()
         if max_open_trades_per_side >= 0:
             open_trades = Trade.get_open_trades()
@@ -606,9 +592,6 @@ class QuickAdapterV3(IStrategy):
                     num_shorts += 1
                 elif "long" in trade.enter_tag:
                     num_longs += 1
-            total_open_trades = num_longs + num_shorts
-            if total_open_trades >= self.config.get("max_open_trades"):
-                return False
             if (side == "long" and num_longs >= max_open_trades_per_side) or (
                 side == "short" and num_shorts >= max_open_trades_per_side
             ):
@@ -619,7 +602,7 @@ class QuickAdapterV3(IStrategy):
             return False
         last_candle = df.iloc[-1].squeeze()
         entry_price_fluctuation_threshold = (
-            last_candle["natr_ratio_labeling_window"] * self.entry_natr_ratio
+            last_candle["natr_labeling_window"] * self.entry_natr_ratio
         )
         if (
             side == "long"
@@ -645,7 +628,7 @@ class QuickAdapterV3(IStrategy):
 
     def is_short_allowed(self) -> bool:
         trading_mode = self.config.get("trading_mode")
-        if trading_mode == "futures":
+        if trading_mode == "margin" or trading_mode == "futures":
             return True
         elif trading_mode == "spot":
             return False

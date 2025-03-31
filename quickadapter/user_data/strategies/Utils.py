@@ -1,10 +1,8 @@
 import numpy as np
 import pandas as pd
-import pandas_ta as pta
 import talib.abstract as ta
 from scipy.signal import convolve
 from scipy.signal.windows import gaussian
-from sys import float_info
 from technical import qtpylib
 
 
@@ -15,8 +13,7 @@ def get_distance(p1: pd.Series | float, p2: pd.Series | float) -> pd.Series | fl
 def non_zero_range(s1: pd.Series, s2: pd.Series) -> pd.Series:
     """Returns the difference of two series and adds epsilon to any zero values."""
     diff = s1 - s2
-    if diff.eq(0).any().any():
-        diff += float_info.epsilon
+    diff = diff.mask(diff == 0, other=diff + np.finfo(float).eps)
     return diff
 
 
@@ -124,7 +121,13 @@ def vwapb(dataframe: pd.DataFrame, window=20, num_of_std=1) -> tuple:
     return vwap_low, vwap, vwap_high
 
 
-def get_ma_fn(mamode: str, zero_lag=False) -> callable:
+def zero_lag_series(series: pd.Series, period: int) -> pd.Series:
+    """Applies a zero lag filter to reduce MA lag."""
+    lag = int(0.5 * (period - 1))
+    return 2 * series - series.shift(lag)
+
+
+def get_ma_fn(mamode: str) -> callable:
     mamodes: dict = {
         "sma": ta.SMA,
         "ema": ta.EMA,
@@ -135,104 +138,90 @@ def get_ma_fn(mamode: str, zero_lag=False) -> callable:
         "kama": ta.KAMA,
         "t3": ta.T3,
     }
-    if zero_lag:
-        ma_fn = lambda series, timeperiod: pta.zlma(
-            series, length=timeperiod, mamode=mamode
-        )
-    else:
-        ma_fn = mamodes.get(mamode, mamodes["sma"])
-    return ma_fn
+    return mamodes.get(mamode, mamodes["sma"])
 
 
-def fractal_dimension(
-    prices_array: np.ndarray, period: int, normalize: bool = False
-) -> float:
-    """
-    Calculate fractal dimension of a price window, with optional normalization.
-
-    Args:
-        window: Array of prices for the current window.
-        period: Window size (must be even).
-        normalize: If True, normalize HL values by their window lengths.
-
-    Returns:
-        Fractal dimension (D) clipped between 1.0 and 2.0.
-    """
+def __fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
+    """Original fractal dimension computation implementation per Ehlers' paper."""
     if period % 2 != 0:
-        raise ValueError("FRAMA period must be even")
+        raise ValueError("period must be even")
 
     half_period = period // 2
-    if half_period < 1 or len(prices_array) < period:
-        return 1.0
-    prices_first_half = prices_array[:half_period]
-    prices_second_half = prices_array[half_period:]
 
-    HL1 = np.max(prices_first_half) - np.min(prices_first_half)
-    HL2 = np.max(prices_second_half) - np.min(prices_second_half)
-    HL3 = np.max(prices_array) - np.min(prices_array)
+    H1 = np.max(high[:half_period])
+    L1 = np.min(low[:half_period])
 
-    if normalize:
-        HL1 /= half_period
-        HL2 /= half_period
-        HL3 /= period
+    H2 = np.max(high[half_period:])
+    L2 = np.min(low[half_period:])
 
-    if HL1 + HL2 == 0 or HL3 == 0:
+    H3 = np.max(high)
+    L3 = np.min(low)
+
+    HL1 = H1 - L1
+    HL2 = H2 - L2
+    HL3 = H3 - L3
+
+    if (HL1 + HL2) == 0 or HL3 == 0:
         return 1.0
 
     D = (np.log(HL1 + HL2) - np.log(HL3)) / np.log(2)
     return np.clip(D, 1.0, 2.0)
 
 
-def frama(series: pd.Series, period: int = 16, normalize: bool = False) -> pd.Series:
+def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
     """
-    Calculate FRAMA with optional normalization.
-
-    Args:
-        series: Pandas Series of prices.
-        period: Lookback window (default=16).
-        normalize: Enable range normalization (default=False).
-
-    Returns:
-        FRAMA values as a Pandas Series.
+    Original FRAMA implementation per Ehlers' paper with optional zero lag.
     """
     if period % 2 != 0:
-        raise ValueError("FRAMA period must be even")
+        raise ValueError("period must be even")
 
-    frama = np.full(len(series), np.nan)
+    high = df["high"]
+    low = df["low"]
+    close = df["close"]
 
-    for i in range(period - 1, len(series)):
-        prices_array = series.iloc[i - period + 1 : i + 1].to_numpy()
-        D = fractal_dimension(prices_array, period, normalize)
-        alpha = np.exp(-4.6 * (D - 1))
+    if zero_lag:
+        high = zero_lag_series(high, period=period)
+        low = zero_lag_series(low, period=period)
+        close = zero_lag_series(close, period=period)
 
-        if np.isnan(frama[i - 1]):
-            frama[i] = prices_array[-1]
-        else:
-            frama[i] = alpha * prices_array[-1] + (1 - alpha) * frama[i - 1]
+    fd = pd.Series(np.nan, index=close.index)
+    for i in range(period, len(close)):
+        window_high = high.iloc[i - period : i]
+        window_low = low.iloc[i - period : i]
+        fd.iloc[i] = __fractal_dimension(window_high.values, window_low.values, period)
 
-    return pd.Series(frama, index=series.index)
+    alpha = np.exp(-4.6 * (fd - 1)).clip(0.01, 1)
+
+    frama = pd.Series(np.nan, index=close.index)
+    frama.iloc[period - 1] = close.iloc[:period].mean()
+    for i in range(period, len(close)):
+        if pd.isna(frama.iloc[i - 1]) or pd.isna(alpha.iloc[i]):
+            continue
+        frama.iloc[i] = (
+            alpha.iloc[i] * close.iloc[i] + (1 - alpha.iloc[i]) * frama.iloc[i - 1]
+        )
+
+    return frama
 
 
-def smma(
-    series: pd.Series, period: int, mamode="sma", zero_lag=False, offset=0
-) -> pd.Series:
+def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     """
     SMoothed Moving Average (SMMA).
 
     https://www.sierrachart.com/index.php?page=doc/StudiesReference.php&ID=173&Name=Moving_Average_-_Smoothed
     """
+    if period <= 0:
+        raise ValueError("period must be greater than 0")
     if len(series) < period:
         return pd.Series(index=series.index, dtype=float)
 
-    smma = series.copy()
-    smma[: period - 1] = np.nan
-    ma_fn = get_ma_fn(mamode, zero_lag=zero_lag)
-    smma.iloc[period - 1] = pd.Series(
-        ma_fn(series.iloc[:period], timeperiod=period)
-    ).iloc[-1]
+    if zero_lag:
+        series = zero_lag_series(series, period=period)
+    smma = pd.Series(np.nan, index=series.index)
+    smma.iloc[period - 1] = series.iloc[:period].mean()
 
     for i in range(period, len(series)):
-        smma.iat[i] = ((period - 1) * smma.iat[i - 1] + smma.iat[i]) / period
+        smma.iloc[i] = (smma.iloc[i - 1] * (period - 1) + series.iloc[i]) / period
 
     if offset != 0:
         smma = smma.shift(offset)
@@ -242,8 +231,10 @@ def smma(
 
 def get_price_fn(pricemode: str) -> callable:
     pricemodes = {
-        "typical": lambda df: (df["high"] + df["low"] + df["close"]) / 3,
-        "median": lambda df: (df["high"] + df["low"]) / 2,
+        "average": ta.AVGPRICE,
+        "median": ta.MEDPRICE,
+        "typical": ta.TYPPRICE,
+        "weighted-close": ta.WCLPRICE,
         "close": lambda df: df["close"],
     }
     return pricemodes.get(pricemode, pricemodes["close"])
@@ -262,9 +253,17 @@ def ewo(
     Calculate the Elliott Wave Oscillator (EWO) using two moving averages.
     """
     price_series = get_price_fn(pricemode)(dataframe)
-    ma_fn = get_ma_fn(mamode, zero_lag=zero_lag)
-    ma1 = ma_fn(price_series, timeperiod=ma1_length)
-    ma2 = ma_fn(price_series, timeperiod=ma2_length)
+
+    if zero_lag:
+        price_series_ma1 = zero_lag_series(price_series, period=ma1_length)
+        price_series_ma2 = zero_lag_series(price_series, period=ma2_length)
+    else:
+        price_series_ma1 = price_series
+        price_series_ma2 = price_series
+
+    ma_fn = get_ma_fn(mamode)
+    ma1 = ma_fn(price_series_ma1, timeperiod=ma1_length)
+    ma2 = ma_fn(price_series_ma2, timeperiod=ma2_length)
     madiff = ma1 - ma2
     if normalize:
         madiff = (madiff / price_series) * 100
@@ -280,7 +279,6 @@ def alligator(
     teeth_shift=5,
     lips_shift=3,
     pricemode="median",
-    mamode="sma",
     zero_lag=False,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
@@ -288,14 +286,10 @@ def alligator(
     """
     price_series = get_price_fn(pricemode)(df)
 
-    jaw = smma(price_series, period=jaw_period, mamode=mamode, zero_lag=zero_lag).shift(
-        jaw_shift
-    )
+    jaw = smma(price_series, period=jaw_period, zero_lag=zero_lag, offset=jaw_shift)
     teeth = smma(
-        price_series, period=teeth_period, mamode=mamode, zero_lag=zero_lag
-    ).shift(teeth_shift)
-    lips = smma(
-        price_series, period=lips_period, mamode=mamode, zero_lag=zero_lag
-    ).shift(lips_shift)
+        price_series, period=teeth_period, zero_lag=zero_lag, offset=teeth_shift
+    )
+    lips = smma(price_series, period=lips_period, zero_lag=zero_lag, offset=lips_shift)
 
     return jaw, teeth, lips
