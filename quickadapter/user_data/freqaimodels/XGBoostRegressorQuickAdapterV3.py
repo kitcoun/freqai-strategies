@@ -43,7 +43,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.1"
+    version = "3.6.2"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -614,8 +614,9 @@ def period_objective(
     y_pred = model.predict(X_test)
 
     min_label_period_candles: int = max(fit_live_predictions_candles // 20, 20)
-    max_label_period_candles: int = max(
-        fit_live_predictions_candles // 6, min_label_period_candles
+    max_label_period_candles: int = min(
+        max(fit_live_predictions_candles // 6, min_label_period_candles),
+        test_window // 2,
     )
     label_period_candles: int = trial.suggest_int(
         "label_period_candles",
@@ -623,21 +624,23 @@ def period_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_window: int = label_period_candles * 2
+    label_window_length: int = label_period_candles * 2
     label_windows_length: int = (
-        fit_live_predictions_candles // label_window
-    ) * label_window
+        test_window // label_window_length
+    ) * label_window_length
+    if label_windows_length == 0 or label_window_length > test_window:
+        return float("inf")
     y_test_period = [
-        y_test.iloc[-label_windows_length:].to_numpy()[i : i + label_window]
-        for i in range(0, label_windows_length, label_window)
+        y_test.iloc[-label_windows_length:].to_numpy()[i : i + label_window_length]
+        for i in range(0, label_windows_length, label_window_length)
     ]
     test_weights_period = [
-        test_weights[-label_windows_length:][i : i + label_window]
-        for i in range(0, label_windows_length, label_window)
+        test_weights[-label_windows_length:][i : i + label_window_length]
+        for i in range(0, label_windows_length, label_window_length)
     ]
     y_pred_period = [
-        y_pred[-label_windows_length:][i : i + label_window]
-        for i in range(0, label_windows_length, label_window)
+        y_pred[-label_windows_length:][i : i + label_window_length]
+        for i in range(0, label_windows_length, label_window_length)
     ]
 
     errors = [
