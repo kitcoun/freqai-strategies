@@ -59,20 +59,12 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.4"
+        return "3.2.5"
 
     timeframe = "5m"
 
     stoploss = -0.02
     use_custom_stoploss = True
-
-    @property
-    def trailing_stoploss_positive_offset(self) -> float:
-        return self.config.get("trailing_stoploss_positive_offset", 0.005)
-
-    @property
-    def trailing_stoploss_only_offset_is_reached(self) -> bool:
-        return self.config.get("trailing_stoploss_only_offset_is_reached", True)
 
     @property
     def trailing_stoploss_natr_ratio(self) -> float:
@@ -507,12 +499,6 @@ class QuickAdapterV3(IStrategy):
         current_profit: float,
         **kwargs,
     ) -> float | None:
-        if (
-            self.trailing_stoploss_only_offset_is_reached
-            and current_profit < self.trailing_stoploss_positive_offset
-        ):
-            return None
-
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
 
         if df.empty:
