@@ -1,6 +1,6 @@
 import logging
 import json
-from statistics import fmean
+from statistics import geometric_mean
 from typing import Any
 from pathlib import Path
 
@@ -619,28 +619,25 @@ def period_objective(
     label_windows_length: int = (
         fit_live_predictions_candles // label_window
     ) * label_window
-    y_test = y_test.iloc[-label_windows_length:].to_numpy()
-    test_weights = test_weights[-label_windows_length:]
-    y_pred = y_pred[-label_windows_length:]
-    y_test = [
-        y_test[i : i + label_window]
+    y_test_period = [
+        y_test.iloc[-label_windows_length:].to_numpy()[i : i + label_window]
         for i in range(0, label_windows_length, label_window)
     ]
-    test_weights = [
-        test_weights[i : i + label_window]
+    test_weights_period = [
+        test_weights[-label_windows_length:][i : i + label_window]
         for i in range(0, label_windows_length, label_window)
     ]
-    y_pred = [
-        y_pred[i : i + label_window]
+    y_pred_period = [
+        y_pred[-label_windows_length:][i : i + label_window]
         for i in range(0, label_windows_length, label_window)
     ]
 
     errors = [
         sklearn.metrics.root_mean_squared_error(y_t, y_p, sample_weight=t_w)
-        for y_t, y_p, t_w in zip(y_test, y_pred, test_weights)
+        for y_t, y_p, t_w in zip(y_test_period, y_pred_period, test_weights_period)
     ]
 
-    return fmean(errors)
+    return geometric_mean(errors)
 
 
 def hp_objective(
