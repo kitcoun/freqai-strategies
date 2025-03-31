@@ -43,7 +43,7 @@ class LightGBMRegressorQuickAdapterV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.1"
+    version = "3.6.2"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
