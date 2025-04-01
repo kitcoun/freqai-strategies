@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.5"
+        return "3.2.6"
 
     timeframe = "5m"
 
@@ -136,11 +136,11 @@ class QuickAdapterV3(IStrategy):
             "fit_live_predictions_candles", 100
         )
         return [
-            {"method": "CooldownPeriod", "stop_duration_candles": 4},
+            {"method": "CooldownPeriod", "stop_duration_candles": 2},
             {
                 "method": "MaxDrawdown",
                 "lookback_period_candles": fit_live_predictions_candles,
-                "trade_limit": 20,
+                "trade_limit": self.config.get("max_open_trades"),
                 "stop_duration_candles": fit_live_predictions_candles,
                 "max_allowed_drawdown": 0.2,
             },

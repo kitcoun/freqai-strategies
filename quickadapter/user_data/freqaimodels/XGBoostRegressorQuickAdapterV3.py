@@ -43,7 +43,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.2"
+    version = "3.6.3"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -271,7 +271,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[pd.Series, pd.Series]:
         prediction_thresholds_smoothing = self.freqai_info.get(
-            "prediction_thresholds_smoothing", "mean"
+            "prediction_thresholds_smoothing", "quantile"
         )
         smoothing_methods: dict = {
             "quantile": self.quantile_min_max_pred,
@@ -279,7 +279,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
             "median": XGBoostRegressorQuickAdapterV3.median_min_max_pred,
         }
         return smoothing_methods.get(
-            prediction_thresholds_smoothing, smoothing_methods["mean"]
+            prediction_thresholds_smoothing, smoothing_methods["quantile"]
         )(pred_df, fit_live_predictions_candles, label_period_candles)
 
     def optuna_hp_enqueue_previous_best_trial(
