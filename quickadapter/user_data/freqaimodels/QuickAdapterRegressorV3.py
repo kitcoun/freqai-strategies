@@ -1,20 +1,21 @@
 import logging
 import json
-from statistics import geometric_mean
-from typing import Any
-from pathlib import Path
-
-from xgboost import XGBRegressor
 import time
-from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
-from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
+import numpy as np
 import pandas as pd
 import scipy as sp
 import optuna
 import sklearn
 import warnings
 
-N_TRIALS = 36
+from statistics import geometric_mean
+from functools import cached_property
+from typing import Any, Callable, Optional
+from pathlib import Path
+from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
+from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
+
+
 TEST_SIZE = 0.1
 
 EXTREMA_COLUMN = "&s-extrema"
@@ -26,7 +27,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 logger = logging.getLogger(__name__)
 
 
-class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
+class QuickAdapterRegressorV3(BaseRegressionModel):
     """
     The following freqaimodel is released to sponsors of the non-profit FreqAI open-source project.
     If you find the FreqAI project useful, please consider supporting it by becoming a sponsor.
@@ -43,7 +44,26 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.3"
+    version = "3.6.4"
+
+    @cached_property
+    def __optuna_config(self) -> dict:
+        return {
+            **{
+                "enabled": False,
+                "n_jobs": min(
+                    self.freqai_info.get("optuna_hyperopt", {}).get("n_jobs", 1),
+                    max(int(self.max_system_threads / 4), 1),
+                ),
+                "storage": "file",
+                "continuous": True,
+                "warm_start": True,
+                "n_trials": 36,
+                "timeout": 7200,
+                "candles_step": 10,
+            },
+            **self.freqai_info.get("optuna_hyperopt", {}),
+        }
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -52,10 +72,16 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
             raise ValueError(
                 "FreqAI model requires StaticPairList method defined in pairlists configuration and pair_whitelist defined in exchange section configuration"
             )
-        self.__optuna_config = self.freqai_info.get("optuna_hyperopt", {})
+        if (
+            self.freqai_info.get("identifier") is None
+            or self.freqai_info.get("identifier").strip() == ""
+        ):
+            raise ValueError(
+                "FreqAI model requires identifier defined in the freqai section configuration"
+            )
         self.__optuna_hyperopt: bool = (
             self.freqai_info.get("enabled", False)
-            and self.__optuna_config.get("enabled", False)
+            and self.__optuna_config.get("enabled")
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
         self.__optuna_hp_rmse: dict[str, float] = {}
@@ -72,7 +98,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
                 self.optuna_load_best_params(pair, "period") or {}
             )
         logger.info(
-            f"Initialized {self.__class__.__name__} model version {self.version}"
+            f"Initialized {self.__class__.__name__} {self.freqai_info.get('regressor', 'xgboost')} regressor model version {self.version}"
         )
 
     def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
@@ -92,17 +118,13 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
 
         model_training_parameters = self.model_training_parameters
 
-        xgb_model = self.get_init_model(dk.pair)
+        init_model = self.get_init_model(dk.pair)
 
         start = time.time()
         if self.__optuna_hyperopt:
-            optuna_hp_params, optuna_hp_rmse = self.optuna_hp_optimize(
+            self.optuna_hp_optimize(
                 dk.pair, X, y, train_weights, X_test, y_test, test_weights
             )
-            if optuna_hp_params:
-                self.__optuna_hp_params[dk.pair] = optuna_hp_params
-            if optuna_hp_rmse:
-                self.__optuna_hp_rmse[dk.pair] = optuna_hp_rmse
 
             if self.__optuna_hp_params.get(dk.pair):
                 model_training_parameters = {
@@ -110,7 +132,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
                     **self.__optuna_hp_params[dk.pair],
                 }
 
-            optuna_period_params, optuna_period_rmse = self.optuna_period_optimize(
+            self.optuna_period_optimize(
                 dk.pair,
                 X,
                 y,
@@ -120,10 +142,6 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
                 test_weights,
                 model_training_parameters,
             )
-            if optuna_period_params:
-                self.__optuna_period_params[dk.pair] = optuna_period_params
-            if optuna_period_rmse:
-                self.__optuna_period_rmse[dk.pair] = optuna_period_rmse
 
             if self.__optuna_period_params.get(dk.pair):
                 train_window = self.__optuna_period_params[dk.pair].get(
@@ -140,21 +158,17 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
                 y_test = y_test.iloc[-test_window:]
                 test_weights = test_weights[-test_window:]
 
-        model = XGBRegressor(
-            objective="reg:squarederror",
-            eval_metric="rmse",
-            **model_training_parameters,
-        )
-
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
-        model.fit(
+        model = train_regressor(
+            regressor=self.freqai_info.get("regressor", "xgboost"),
             X=X,
             y=y,
-            sample_weight=train_weights,
+            train_weights=train_weights,
             eval_set=eval_set,
-            sample_weight_eval_set=eval_weights,
-            xgb_model=xgb_model,
+            eval_weights=eval_weights,
+            model_training_parameters=model_training_parameters,
+            init_model=init_model,
         )
         time_spent = time.time() - start
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
@@ -250,20 +264,6 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
 
         return eval_set, eval_weights
 
-    def optuna_storage(self, pair: str) -> optuna.storages.BaseStorage | None:
-        storage_dir = self.full_path
-        storage_filename = f"optuna-{pair.split('/')[0]}"
-        storage_backend = self.__optuna_config.get("storage", "file")
-        if storage_backend == "sqlite":
-            storage = f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
-        elif storage_backend == "file":
-            storage = optuna.storages.JournalStorage(
-                optuna.storages.journal.JournalFileBackend(
-                    f"{storage_dir}/{storage_filename}.log"
-                )
-            )
-        return storage
-
     def min_max_pred(
         self,
         pred_df: pd.DataFrame,
@@ -275,185 +275,202 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         )
         smoothing_methods: dict = {
             "quantile": self.quantile_min_max_pred,
-            "mean": XGBoostRegressorQuickAdapterV3.mean_min_max_pred,
-            "median": XGBoostRegressorQuickAdapterV3.median_min_max_pred,
+            "mean": QuickAdapterRegressorV3.mean_min_max_pred,
+            "median": QuickAdapterRegressorV3.median_min_max_pred,
         }
         return smoothing_methods.get(
             prediction_thresholds_smoothing, smoothing_methods["quantile"]
         )(pred_df, fit_live_predictions_candles, label_period_candles)
 
-    def optuna_hp_enqueue_previous_best_trial(
-        self,
-        pair: str,
-        study: optuna.study.Study,
-    ) -> None:
-        study_namespace = "hp"
-        if self.__optuna_hp_params.get(pair):
-            study.enqueue_trial(self.__optuna_hp_params[pair])
-        elif self.optuna_load_best_params(pair, study_namespace):
-            study.enqueue_trial(self.optuna_load_best_params(pair, study_namespace))
-
     def optuna_hp_optimize(
         self,
         pair: str,
-        X,
-        y,
-        train_weights,
-        X_test,
-        y_test,
-        test_weights,
+        X: pd.DataFrame,
+        y: pd.DataFrame,
+        train_weights: np.ndarray,
+        X_test: pd.DataFrame,
+        y_test: pd.DataFrame,
+        test_weights: np.ndarray,
     ) -> tuple[dict, float] | tuple[None, None]:
-        identifier = self.freqai_info.get("identifier", "no_id_provided")
-        study_namespace = "hp"
-        study_name = f"{identifier}-{study_namespace}-{pair}"
-        storage = self.optuna_storage(pair)
-        pruner = optuna.pruners.HyperbandPruner()
-        if self.__optuna_config.get("continuous", True):
-            XGBoostRegressorQuickAdapterV3.optuna_study_delete(study_name, storage)
-        study = optuna.create_study(
-            study_name=study_name,
-            sampler=optuna.samplers.TPESampler(
-                multivariate=True,
-                group=True,
-            ),
-            pruner=pruner,
-            direction=optuna.study.StudyDirection.MINIMIZE,
-            storage=storage,
-            load_if_exists=not self.__optuna_config.get("continuous", True),
+        namespace = "hp"
+        identifier = self.freqai_info["identifier"]
+        study = self.optuna_create_study(f"{identifier}-{namespace}-{pair}", pair)
+        if study is None:
+            return None, None
+
+        if self.__optuna_config.get("warm_start"):
+            self.optuna_enqueue_previous_best_params(pair, study, namespace)
+
+        def objective(trial: optuna.Trial) -> float:
+            return hp_objective(
+                trial,
+                self.freqai_info.get("regressor", "xgboost"),
+                X,
+                y,
+                train_weights,
+                X_test,
+                y_test,
+                test_weights,
+                self.model_training_parameters,
+            )
+
+        return self.optuna_process_study(
+            study=study, pair=pair, namespace=namespace, objective=objective
         )
-        if self.__optuna_config.get("warm_start", True):
-            self.optuna_hp_enqueue_previous_best_trial(pair, study)
-        logger.info(f"Optuna {study_namespace} hyperopt started")
-        start = time.time()
-        try:
-            study.optimize(
-                lambda trial: hp_objective(
-                    trial,
-                    X,
-                    y,
-                    train_weights,
-                    X_test,
-                    y_test,
-                    test_weights,
-                    self.model_training_parameters,
-                ),
-                n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
-                n_jobs=min(
-                    self.__optuna_config.get("n_jobs", 1),
-                    max(int(self.max_system_threads / 4), 1),
-                ),
-                timeout=self.__optuna_config.get("timeout", 7200),
-                gc_after_trial=True,
-            )
-        except Exception as e:
-            time_spent = time.time() - start
-            logger.error(
-                f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): {e}",
-                exc_info=True,
-            )
-            return None, None
-        time_spent = time.time() - start
-        if XGBoostRegressorQuickAdapterV3.optuna_study_has_best_params(study) is False:
-            logger.error(
-                f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
-            )
-            return None, None
-        logger.info(f"Optuna {study_namespace} hyperopt done ({time_spent:.2f} secs)")
-
-        params = study.best_params
-        self.optuna_save_best_params(pair, study_namespace, params)
-        # log params
-        for key, value in {"rmse": study.best_value, **params}.items():
-            logger.info(f"Optuna {study_namespace} hyperopt | {key:>20s} : {value}")
-        return params, study.best_value
-
-    def optuna_period_enqueue_previous_best_trial(
-        self,
-        pair: str,
-        study: optuna.study.Study,
-    ) -> None:
-        study_namespace = "period"
-        if self.__optuna_period_params.get(pair):
-            study.enqueue_trial(self.__optuna_period_params[pair])
-        elif self.optuna_load_best_params(pair, study_namespace):
-            study.enqueue_trial(self.optuna_load_best_params(pair, study_namespace))
 
     def optuna_period_optimize(
         self,
         pair: str,
-        X,
-        y,
-        train_weights,
-        X_test,
-        y_test,
-        test_weights,
-        model_training_parameters,
+        X: pd.DataFrame,
+        y: pd.DataFrame,
+        train_weights: np.ndarray,
+        X_test: pd.DataFrame,
+        y_test: pd.DataFrame,
+        test_weights: np.ndarray,
+        model_training_parameters: dict,
     ) -> tuple[dict, float] | tuple[None, None]:
-        identifier = self.freqai_info.get("identifier", "no_id_provided")
-        study_namespace = "period"
-        study_name = f"{identifier}-{study_namespace}-{pair}"
-        storage = self.optuna_storage(pair)
-        pruner = optuna.pruners.HyperbandPruner()
-        if self.__optuna_config.get("continuous", True):
-            XGBoostRegressorQuickAdapterV3.optuna_study_delete(study_name, storage)
-        study = optuna.create_study(
-            study_name=study_name,
-            sampler=optuna.samplers.TPESampler(
-                multivariate=True,
-                group=True,
-            ),
-            pruner=pruner,
-            direction=optuna.study.StudyDirection.MINIMIZE,
-            storage=storage,
-            load_if_exists=not self.__optuna_config.get("continuous", True),
+        namespace = "period"
+        identifier = self.freqai_info["identifier"]
+        study = self.optuna_create_study(f"{identifier}-{namespace}-{pair}", pair)
+        if study is None:
+            return None, None
+
+        if self.__optuna_config.get("warm_start"):
+            self.optuna_enqueue_previous_best_params(pair, study, namespace)
+
+        def objective(trial: optuna.Trial) -> float:
+            return period_objective(
+                trial,
+                self.freqai_info.get("regressor", "xgboost"),
+                X,
+                y,
+                train_weights,
+                X_test,
+                y_test,
+                test_weights,
+                self.freqai_info.get("fit_live_predictions_candles", 100),
+                self.__optuna_config.get("candles_step"),
+                model_training_parameters,
+            )
+
+        return self.optuna_process_study(
+            study=study, pair=pair, namespace=namespace, objective=objective
         )
-        if self.__optuna_config.get("warm_start", True):
-            self.optuna_period_enqueue_previous_best_trial(pair, study)
-        logger.info(f"Optuna {study_namespace} hyperopt started")
-        start = time.time()
+
+    def optuna_storage(self, pair: str) -> Optional[optuna.storages.BaseStorage]:
+        storage_dir = self.full_path
+        storage_filename = f"optuna-{pair.split('/')[0]}"
+        storage_backend = self.__optuna_config.get("storage")
+        if storage_backend == "sqlite":
+            storage = f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
+        elif storage_backend == "file":
+            storage = optuna.storages.JournalStorage(
+                optuna.storages.journal.JournalFileBackend(
+                    f"{storage_dir}/{storage_filename}.log"
+                )
+            )
+        return storage
+
+    def optuna_create_study(
+        self, study_name: str, pair: str
+    ) -> Optional[optuna.study.Study]:
+        storage = self.optuna_storage(pair)
+        if storage is None:
+            logger.error(f"Failed to create optuna storage for {study_name}")
+            return None
+
+        if self.__optuna_config.get("continuous"):
+            self.optuna_study_delete(study_name, storage)
+
+        try:
+            return optuna.create_study(
+                study_name=study_name,
+                sampler=optuna.samplers.TPESampler(multivariate=True, group=True),
+                pruner=optuna.pruners.HyperbandPruner(),
+                direction=optuna.study.StudyDirection.MINIMIZE,
+                storage=storage,
+                load_if_exists=not self.__optuna_config.get("continuous"),
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to create optuna study {study_name}: {str(e)}", exc_info=True
+            )
+            return None
+
+    def optuna_enqueue_previous_best_params(
+        self, pair: str, study: optuna.study.Study, namespace: str
+    ) -> None:
+        best_params = getattr(
+            self, f"_{self.__class__.__name__}__optuna_{namespace}_params"
+        ).get(pair)
+        if best_params:
+            study.enqueue_trial(best_params)
+        else:
+            best_params = self.optuna_load_best_params(pair, namespace)
+            if best_params:
+                study.enqueue_trial(best_params)
+
+    def optuna_handle_error(
+        self, namespace: str, start_time: float, e: Exception
+    ) -> None:
+        time_spent = time.time() - start_time
+        logger.error(
+            f"Optuna {namespace} hyperopt failed ({time_spent:.2f} secs): {str(e)}",
+            exc_info=True,
+        )
+
+    def optuna_process_results(
+        self, study: optuna.study.Study, pair: str, namespace: str, start_time: float
+    ) -> tuple[dict, float] | tuple[None, None]:
+        time_spent = time.time() - start_time
+
+        if not self.optuna_study_has_best_params(study):
+            logger.error(
+                f"Optuna {namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
+            )
+            return None, None
+
+        params = study.best_params
+        rmse = study.best_value
+
+        logger.info(f"Optuna {namespace} hyperopt done ({time_spent:.2f} secs)")
+        for key, value in {"rmse": rmse, **params}.items():
+            logger.info(f"Optuna {namespace} hyperopt | {key:>20s} : {value}")
+
+        if namespace == "hp":
+            self.__optuna_hp_params[pair] = params
+            self.__optuna_hp_rmse[pair] = rmse
+        elif namespace == "period":
+            self.__optuna_period_params[pair] = params
+            self.__optuna_period_rmse[pair] = rmse
+
+        self.optuna_save_best_params(pair, namespace, params)
+
+        return params, rmse
+
+    def optuna_process_study(
+        self,
+        study: optuna.study.Study,
+        pair: str,
+        namespace: str,
+        objective: Callable[[optuna.Trial], float],
+    ) -> tuple[dict, float] | tuple[None, None]:
+        logger.info(f"Optuna {namespace} hyperopt started")
+        start_time = time.time()
+
         try:
             study.optimize(
-                lambda trial: period_objective(
-                    trial,
-                    X,
-                    y,
-                    train_weights,
-                    X_test,
-                    y_test,
-                    test_weights,
-                    self.freqai_info.get("fit_live_predictions_candles", 100),
-                    self.__optuna_config.get("candles_step", 10),
-                    model_training_parameters,
-                ),
-                n_trials=self.__optuna_config.get("n_trials", N_TRIALS),
-                n_jobs=min(
-                    self.__optuna_config.get("n_jobs", 1),
-                    max(int(self.max_system_threads / 4), 1),
-                ),
-                timeout=self.__optuna_config.get("timeout", 7200),
+                objective,
+                n_trials=self.__optuna_config.get("n_trials"),
+                n_jobs=self.__optuna_config.get("n_jobs"),
+                timeout=self.__optuna_config.get("timeout"),
                 gc_after_trial=True,
             )
         except Exception as e:
-            time_spent = time.time() - start
-            logger.error(
-                f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): {e}",
-                exc_info=True,
-            )
+            self.optuna_handle_error(namespace, start_time, e)
             return None, None
-        time_spent = time.time() - start
-        if XGBoostRegressorQuickAdapterV3.optuna_study_has_best_params(study) is False:
-            logger.error(
-                f"Optuna {study_namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
-            )
-            return None, None
-        logger.info(f"Optuna {study_namespace} hyperopt done ({time_spent:.2f} secs)")
 
-        params = study.best_params
-        self.optuna_save_best_params(pair, study_namespace, params)
-        # log params
-        for key, value in {"rmse": study.best_value, **params}.items():
-            logger.info(f"Optuna {study_namespace} hyperopt | {key:>20s} : {value}")
-        return params, study.best_value
+        return self.optuna_process_results(study, pair, namespace, start_time)
 
     def optuna_save_best_params(
         self, pair: str, namespace: str, best_params: dict
@@ -461,10 +478,17 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         best_params_path = Path(
             self.full_path / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
         )
-        with best_params_path.open("w", encoding="utf-8") as write_file:
-            json.dump(best_params, write_file, indent=4)
+        try:
+            with best_params_path.open("w", encoding="utf-8") as write_file:
+                json.dump(best_params, write_file, indent=4)
+        except Exception as e:
+            logger.error(
+                f"Failed to save optuna {namespace} best params for {pair}: {str(e)}",
+                exc_info=True,
+            )
+            raise
 
-    def optuna_load_best_params(self, pair: str, namespace: str) -> dict | None:
+    def optuna_load_best_params(self, pair: str, namespace: str) -> Optional[dict]:
         best_params_path = Path(
             self.full_path / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
         )
@@ -485,7 +509,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
     @staticmethod
     def optuna_study_load(
         study_name: str, storage: optuna.storages.BaseStorage
-    ) -> optuna.study.Study | None:
+    ) -> Optional[optuna.study.Study]:
         try:
             study = optuna.load_study(study_name=study_name, storage=storage)
         except Exception:
@@ -493,7 +517,7 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         return study
 
     @staticmethod
-    def optuna_study_has_best_params(study: optuna.study.Study | None) -> bool:
+    def optuna_study_has_best_params(study: Optional[optuna.study.Study]) -> bool:
         if study is None:
             return False
         try:
@@ -513,9 +537,10 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[pd.Series, pd.Series]:
         pred_df_sorted = (
-            pred_df.select_dtypes(exclude=["object"])
+            pred_df[[EXTREMA_COLUMN]]
             .copy()
-            .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+            .sort_values(by=EXTREMA_COLUMN, ascending=False)
+            .reset_index(drop=True)
         )
 
         label_period_frequency: int = int(
@@ -532,9 +557,10 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[pd.Series, pd.Series]:
         pred_df_sorted = (
-            pred_df.select_dtypes(exclude=["object"])
+            pred_df[[EXTREMA_COLUMN]]
             .copy()
-            .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+            .sort_values(by=EXTREMA_COLUMN, ascending=False)
+            .reset_index(drop=True)
         )
 
         label_period_frequency: int = int(
@@ -551,9 +577,10 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[pd.Series, pd.Series]:
         pred_df_sorted = (
-            pred_df.select_dtypes(exclude=["object"])
+            pred_df[[EXTREMA_COLUMN]]
             .copy()
-            .apply(lambda col: col.sort_values(ascending=False, ignore_index=True))
+            .sort_values(by=EXTREMA_COLUMN, ascending=False)
+            .reset_index(drop=True)
         )
 
         label_period_frequency: int = int(
@@ -565,17 +592,77 @@ class XGBoostRegressorQuickAdapterV3(BaseRegressionModel):
         return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
-def period_objective(
-    trial,
+def get_callbacks(trial: optuna.Trial, regressor: str) -> list:
+    if regressor == "xgboost":
+        callbacks = [
+            optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
+        ]
+    elif regressor == "lightgbm":
+        callbacks = [optuna.integration.LightGBMPruningCallback(trial, "rmse")]
+    else:
+        raise ValueError(f"Unsupported regressor model: {regressor}")
+    return callbacks
+
+
+def train_regressor(
+    regressor: str,
     X,
     y,
     train_weights,
-    X_test,
-    y_test,
-    test_weights,
+    eval_set,
+    eval_weights,
+    model_training_parameters: dict,
+    init_model: Any = None,
+    callbacks: list = None,
+) -> Any:
+    if regressor == "xgboost":
+        from xgboost import XGBRegressor
+
+        model = XGBRegressor(
+            objective="reg:squarederror",
+            eval_metric="rmse",
+            callbacks=callbacks,
+            **model_training_parameters,
+        )
+        model.fit(
+            X=X,
+            y=y,
+            sample_weight=train_weights,
+            eval_set=eval_set,
+            sample_weight_eval_set=eval_weights,
+            xgb_model=init_model,
+        )
+    elif regressor == "lightgbm":
+        from lightgbm import LGBMRegressor
+
+        model = LGBMRegressor(objective="regression", **model_training_parameters)
+        model.fit(
+            X=X,
+            y=y,
+            sample_weight=train_weights,
+            eval_set=eval_set,
+            eval_sample_weight=eval_weights,
+            eval_metric="rmse",
+            init_model=init_model,
+            callbacks=callbacks,
+        )
+    else:
+        raise ValueError(f"Unsupported regressor model: {regressor}")
+    return model
+
+
+def period_objective(
+    trial: optuna.Trial,
+    regressor: str,
+    X: pd.DataFrame,
+    y: pd.DataFrame,
+    train_weights: np.ndarray,
+    X_test: pd.DataFrame,
+    y_test: pd.DataFrame,
+    test_weights: np.ndarray,
     fit_live_predictions_candles: int,
     candles_step: int,
-    model_training_parameters,
+    model_training_parameters: dict,
 ) -> float:
     min_train_window: int = fit_live_predictions_candles * 2
     max_train_window: int = max(len(X), min_train_window)
@@ -595,21 +682,15 @@ def period_objective(
     y_test = y_test.iloc[-test_window:]
     test_weights = test_weights[-test_window:]
 
-    # Fit the model
-    model = XGBRegressor(
-        objective="reg:squarederror",
-        eval_metric="rmse",
-        callbacks=[
-            optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
-        ],
-        **model_training_parameters,
-    )
-    model.fit(
+    model = train_regressor(
+        regressor=regressor,
         X=X,
         y=y,
-        sample_weight=train_weights,
+        train_weights=train_weights,
         eval_set=[(X_test, y_test)],
-        sample_weight_eval_set=[test_weights],
+        eval_weights=[test_weights],
+        model_training_parameters=model_training_parameters,
+        callbacks=get_callbacks(trial, regressor),
     )
     y_pred = model.predict(X_test)
 
@@ -651,42 +732,54 @@ def period_objective(
     return geometric_mean(errors)
 
 
-def hp_objective(
-    trial,
-    X,
-    y,
-    train_weights,
-    X_test,
-    y_test,
-    test_weights,
-    model_training_parameters,
-) -> float:
-    study_parameters = {
+def get_optuna_study_model_parameters(trial: optuna.Trial, regressor: str) -> dict:
+    study_model_parameters = {
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
-        "max_depth": trial.suggest_int("max_depth", 3, 18),
         "min_child_weight": trial.suggest_int("min_child_weight", 1, 200),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
         "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
     }
-    model_training_parameters = {**model_training_parameters, **study_parameters}
+    if regressor == "xgboost":
+        study_model_parameters.update(
+            {
+                "max_depth": trial.suggest_int("max_depth", 3, 18),
+            }
+        )
+    elif regressor == "lightgbm":
+        study_model_parameters.update(
+            {
+                "num_leaves": trial.suggest_int("num_leaves", 2, 256),
+                "min_child_samples": trial.suggest_int("min_child_samples", 5, 100),
+            }
+        )
+    return study_model_parameters
 
-    # Fit the model
-    model = XGBRegressor(
-        objective="reg:squarederror",
-        eval_metric="rmse",
-        callbacks=[
-            optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
-        ],
-        **model_training_parameters,
-    )
-    model.fit(
+
+def hp_objective(
+    trial: optuna.Trial,
+    regressor: str,
+    X: pd.DataFrame,
+    y: pd.DataFrame,
+    train_weights: np.ndarray,
+    X_test: pd.DataFrame,
+    y_test: pd.DataFrame,
+    test_weights: np.ndarray,
+    model_training_parameters: dict,
+) -> float:
+    study_model_parameters = get_optuna_study_model_parameters(trial, regressor)
+    model_training_parameters = {**model_training_parameters, **study_model_parameters}
+
+    model = train_regressor(
+        regressor=regressor,
         X=X,
         y=y,
-        sample_weight=train_weights,
+        train_weights=train_weights,
         eval_set=[(X_test, y_test)],
-        sample_weight_eval_set=[test_weights],
+        eval_weights=[test_weights],
+        model_training_parameters=model_training_parameters,
+        callbacks=get_callbacks(trial, regressor),
     )
     y_pred = model.predict(X_test)
 

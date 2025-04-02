@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import talib.abstract as ta
+from typing import Callable
 from scipy.signal import convolve
 from scipy.signal.windows import gaussian
 from technical import qtpylib
@@ -127,7 +128,7 @@ def zero_lag_series(series: pd.Series, period: int) -> pd.Series:
     return 2 * series - series.shift(lag)
 
 
-def get_ma_fn(mamode: str) -> callable:
+def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], pd.Series]:
     mamodes: dict = {
         "sma": ta.SMA,
         "ema": ta.EMA,
@@ -229,7 +230,7 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     return smma
 
 
-def get_price_fn(pricemode: str) -> callable:
+def get_price_fn(pricemode: str) -> Callable[[pd.DataFrame], pd.Series]:
     pricemodes = {
         "average": ta.AVGPRICE,
         "median": ta.MEDPRICE,

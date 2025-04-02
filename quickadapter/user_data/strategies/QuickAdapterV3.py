@@ -1,6 +1,6 @@
 import json
 import logging
-from functools import reduce
+from functools import reduce, cached_property
 import datetime
 import math
 from pathlib import Path
@@ -58,15 +58,16 @@ class QuickAdapterV3(IStrategy):
 
     INTERFACE_VERSION = 3
 
+    @cached_property
     def version(self) -> str:
-        return "3.2.6"
+        return "3.2.7"
 
     timeframe = "5m"
 
     stoploss = -0.02
     use_custom_stoploss = True
 
-    @property
+    @cached_property
     def trailing_stoploss_natr_ratio(self) -> float:
         return self.config.get("trailing_stoploss_natr_ratio", 0.025)
 
@@ -76,7 +77,7 @@ class QuickAdapterV3(IStrategy):
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
 
-    @property
+    @cached_property
     def entry_natr_ratio(self) -> float:
         return self.config.get("entry_pricing", {}).get("entry_natr_ratio", 0.0025)
 
@@ -84,7 +85,7 @@ class QuickAdapterV3(IStrategy):
     # reward_risk_ratio = 1.0 means 1:1 RR
     # reward_risk_ratio = 2.0 means 1:2 RR
     # ...
-    @property
+    @cached_property
     def reward_risk_ratio(self) -> float:
         return self.config.get("exit_pricing", {}).get("reward_risk_ratio", 2.0)
 
@@ -105,11 +106,11 @@ class QuickAdapterV3(IStrategy):
 
     process_only_new_candles = True
 
-    @property
+    @cached_property
     def can_short(self) -> bool:
         return self.is_short_allowed()
 
-    @property
+    @cached_property
     def plot_config(self) -> dict:
         return {
             "main_plot": {},
@@ -130,7 +131,7 @@ class QuickAdapterV3(IStrategy):
             },
         }
 
-    @property
+    @cached_property
     def protections(self) -> list[dict]:
         fit_live_predictions_candles = self.freqai_info.get(
             "fit_live_predictions_candles", 100
@@ -155,7 +156,7 @@ class QuickAdapterV3(IStrategy):
 
     use_exit_signal = True
 
-    @property
+    @cached_property
     def startup_candle_count(self) -> int:
         # Match the predictions warmup period
         return self.freqai_info.get("fit_live_predictions_candles", 100)
@@ -165,6 +166,13 @@ class QuickAdapterV3(IStrategy):
         if not self.pairs:
             raise ValueError(
                 "FreqAI strategy requires StaticPairList method defined in pairlists configuration and pair_whitelist defined in exchange section configuration"
+            )
+        if (
+            self.freqai_info.get("identifier") is None
+            or self.freqai_info.get("identifier").strip() == ""
+        ):
+            raise ValueError(
+                "FreqAI strategy requires identifier defined in the freqai section configuration"
             )
         self.models_full_path = Path(
             self.config["user_data_dir"]
@@ -414,21 +422,23 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    def get_trade_entry_candle(self, df: DataFrame, trade: Trade) -> DataFrame | None:
+    def get_trade_entry_candle(
+        self, df: DataFrame, trade: Trade
+    ) -> Optional[DataFrame]:
         entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
         entry_candle = df.loc[(df["date"] == entry_date)]
         if entry_candle.empty:
             return None
         return entry_candle
 
-    def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> float | None:
+    def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> Optional[float]:
         entry_candle = self.get_trade_entry_candle(df, trade)
         if entry_candle is None:
             return None
         entry_candle = entry_candle.squeeze()
         return entry_candle["natr_labeling_window"]
 
-    def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> int | None:
+    def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> Optional[int]:
         """
         Get the number of candles since the trade entry.
         :param df: DataFrame with the current data
@@ -458,7 +468,7 @@ class QuickAdapterV3(IStrategy):
 
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
-    ) -> float | None:
+    ) -> Optional[float]:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
@@ -472,7 +482,7 @@ class QuickAdapterV3(IStrategy):
             * (1 / math.log10(1 + 0.25 * trade_duration_candles))
         )
 
-    def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> float | None:
+    def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
@@ -498,7 +508,7 @@ class QuickAdapterV3(IStrategy):
         current_rate: float,
         current_profit: float,
         **kwargs,
-    ) -> float | None:
+    ) -> Optional[float]:
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
 
         if df.empty:
@@ -525,7 +535,7 @@ class QuickAdapterV3(IStrategy):
         current_rate: float,
         current_profit: float,
         **kwargs,
-    ) -> str | None:
+    ) -> Optional[str]:
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
 
         if df.empty:
@@ -671,7 +681,7 @@ class QuickAdapterV3(IStrategy):
             smoothing_methods["gaussian"],
         )
 
-    def load_period_best_params(self, pair: str) -> dict | None:
+    def load_period_best_params(self, pair: str) -> Optional[dict]:
         namespace = "period"
         best_params_path = Path(
             self.models_full_path

@@ -486,7 +486,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         output = output.rolling(window=self.CONV_WIDTH).apply(_predict)
         return output
 
-    def get_storage(self, pair: str | None = None) -> BaseStorage | None:
+    def get_storage(self, pair: Optional[str] = None) -> Optional[BaseStorage]:
         """
         Get the storage for Optuna
         """
@@ -502,7 +502,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         return storage
 
     @staticmethod
-    def study_has_best_trial_params(study: Study | None) -> bool:
+    def study_has_best_trial_params(study: Optional[Study]) -> bool:
         if study is None:
             return False
         try:
@@ -517,7 +517,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
     def study(
         self, train_df: DataFrame, total_timesteps: int, dk: FreqaiDataKitchen
-    ) -> Dict | None:
+    ) -> Optional[Dict]:
         """
         Runs hyperparameter optimization using Optuna and
         returns the best hyperparameters found merged with the user defined parameters
@@ -608,7 +608,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         return {**self.model_training_parameters, **best_trial_params}
 
     def save_best_trial_params(
-        self, best_trial_params: Dict, pair: str | None = None
+        self, best_trial_params: Dict, pair: Optional[str] = None
     ) -> None:
         """
         Save the best trial hyperparameters found during hyperparameter optimization
@@ -627,10 +627,17 @@ class ReforceXY(BaseReinforcementLearningModel):
             else f"saving best params to {best_trial_params_path} JSON file"
         )
         logger.info(log_msg)
-        with best_trial_params_path.open("w", encoding="utf-8") as write_file:
-            json.dump(best_trial_params, write_file, indent=4)
+        try:
+            with best_trial_params_path.open("w", encoding="utf-8") as write_file:
+                json.dump(best_trial_params, write_file, indent=4)
+        except Exception as e:
+            logger.error(
+                f"Error saving best trial params to {best_trial_params_path}: {e}",
+                exc_info=True,
+            )
+            raise
 
-    def load_best_trial_params(self, pair: str | None = None) -> Dict | None:
+    def load_best_trial_params(self, pair: Optional[str] = None) -> Optional[Dict]:
         """
         Load the best trial hyperparameters found and saved during hyperparameter optimization
         """

@@ -1,8 +1,7 @@
 {
   "$schema": "https://schema.freqtrade.io/schema.json",
   "strategy": "QuickAdapterV3",
-  "freqaimodel": "XGBoostRegressorQuickAdapterV3",
-  // "freqaimodel": "LightGBMRegressorQuickAdapterV3",
+  "freqaimodel": "QuickAdapterRegressorV3",
   "max_open_trades": 10,
   "stake_currency": "USDT",
   "stake_amount": "unlimited",
@@ -105,6 +104,8 @@
   },
   "freqai": {
     "enabled": true,
+    "regressor": "xgboost",
+    // "regressor": "lightgbm",
     "conv_width": 1,
     "purge_old_models": 2,
     "expiration_hours": 12,
@@ -113,7 +114,7 @@
     "backtest_period_days": 2,
     "write_metrics_to_disk": false,
     "identifier": "quickadapter-xgboost",
-    // "identifier": "quickadapter-lgbm",
+    // "identifier": "quickadapter-lightgbm",
     "fit_live_predictions_candles": 600,
     "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
     "track_performance": false,
