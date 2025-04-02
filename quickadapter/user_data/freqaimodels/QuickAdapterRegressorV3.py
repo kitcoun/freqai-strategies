@@ -319,7 +319,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         params_storage: dict[str, dict],
         rmse_storage: dict[str, float],
     ) -> None:
-        identifier = self.freqai_info["identifier"]
+        identifier = self.freqai_info.get("identifier")
         study = self.optuna_create_study(f"{identifier}-{namespace}-{pair}", pair)
         if not study:
             return
@@ -332,9 +332,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         try:
             study.optimize(
                 objective,
-                n_trials=self.__optuna_config["n_trials"],
-                n_jobs=self.__optuna_config["n_jobs"],
-                timeout=self.__optuna_config["timeout"],
+                n_trials=self.__optuna_config.get("n_trials"),
+                n_jobs=self.__optuna_config.get("n_jobs"),
+                timeout=self.__optuna_config.get("timeout"),
+                gc_after_trial=True,
             )
         except Exception as e:
             time_spent = time.time() - start_time
