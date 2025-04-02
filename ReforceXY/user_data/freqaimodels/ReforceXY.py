@@ -486,7 +486,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         output = output.rolling(window=self.CONV_WIDTH).apply(_predict)
         return output
 
-    def get_storage(self, pair: Optional[str] = None) -> Optional[BaseStorage]:
+    def get_storage(self, pair: Optional[str] = None) -> BaseStorage:
         """
         Get the storage for Optuna
         """
@@ -498,6 +498,10 @@ class ReforceXY(BaseReinforcementLearningModel):
         elif storage_backend == "file":
             storage = JournalStorage(
                 JournalFileBackend(f"{storage_dir}/{storage_filename}.log")
+            )
+        else:
+            raise ValueError(
+                f"Unsupported storage backend: {storage_backend}. Supported backends are: 'sqlite' and 'file'."
             )
         return storage
 

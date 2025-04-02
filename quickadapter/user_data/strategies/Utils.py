@@ -1,13 +1,15 @@
 import numpy as np
 import pandas as pd
 import talib.abstract as ta
-from typing import Callable
+from typing import Callable, Union
 from scipy.signal import convolve
 from scipy.signal.windows import gaussian
 from technical import qtpylib
 
 
-def get_distance(p1: pd.Series | float, p2: pd.Series | float) -> pd.Series | float:
+def get_distance(
+    p1: Union[pd.Series, float], p2: Union[pd.Series, float]
+) -> Union[pd.Series, float]:
     return abs(p1 - p2)
 
 

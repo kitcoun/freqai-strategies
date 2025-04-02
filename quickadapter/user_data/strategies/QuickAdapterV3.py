@@ -462,11 +462,7 @@ class QuickAdapterV3(IStrategy):
 
     @staticmethod
     def is_trade_duration_valid(trade_duration_candles: int) -> bool:
-        if isna(trade_duration_candles):
-            return False
-        if trade_duration_candles == 0:
-            return False
-        return True
+        return not (isna(trade_duration_candles) or trade_duration_candles <= 0)
 
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float

@@ -345,7 +345,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return
 
         time_spent = time.time() - start_time
-        if self.optuna_study_has_best_params(study):
+        if QuickAdapterRegressorV3.optuna_study_has_best_params(study):
             params_storage[pair] = study.best_params
             rmse_storage[pair] = study.best_value
             logger.info(f"Optuna {namespace} hyperopt done ({time_spent:.2f} secs)")
@@ -360,7 +360,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 f"Optuna {namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
             )
 
-    def optuna_storage(self, pair: str) -> Optional[optuna.storages.BaseStorage]:
+    def optuna_storage(self, pair: str) -> optuna.storages.BaseStorage:
         storage_dir = self.full_path
         storage_filename = f"optuna-{pair.split('/')[0]}"
         storage_backend = self.__optuna_config.get("storage")
@@ -372,18 +372,26 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     f"{storage_dir}/{storage_filename}.log"
                 )
             )
+        else:
+            raise ValueError(
+                f"Unsupported optuna storage backend: {storage_backend}. Supported backends are 'sqlite' and 'file'."
+            )
         return storage
 
     def optuna_create_study(
         self, study_name: str, pair: str
     ) -> Optional[optuna.study.Study]:
-        storage = self.optuna_storage(pair)
-        if storage is None:
-            logger.error(f"Failed to create optuna storage for {study_name}")
+        try:
+            storage = self.optuna_storage(pair)
+        except Exception as e:
+            logger.error(
+                f"Failed to create optuna storage for {study_name}: {str(e)}",
+                exc_info=True,
+            )
             return None
 
         if self.__optuna_config.get("continuous"):
-            self.optuna_study_delete(study_name, storage)
+            QuickAdapterRegressorV3.optuna_study_delete(study_name, storage)
 
         try:
             return optuna.create_study(
