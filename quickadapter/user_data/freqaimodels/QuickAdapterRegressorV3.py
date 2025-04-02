@@ -548,7 +548,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
 
 
-def get_callbacks(trial: optuna.Trial, regressor: str) -> list:
+def get_callbacks(trial: optuna.Trial, regressor: str) -> list[Callable]:
     if regressor == "xgboost":
         callbacks = [
             optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
@@ -569,7 +569,7 @@ def train_regressor(
     eval_weights: Optional[list[np.ndarray]],
     model_training_parameters: dict,
     init_model: Any = None,
-    callbacks: list = None,
+    callbacks: list[Callable] = None,
 ) -> Any:
     if regressor == "xgboost":
         from xgboost import XGBRegressor
