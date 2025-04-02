@@ -7,7 +7,7 @@ from pathlib import Path
 from statistics import harmonic_mean
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
-from typing import Optional
+from typing import Callable, Optional
 from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
 from freqtrade.strategy.interface import IStrategy
 from freqtrade.strategy import stoploss_from_absolute
@@ -58,7 +58,6 @@ class QuickAdapterV3(IStrategy):
 
     INTERFACE_VERSION = 3
 
-    @cached_property
     def version(self) -> str:
         return "3.2.7"
 
@@ -165,14 +164,14 @@ class QuickAdapterV3(IStrategy):
         self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
         if not self.pairs:
             raise ValueError(
-                "FreqAI strategy requires StaticPairList method defined in pairlists configuration and pair_whitelist defined in exchange section configuration"
+                "FreqAI strategy requires StaticPairList method defined in pairlists configuration and 'pair_whitelist' defined in exchange section configuration"
             )
         if (
             self.freqai_info.get("identifier") is None
             or self.freqai_info.get("identifier").strip() == ""
         ):
             raise ValueError(
-                "FreqAI strategy requires identifier defined in the freqai section configuration"
+                "FreqAI strategy requires 'identifier' defined in the freqai section configuration"
             )
         self.models_full_path = Path(
             self.config["user_data_dir"]
@@ -341,9 +340,12 @@ class QuickAdapterV3(IStrategy):
         return dataframe
 
     def get_label_period_candles(self, pair: str) -> int:
-        if self.__period_params.get(pair, {}).get("label_period_candles"):
-            return self.__period_params[pair]["label_period_candles"]
-        return self.freqai_info["feature_parameters"]["label_period_candles"]
+        label_period_candles = self.__period_params.get(pair, {}).get(
+            "label_period_candles"
+        )
+        if label_period_candles:
+            return label_period_candles
+        return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
 
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
         label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
@@ -656,7 +658,7 @@ class QuickAdapterV3(IStrategy):
             std = derive_gaussian_std_from_window(window)
         gaussian_window = get_gaussian_window(std, True)
         odd_window = get_odd_window(window)
-        smoothing_methods: dict = {
+        smoothing_methods: dict[str, Callable] = {
             "gaussian": series.rolling(
                 window=gaussian_window,
                 win_type="gaussian",
