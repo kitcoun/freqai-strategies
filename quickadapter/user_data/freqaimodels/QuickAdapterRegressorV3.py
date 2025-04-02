@@ -302,7 +302,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         prediction_thresholds_smoothing = self.freqai_info.get(
             "prediction_thresholds_smoothing", "quantile"
         )
-        smoothing_methods: dict[str, Callable] = {
+        smoothing_methods: dict[
+            str, Callable[[pd.DataFrame, int, int], tuple[pd.Series, pd.Series]]
+        ] = {
             "quantile": self.quantile_min_max_pred,
             "mean": QuickAdapterRegressorV3.mean_min_max_pred,
             "median": QuickAdapterRegressorV3.median_min_max_pred,

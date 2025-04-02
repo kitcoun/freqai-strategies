@@ -7,7 +7,7 @@ from pathlib import Path
 from statistics import harmonic_mean
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
-from typing import Callable, Optional
+from typing import Optional
 from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
 from freqtrade.strategy.interface import IStrategy
 from freqtrade.strategy import stoploss_from_absolute
@@ -654,7 +654,7 @@ class QuickAdapterV3(IStrategy):
             std = derive_gaussian_std_from_window(window)
         gaussian_window = get_gaussian_window(std, True)
         odd_window = get_odd_window(window)
-        smoothing_methods: dict[str, Callable] = {
+        smoothing_methods: dict[str, Series] = {
             "gaussian": series.rolling(
                 window=gaussian_window,
                 win_type="gaussian",
