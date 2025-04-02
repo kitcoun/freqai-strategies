@@ -320,12 +320,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         rmse_storage: dict[str, float],
     ) -> None:
         identifier = self.freqai_info.get("identifier")
-        study = self.optuna_create_study(f"{identifier}-{namespace}-{pair}", pair)
+        study = self.optuna_create_study(pair, f"{identifier}-{namespace}-{pair}")
         if not study:
             return
 
         if self.__optuna_config.get("warm_start"):
-            self.optuna_enqueue_previous_best_params(pair, study, namespace)
+            self.optuna_enqueue_previous_best_params(pair, namespace, study)
 
         logger.info(f"Optuna {namespace} hyperopt started")
         start_time = time.time()
@@ -380,7 +380,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         return storage
 
     def optuna_create_study(
-        self, study_name: str, pair: str
+        self, pair: str, study_name: str
     ) -> Optional[optuna.study.Study]:
         try:
             storage = self.optuna_storage(pair)
@@ -412,7 +412,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return None
 
     def optuna_enqueue_previous_best_params(
-        self, pair: str, study: optuna.study.Study, namespace: str
+        self, pair: str, namespace: str, study: optuna.study.Study
     ) -> None:
         if namespace == "hp":
             best_params = self.__optuna_hp_params.get(pair, {})
