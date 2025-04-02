@@ -540,7 +540,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 n_startup_trials=self.optuna_n_startup_trials,
                 multivariate=True,
                 group=True,
-                seed=self.model_training_parameters.get("seed", 42),
+                seed=self.rl_config_optuna.get("seed", 42),
             ),
             pruner=HyperbandPruner(
                 min_resource=3,
