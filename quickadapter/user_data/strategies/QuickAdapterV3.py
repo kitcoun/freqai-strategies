@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.10"
+        return "3.2.11"
 
     timeframe = "5m"
 
@@ -349,12 +349,12 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
         label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
-        peaks_distance = label_period_candles * 2
-        peaks_width = label_period_candles // 2
+        peaks_distance = label_period_candles
+        peaks_width = label_period_candles // 4
         # To match current market condition, use the current close price and NATR to evaluate peaks prominence
         peaks_prominence = (
             dataframe["close"].iloc[-1]
-            * ta.NATR(dataframe, timeperiod=peaks_distance).iloc[-1]
+            * ta.NATR(dataframe, timeperiod=label_period_candles).iloc[-1]
             * 0.0025
         )
         min_peaks, _ = find_peaks(
@@ -397,10 +397,9 @@ class QuickAdapterV3(IStrategy):
             "label_period_candles"
         ].iloc[-1]
 
-        labeling_window = self.get_label_period_candles(pair) * 2
-
-        dataframe["natr_labeling_window"] = ta.NATR(
-            dataframe, timeperiod=labeling_window
+        label_period_candles = self.get_label_period_candles(pair)
+        dataframe["natr_label_period_candles"] = ta.NATR(
+            dataframe, timeperiod=label_period_candles
         )
 
         dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
@@ -450,7 +449,7 @@ class QuickAdapterV3(IStrategy):
         if entry_candle is None:
             return None
         entry_candle = entry_candle.squeeze()
-        return entry_candle["natr_labeling_window"]
+        return entry_candle["natr_label_period_candles"]
 
     def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> Optional[int]:
         """
@@ -482,7 +481,7 @@ class QuickAdapterV3(IStrategy):
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
-        current_natr = df["natr_labeling_window"].iloc[-1]
+        current_natr = df["natr_label_period_candles"].iloc[-1]
         if isna(current_natr):
             return None
         return (
@@ -499,7 +498,7 @@ class QuickAdapterV3(IStrategy):
         entry_natr = self.get_trade_entry_natr(df, trade)
         if isna(entry_natr):
             return None
-        current_natr = df["natr_labeling_window"].iloc[-1]
+        current_natr = df["natr_label_period_candles"].iloc[-1]
         if isna(current_natr):
             return None
         return (
@@ -622,7 +621,7 @@ class QuickAdapterV3(IStrategy):
             return False
         last_candle = df.iloc[-1]
         entry_price_fluctuation_threshold = (
-            last_candle["natr_labeling_window"] * self.entry_natr_ratio
+            last_candle["natr_label_period_candles"] * self.entry_natr_ratio
         )
         if (
             side == "long"

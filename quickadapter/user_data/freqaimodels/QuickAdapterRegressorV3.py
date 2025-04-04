@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.4"
+    version = "3.6.5"
 
     @cached_property
     def __optuna_config(self) -> dict:
@@ -498,7 +498,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             .reset_index(drop=True)
         )
         label_period_frequency: int = max(
-            1, int(fit_live_predictions_candles / (label_period_candles * 2))
+            1, fit_live_predictions_candles // label_period_candles
         )
 
         return pred_df_sorted, label_period_frequency
@@ -652,10 +652,10 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles: int = max(fit_live_predictions_candles // 20, 20)
+    min_label_period_candles: int = max(fit_live_predictions_candles // 9, 20)
     max_label_period_candles: int = min(
-        max(fit_live_predictions_candles // 6, min_label_period_candles),
-        test_window // 2,
+        max(fit_live_predictions_candles // 3, min_label_period_candles),
+        max(test_window // 2, min_label_period_candles),
     )
     label_period_candles: int = trial.suggest_int(
         "label_period_candles",
@@ -663,28 +663,27 @@ def period_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_window_length: int = label_period_candles * 2
-    label_windows_length: int = (
-        test_window // label_window_length
-    ) * label_window_length
-    if label_windows_length == 0 or label_window_length > test_window:
+    label_periods_candles: int = (
+        test_window // label_period_candles
+    ) * label_period_candles
+    if label_periods_candles == 0 or label_period_candles > test_window:
         return float("inf")
-    y_test_period = [
-        y_test.iloc[-label_windows_length:].to_numpy()[i : i + label_window_length]
-        for i in range(0, label_windows_length, label_window_length)
+    y_test_periods = [
+        y_test.iloc[-label_periods_candles:].to_numpy()[i : i + label_period_candles]
+        for i in range(0, label_periods_candles, label_period_candles)
     ]
-    test_weights_period = [
-        test_weights[-label_windows_length:][i : i + label_window_length]
-        for i in range(0, label_windows_length, label_window_length)
+    test_weights_periods = [
+        test_weights[-label_periods_candles:][i : i + label_period_candles]
+        for i in range(0, label_periods_candles, label_period_candles)
     ]
-    y_pred_period = [
-        y_pred[-label_windows_length:][i : i + label_window_length]
-        for i in range(0, label_windows_length, label_window_length)
+    y_pred_periods = [
+        y_pred[-label_periods_candles:][i : i + label_period_candles]
+        for i in range(0, label_periods_candles, label_period_candles)
     ]
 
     errors = [
         sklearn.metrics.root_mean_squared_error(y_t, y_p, sample_weight=t_w)
-        for y_t, y_p, t_w in zip(y_test_period, y_pred_period, test_weights_period)
+        for y_t, y_p, t_w in zip(y_test_periods, y_pred_periods, test_weights_periods)
     ]
 
     return geometric_mean(errors)
