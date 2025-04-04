@@ -13,7 +13,7 @@ from freqtrade.strategy.interface import IStrategy
 from freqtrade.strategy import stoploss_from_absolute
 from technical.pivots_points import pivots_points
 from freqtrade.persistence import Trade
-from scipy.signal import argrelmin, argrelmax
+from scipy.signal import find_peaks
 import numpy as np
 import pandas_ta as pta
 
@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.8"
+        return "3.2.9"
 
     timeframe = "5m"
 
@@ -349,18 +349,20 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
         label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
-        min_peaks = argrelmin(
-            dataframe["low"].values,
-            order=label_period_candles,
+        min_peaks, _ = find_peaks(
+            -dataframe["low"].values,
+            distance=label_period_candles * 2,
+            width=label_period_candles / 2,
         )
-        max_peaks = argrelmax(
+        max_peaks, _ = find_peaks(
             dataframe["high"].values,
-            order=label_period_candles,
+            distance=label_period_candles * 2,
+            width=label_period_candles / 2,
         )
         dataframe[EXTREMA_COLUMN] = 0
-        for mp in min_peaks[0]:
+        for mp in min_peaks:
             dataframe.at[mp, EXTREMA_COLUMN] = -1
-        for mp in max_peaks[0]:
+        for mp in max_peaks:
             dataframe.at[mp, EXTREMA_COLUMN] = 1
         dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
