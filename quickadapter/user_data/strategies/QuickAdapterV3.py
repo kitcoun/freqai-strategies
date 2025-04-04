@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.7"
+        return "3.2.8"
 
     timeframe = "5m"
 
@@ -539,7 +539,7 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        last_candle = df.iloc[-1].squeeze()
+        last_candle = df.iloc[-1]
         if last_candle["do_predict"] == 2:
             return "model_expired"
         if last_candle["DI_catch"] == 0:
@@ -608,7 +608,7 @@ class QuickAdapterV3(IStrategy):
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
         if df.empty:
             return False
-        last_candle = df.iloc[-1].squeeze()
+        last_candle = df.iloc[-1]
         entry_price_fluctuation_threshold = (
             last_candle["natr_labeling_window"] * self.entry_natr_ratio
         )
