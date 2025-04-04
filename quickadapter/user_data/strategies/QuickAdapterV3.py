@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.9"
+        return "3.2.10"
 
     timeframe = "5m"
 
@@ -78,7 +78,7 @@ class QuickAdapterV3(IStrategy):
 
     @cached_property
     def entry_natr_ratio(self) -> float:
-        return self.config.get("entry_pricing", {}).get("entry_natr_ratio", 0.0025)
+        return self.config.get("entry_pricing", {}).get("entry_natr_ratio", 0.00025)
 
     # reward_risk_ratio = reward / risk
     # reward_risk_ratio = 1.0 means 1:1 RR
@@ -349,15 +349,25 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
         label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
+        peaks_distance = label_period_candles * 2
+        peaks_width = label_period_candles // 2
+        # To match current market condition, use the current close price and NATR to evaluate peaks prominence
+        peaks_prominence = (
+            dataframe["close"].iloc[-1]
+            * ta.NATR(dataframe, timeperiod=peaks_distance).iloc[-1]
+            * 0.0025
+        )
         min_peaks, _ = find_peaks(
             -dataframe["low"].values,
-            distance=label_period_candles * 2,
-            width=label_period_candles / 2,
+            distance=peaks_distance,
+            width=peaks_width,
+            prominence=peaks_prominence,
         )
         max_peaks, _ = find_peaks(
             dataframe["high"].values,
-            distance=label_period_candles * 2,
-            width=label_period_candles / 2,
+            distance=peaks_distance,
+            width=peaks_width,
+            prominence=peaks_prominence,
         )
         dataframe[EXTREMA_COLUMN] = 0
         for mp in min_peaks:
