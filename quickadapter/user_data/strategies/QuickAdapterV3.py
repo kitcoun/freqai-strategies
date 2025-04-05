@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.11"
+        return "3.2.12"
 
     timeframe = "5m"
 
@@ -340,7 +340,7 @@ class QuickAdapterV3(IStrategy):
         return dataframe
 
     def get_label_period_candles(self, pair: str) -> int:
-        label_period_candles = self.__period_params.get(pair, {}).get(
+        label_period_candles = self.__period_params.get(pair).get(
             "label_period_candles"
         )
         if label_period_candles:
@@ -355,7 +355,7 @@ class QuickAdapterV3(IStrategy):
         peaks_prominence = (
             dataframe["close"].iloc[-1]
             * ta.NATR(dataframe, timeperiod=label_period_candles).iloc[-1]
-            * 0.0025
+            * 0.005
         )
         min_peaks, _ = find_peaks(
             -dataframe["low"].values,

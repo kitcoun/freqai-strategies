@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.5"
+    version = "3.6.6"
 
     @cached_property
     def __optuna_config(self) -> dict:
@@ -200,7 +200,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         return model
 
     def get_label_period_candles(self, pair: str) -> int:
-        label_period_candles = self.__optuna_period_params.get(pair, {}).get(
+        label_period_candles = self.__optuna_period_params.get(pair).get(
             "label_period_candles"
         )
         if label_period_candles:
@@ -417,9 +417,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self, pair: str, namespace: str, study: optuna.study.Study
     ) -> None:
         if namespace == "hp":
-            best_params = self.__optuna_hp_params.get(pair, {})
+            best_params = self.__optuna_hp_params.get(pair)
         elif namespace == "period":
-            best_params = self.__optuna_period_params.get(pair, {})
+            best_params = self.__optuna_period_params.get(pair)
         if best_params:
             study.enqueue_trial(best_params)
         else:

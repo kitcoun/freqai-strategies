@@ -15,6 +15,7 @@ Labeling window:
 Price movement expectation over the labeling window:
 ----------------------------------------------------
 
+current natr = (atr / current close) * 100
 trade duration candles = (current candle date - trade candle date) // timeframe (in the same time unit)
 
                            trade candle
@@ -25,8 +26,8 @@ trade duration candles = (current candle date - trade candle date) // timeframe 
 [   current natr label window   ]
 
 trade duration candles = 0
-expected trade price movement in the future label window candles from trade opening = trade natr * trade rate
-expected price movement in the future label window candles = current natr * current rate
+expected trade price movement in the future label window candles from trade opening = trade natr * 0.01 * trade rate
+expected price movement in the future label window candles = current natr * 0.01 * current rate
 
    trade candle	         current candle
 	      |		                    |
@@ -35,10 +36,10 @@ expected price movement in the future label window candles = current natr * curr
         ]
 
 trade duration candles > 0
-expected trade price movement in the future label window candles from trade opening = trade natr * trade rate
-expected trade price movement in the future trade duration candles window from trade opening = trade natr * trade rate * trade duration candles / label window
-expected price movement in the future label window candles = current natr * current rate
-expected price movement in the future trade duration candles window = current natr * current rate * trade duration candles / label window
+expected trade price movement in the future label window candles from trade opening = trade natr * 0.01 * trade rate
+expected trade price movement in the future trade duration candles window from trade opening = trade natr * 0.01 * trade rate * trade duration candles / label window
+expected price movement in the future label window candles = current natr * 0.01 * current rate
+expected price movement in the future trade duration candles window = current natr * 0.01 * current rate * trade duration candles / label window
 
   trade 1 candle	         		  trade 2 candle            current candle
 	      |		        	                |                          |
@@ -47,5 +48,5 @@ expected price movement in the future trade duration candles window = current na
       [   trade 2 natr label window   ]
         ]
 
-expected trade price movement in the future trade duration candles window from trade opening approximation = trade natr * trade rate * trade duration candles / label window
-expected price movement in the future trade duration candles window approximation = current natr * current rate * trade duration candles / label window
+expected trade price movement in the future trade duration candles window from trade opening approximation = trade natr * 0.01 * trade rate * trade duration candles / label window
+expected price movement in the future trade duration candles window approximation = current natr * 0.01 * current rate * trade duration candles / label window
