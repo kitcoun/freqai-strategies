@@ -296,3 +296,197 @@ def alligator(
     lips = smma(price_series, period=lips_period, zero_lag=zero_lag, offset=lips_shift)
 
     return jaw, teeth, lips
+
+
+def zigzag(
+    df: pd.DataFrame,
+    threshold: float = 0.05,
+) -> tuple[list, list, list]:
+    """
+    Calculate the ZigZag indicator for a OHLCV DataFrame.
+
+    Parameters:
+    df (pd.DataFrame): OHLCV DataFrame.
+    threshold (float): Percentage threshold for reversal (default 0.05 for 5%).
+
+    Returns:
+    tuple: Lists of indices, extrema, and directions.
+    """
+    if df.empty:
+        return [], [], []
+
+    indices = []
+    extrema = []
+    directions = []
+
+    current_dir = 0
+    current_extreme = None
+    current_extreme_idx = None
+
+    first_high = df["high"].iloc[0]
+    first_low = df["low"].iloc[0]
+
+    if (first_high - first_low) / first_low >= threshold:
+        current_dir = 1
+        current_extreme = first_high
+    else:
+        current_dir = -1
+        current_extreme = first_low
+    current_extreme_idx = df.index[0]
+
+    indices.append(current_extreme_idx)
+    extrema.append(current_extreme)
+    directions.append(current_dir)
+    last_idx = current_extreme_idx
+
+    for i in range(1, len(df)):
+        current_idx = df.index[i]
+        h = df.at[current_idx, "high"]
+        l = df.at[current_idx, "low"]
+
+        if current_dir == 1:  # Looking for higher high
+            if h > current_extreme:
+                current_extreme = h
+                current_extreme_idx = current_idx
+            elif (current_extreme - l) / current_extreme >= threshold:
+                if current_extreme_idx != last_idx:
+                    indices.append(current_extreme_idx)
+                    extrema.append(current_extreme)
+                    directions.append(current_dir)
+                    last_idx = current_extreme_idx
+
+                current_dir = -1
+                current_extreme = l
+                current_extreme_idx = current_idx
+
+        elif current_dir == -1:  # Looking for lower low
+            if l < current_extreme:
+                current_extreme = l
+                current_extreme_idx = current_idx
+            elif (h - current_extreme) / current_extreme >= threshold:
+                if current_extreme_idx != last_idx:
+                    indices.append(current_extreme_idx)
+                    extrema.append(current_extreme)
+                    directions.append(current_dir)
+                    last_idx = current_extreme_idx
+
+                current_dir = 1
+                current_extreme = h
+                current_extreme_idx = current_idx
+
+    if current_extreme_idx != last_idx:
+        indices.append(current_extreme_idx)
+        extrema.append(current_extreme)
+        directions.append(current_dir)
+
+    return indices, extrema, directions
+
+
+def dynamic_zigzag(
+    df: pd.DataFrame,
+    timeperiod: int = 14,
+    natr: bool = True,
+    ratio: float = 1.0,
+) -> tuple[list, list, list]:
+    """
+    Calculate the ZigZag indicator for a OHLCV DataFrame with dynamic threshold using ATR/NATR.
+
+    Parameters:
+    df (pd.DataFrame): OHLCV DataFrame.
+    timeperiod (int): Period for ATR/NATR calculation (default: 14).
+    natr (bool): Use NATR (True) or ATR (False) (default: True).
+    ratio (float): ratio for dynamic threshold (default: 1.0).
+
+    Returns:
+    tuple: Lists of indices, extrema, and directions.
+    """
+    if df.empty:
+        return [], [], []
+
+    if natr:
+        thresholds = ta.NATR(df, timeperiod=timeperiod)
+    else:
+        thresholds = ta.ATR(df, timeperiod=timeperiod)
+    thresholds = thresholds.ffill().bfill()
+
+    indices = []
+    extrema = []
+    directions = []
+
+    current_dir = 0
+    current_extreme = None
+    current_extreme_idx = None
+
+    first_high = df["high"].iloc[0]
+    first_low = df["low"].iloc[0]
+    first_threshold = thresholds.iloc[0] * ratio
+
+    if natr:
+        first_move = (first_high - first_low) / first_low
+    else:
+        first_move = first_high - first_low
+    if first_move >= first_threshold:
+        current_dir = 1
+        current_extreme = first_high
+    else:
+        current_dir = -1
+        current_extreme = first_low
+    current_extreme_idx = df.index[0]
+
+    indices.append(current_extreme_idx)
+    extrema.append(current_extreme)
+    directions.append(current_dir)
+    last_idx = current_extreme_idx
+
+    for i in range(1, len(df)):
+        current_idx = df.index[i]
+        h = df.at[current_idx, "high"]
+        l = df.at[current_idx, "low"]
+        threshold = thresholds.iloc[i] * ratio
+
+        if current_dir == 1:  # Looking for higher high
+            if h > current_extreme:
+                current_extreme = h
+                current_extreme_idx = current_idx
+            else:
+                if natr:
+                    reversal = (current_extreme - l) / current_extreme >= threshold
+                else:
+                    reversal = (current_extreme - l) >= threshold
+                if reversal:
+                    if current_extreme_idx != last_idx:
+                        indices.append(current_extreme_idx)
+                        extrema.append(current_extreme)
+                        directions.append(current_dir)
+                        last_idx = current_extreme_idx
+
+                    current_dir = -1
+                    current_extreme = l
+                    current_extreme_idx = current_idx
+
+        elif current_dir == -1:  # Looking for lower low
+            if l < current_extreme:
+                current_extreme = l
+                current_extreme_idx = current_idx
+            else:
+                if natr:
+                    reversal = (h - current_extreme) / current_extreme >= threshold
+                else:
+                    reversal = (h - current_extreme) >= threshold
+                if reversal:
+                    if current_extreme_idx != last_idx:
+                        indices.append(current_extreme_idx)
+                        extrema.append(current_extreme)
+                        directions.append(current_dir)
+                        last_idx = current_extreme_idx
+
+                    current_dir = 1
+                    current_extreme = h
+                    current_extreme_idx = current_idx
+
+    if current_extreme_idx != last_idx:
+        indices.append(current_extreme_idx)
+        extrema.append(current_extreme)
+        directions.append(current_dir)
+
+    return indices, extrema, directions

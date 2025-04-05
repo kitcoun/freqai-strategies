@@ -4,7 +4,7 @@ from functools import reduce, cached_property
 import datetime
 import math
 from pathlib import Path
-from statistics import harmonic_mean
+from statistics import geometric_mean
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
 from typing import Optional
@@ -13,13 +13,13 @@ from freqtrade.strategy.interface import IStrategy
 from freqtrade.strategy import stoploss_from_absolute
 from technical.pivots_points import pivots_points
 from freqtrade.persistence import Trade
-from scipy.signal import find_peaks
 import numpy as np
 import pandas_ta as pta
 
 from Utils import (
     alligator,
     bottom_change_percent,
+    dynamic_zigzag,
     ewo,
     non_zero_range,
     price_retracement_percent,
@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.14"
+        return "3.2.15"
 
     timeframe = "5m"
 
@@ -78,7 +78,7 @@ class QuickAdapterV3(IStrategy):
 
     @cached_property
     def label_natr_ratio(self) -> float:
-        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.0125)
+        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.075)
 
     @cached_property
     def entry_natr_ratio(self) -> float:
@@ -353,31 +353,12 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
         label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
-        peaks_distance = label_period_candles
-        peaks_width = label_period_candles // 4
-        # To match current market condition, use the current close price and NATR to evaluate peaks prominence
-        peaks_prominence = (
-            dataframe["close"].iloc[-1]
-            * ta.NATR(dataframe, timeperiod=label_period_candles).iloc[-1]
-            * self.label_natr_ratio
-        )
-        min_peaks, _ = find_peaks(
-            -dataframe["low"].values,
-            distance=peaks_distance,
-            width=peaks_width,
-            prominence=peaks_prominence,
-        )
-        max_peaks, _ = find_peaks(
-            dataframe["high"].values,
-            distance=peaks_distance,
-            width=peaks_width,
-            prominence=peaks_prominence,
+        peak_indices, _, peak_directions = dynamic_zigzag(
+            dataframe, timeperiod=label_period_candles, ratio=self.label_natr_ratio
         )
         dataframe[EXTREMA_COLUMN] = 0
-        for mp in min_peaks:
-            dataframe.at[mp, EXTREMA_COLUMN] = -1
-        for mp in max_peaks:
-            dataframe.at[mp, EXTREMA_COLUMN] = 1
+        for peak_idx, peak_dir in zip(peak_indices, peak_directions):
+            dataframe.at[peak_idx, EXTREMA_COLUMN] = peak_dir
         dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
         dataframe[EXTREMA_COLUMN] = self.smooth_extrema(
@@ -495,7 +476,9 @@ class QuickAdapterV3(IStrategy):
             * (1 / math.log10(1 + 0.25 * trade_duration_candles))
         )
 
-    def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
+    def get_take_profit_distance(
+        self, df: DataFrame, trade: Trade, current_rate: float
+    ) -> Optional[float]:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
@@ -506,8 +489,9 @@ class QuickAdapterV3(IStrategy):
         if isna(current_natr):
             return None
         return (
-            trade.open_rate
-            * max(entry_natr, harmonic_mean([entry_natr, current_natr]))
+            geometric_mean(
+                [trade.open_rate * entry_natr, 0.5 * current_rate * current_natr]
+            )
             * self.trailing_stoploss_natr_ratio
             * math.log10(9 + trade_duration_candles)
             * self.reward_risk_ratio
@@ -575,7 +559,7 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        take_profit_distance = self.get_take_profit_distance(df, trade)
+        take_profit_distance = self.get_take_profit_distance(df, trade, current_rate)
         if isna(take_profit_distance):
             return None
         if take_profit_distance == 0:
