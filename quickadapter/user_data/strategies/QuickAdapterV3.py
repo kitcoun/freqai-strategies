@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.12"
+        return "3.2.13"
 
     timeframe = "5m"
 
@@ -355,7 +355,7 @@ class QuickAdapterV3(IStrategy):
         peaks_prominence = (
             dataframe["close"].iloc[-1]
             * ta.NATR(dataframe, timeperiod=label_period_candles).iloc[-1]
-            * 0.005
+            * 0.0075
         )
         min_peaks, _ = find_peaks(
             -dataframe["low"].values,

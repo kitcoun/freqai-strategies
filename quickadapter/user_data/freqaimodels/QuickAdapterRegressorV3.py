@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.6"
+    version = "3.6.7"
 
     @cached_property
     def __optuna_config(self) -> dict:
@@ -609,6 +609,19 @@ def train_regressor(
     return model
 
 
+def round_to_nearest(value: float, step: int) -> int:
+    """
+    Round a value to the nearest multiple of a given step.
+    :param value: The value to round.
+    :param step: The step size to round to (must be non-zero).
+    :return: The rounded value.
+    :raises ValueError: If step is zero.
+    """
+    if step == 0:
+        raise ValueError("step must be non-zero")
+    return int(round(value / step) * step)
+
+
 def period_objective(
     trial: optuna.Trial,
     regressor: str,
@@ -652,10 +665,15 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles: int = max(fit_live_predictions_candles // 9, 20)
-    max_label_period_candles: int = min(
-        max(fit_live_predictions_candles // 3, min_label_period_candles),
-        max(test_window // 2, min_label_period_candles),
+    min_label_period_candles: int = round_to_nearest(
+        max(fit_live_predictions_candles // 12, 20), candles_step
+    )
+    max_label_period_candles: int = round_to_nearest(
+        min(
+            max(fit_live_predictions_candles // 3, min_label_period_candles),
+            max(test_window // 2, min_label_period_candles),
+        ),
+        candles_step,
     )
     label_period_candles: int = trial.suggest_int(
         "label_period_candles",
