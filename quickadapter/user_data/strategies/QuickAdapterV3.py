@@ -59,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.13"
+        return "3.2.14"
 
     timeframe = "5m"
 
@@ -75,6 +75,10 @@ class QuickAdapterV3(IStrategy):
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
+
+    @cached_property
+    def label_natr_ratio(self) -> float:
+        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.0125)
 
     @cached_property
     def entry_natr_ratio(self) -> float:
@@ -355,7 +359,7 @@ class QuickAdapterV3(IStrategy):
         peaks_prominence = (
             dataframe["close"].iloc[-1]
             * ta.NATR(dataframe, timeperiod=label_period_candles).iloc[-1]
-            * 0.0075
+            * self.label_natr_ratio
         )
         min_peaks, _ = find_peaks(
             -dataframe["low"].values,
