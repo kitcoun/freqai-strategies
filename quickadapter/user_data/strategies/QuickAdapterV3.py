@@ -488,13 +488,19 @@ class QuickAdapterV3(IStrategy):
         current_natr = df["natr_label_period_candles"].iloc[-1]
         if isna(current_natr):
             return None
-        return (
+        trade_take_profit_distance = (
+            trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
+        )
+        return max(
+            trade_take_profit_distance,
             geometric_mean(
-                [trade.open_rate * entry_natr, 0.5 * current_rate * current_natr]
+                [
+                    trade_take_profit_distance,
+                    current_rate * current_natr * self.trailing_stoploss_natr_ratio,
+                ]
             )
-            * self.trailing_stoploss_natr_ratio
             * math.log10(9 + trade_duration_candles)
-            * self.reward_risk_ratio
+            * self.reward_risk_ratio,
         )
 
     def custom_stoploss(
