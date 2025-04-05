@@ -379,7 +379,7 @@ def zigzag(
         extrema.append(current_extreme)
         directions.append(current_dir)
 
-    return indices, extrema, directions
+    return indices[1:], extrema[1:], directions[1:]
 
 
 def dynamic_zigzag(
@@ -489,4 +489,4 @@ def dynamic_zigzag(
         extrema.append(current_extreme)
         directions.append(current_dir)
 
-    return indices, extrema, directions
+    return indices[1:], extrema[1:], directions[1:]
