@@ -299,9 +299,8 @@ def alligator(
 
 
 def zigzag(
-    df: pd.DataFrame,
-    threshold: float = 0.05,
-) -> tuple[list, list, list]:
+    df: pd.DataFrame, threshold: float = 0.05
+) -> tuple[list[float], list[float], list[int]]:
     """
     Calculate the ZigZag indicator for a OHLCV DataFrame.
 
@@ -387,7 +386,7 @@ def dynamic_zigzag(
     timeperiod: int = 14,
     natr: bool = True,
     ratio: float = 1.0,
-) -> tuple[list, list, list]:
+) -> tuple[list[float], list[float], list[int]]:
     """
     Calculate the ZigZag indicator for a OHLCV DataFrame with dynamic threshold using ATR/NATR.
 
