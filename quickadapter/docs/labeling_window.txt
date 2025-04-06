@@ -1,4 +1,4 @@
-- = candle = { open, close, high, low, volume, natr_ratio_label_window, ... } dataframe
+- = candle = { open, close, high, low, volume, natr_label_period_candles, ... } dataframe
 
 Labeling window:
 ----------------
