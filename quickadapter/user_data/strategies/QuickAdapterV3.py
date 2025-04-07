@@ -354,7 +354,7 @@ class QuickAdapterV3(IStrategy):
     def set_freqai_targets(self, dataframe, metadata, **kwargs):
         label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
         peak_indices, _, peak_directions = dynamic_zigzag(
-            dataframe, timeperiod=label_period_candles, ratio=self.label_natr_ratio
+            dataframe, period=label_period_candles, ratio=self.label_natr_ratio
         )
         dataframe[EXTREMA_COLUMN] = 0
         for peak_idx, peak_dir in zip(peak_indices, peak_directions):

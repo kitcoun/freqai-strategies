@@ -383,7 +383,7 @@ def zigzag(
 
 def dynamic_zigzag(
     df: pd.DataFrame,
-    timeperiod: int = 14,
+    period: int = 14,
     natr: bool = True,
     ratio: float = 1.0,
 ) -> tuple[list[int], list[float], list[int]]:
@@ -392,7 +392,7 @@ def dynamic_zigzag(
 
     Parameters:
     df (pd.DataFrame): OHLCV DataFrame.
-    timeperiod (int): Period for ATR/NATR calculation (default: 14).
+    period (int): Period for ATR/NATR calculation (default: 14).
     natr (bool): Use NATR (True) or ATR (False) (default: True).
     ratio (float): ratio for dynamic threshold (default: 1.0).
 
@@ -403,9 +403,9 @@ def dynamic_zigzag(
         return [], [], []
 
     if natr:
-        thresholds = ta.NATR(df, timeperiod=timeperiod)
+        thresholds = ta.NATR(df, timeperiod=period)
     else:
-        thresholds = ta.ATR(df, timeperiod=timeperiod)
+        thresholds = ta.ATR(df, timeperiod=period)
     thresholds = thresholds.ffill().bfill()
 
     indices = []

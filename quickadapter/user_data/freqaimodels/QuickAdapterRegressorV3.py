@@ -8,7 +8,6 @@ import optuna
 import sklearn
 import warnings
 
-from statistics import geometric_mean
 from functools import cached_property
 from typing import Any, Callable, Optional
 from pathlib import Path
@@ -44,7 +43,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.7"
+    version = "3.6.8"
 
     @cached_property
     def __optuna_config(self) -> dict:
@@ -160,6 +159,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     y_test,
                     test_weights,
                     self.freqai_info.get("fit_live_predictions_candles", 100),
+                    self.ft_params.get("label_period_candles", 50),
                     self.__optuna_config.get("candles_step"),
                     model_training_parameters,
                 ),
@@ -214,12 +214,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         if self.live:
             if not hasattr(self, "exchange_candles"):
                 self.exchange_candles = len(self.dd.model_return_values[pair].index)
-            candle_diff = len(self.dd.historic_predictions[pair].index) - (
+            candles_diff = len(self.dd.historic_predictions[pair].index) - (
                 num_candles + self.exchange_candles
             )
-            if candle_diff < 0:
+            if candles_diff < 0:
                 logger.warning(
-                    f"{pair}: fit live predictions not warmed up yet. Still {abs(candle_diff)} candles to go."
+                    f"{pair}: fit live predictions not warmed up yet. Still {abs(candles_diff)} candles to go."
                 )
                 warmed_up = False
 
@@ -233,12 +233,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = -2
             dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = 2
         else:
-            label_period_candles = self.get_label_period_candles(pair)
-            min_pred, max_pred = self.min_max_pred(
-                pred_df_full,
-                num_candles,
-                label_period_candles,
-            )
+            min_pred, max_pred = self.min_max_pred(pred_df_full)
             dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = min_pred
             dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = max_pred
 
@@ -293,25 +288,17 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         return eval_set, eval_weights
 
-    def min_max_pred(
-        self,
-        pred_df: pd.DataFrame,
-        fit_live_predictions_candles: int,
-        label_period_candles: int,
-    ) -> tuple[pd.Series, pd.Series]:
-        prediction_thresholds_smoothing = self.freqai_info.get(
-            "prediction_thresholds_smoothing", "quantile"
+    def min_max_pred(self, pred_df: pd.DataFrame) -> tuple[float, float]:
+        temperature = self.freqai_info.get("predictions_temperature", 140.0)
+        min_pred = smoothed_min(
+            pred_df[EXTREMA_COLUMN],
+            temperature=temperature,
         )
-        smoothing_methods: dict[
-            str, Callable[[pd.DataFrame, int, int], tuple[pd.Series, pd.Series]]
-        ] = {
-            "quantile": self.quantile_min_max_pred,
-            "mean": QuickAdapterRegressorV3.mean_min_max_pred,
-            "median": QuickAdapterRegressorV3.median_min_max_pred,
-        }
-        return smoothing_methods.get(
-            prediction_thresholds_smoothing, smoothing_methods["quantile"]
-        )(pred_df, fit_live_predictions_candles, label_period_candles)
+        max_pred = smoothed_max(
+            pred_df[EXTREMA_COLUMN],
+            temperature=temperature,
+        )
+        return min_pred, max_pred
 
     def optuna_optimize(
         self,
@@ -485,70 +472,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         except ValueError:
             return False
 
-    @staticmethod
-    def get_pred_df_sorted_and_label_period_frequency(
-        pred_df: pd.DataFrame,
-        fit_live_predictions_candles: int,
-        label_period_candles: int,
-    ) -> tuple[pd.DataFrame, int]:
-        pred_df_sorted = (
-            pred_df[[EXTREMA_COLUMN]]
-            .copy()
-            .sort_values(by=EXTREMA_COLUMN, ascending=False)
-            .reset_index(drop=True)
-        )
-        label_period_frequency: int = max(
-            1, fit_live_predictions_candles // label_period_candles
-        )
-
-        return pred_df_sorted, label_period_frequency
-
-    @staticmethod
-    def mean_min_max_pred(
-        pred_df: pd.DataFrame,
-        fit_live_predictions_candles: int,
-        label_period_candles: int,
-    ) -> tuple[pd.Series, pd.Series]:
-        pred_df_sorted, label_period_frequency = (
-            QuickAdapterRegressorV3.get_pred_df_sorted_and_label_period_frequency(
-                pred_df, fit_live_predictions_candles, label_period_candles
-            )
-        )
-        min_pred = pred_df_sorted.iloc[-label_period_frequency:].mean()
-        max_pred = pred_df_sorted.iloc[:label_period_frequency].mean()
-        return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
-
-    @staticmethod
-    def median_min_max_pred(
-        pred_df: pd.DataFrame,
-        fit_live_predictions_candles: int,
-        label_period_candles: int,
-    ) -> tuple[pd.Series, pd.Series]:
-        pred_df_sorted, label_period_frequency = (
-            QuickAdapterRegressorV3.get_pred_df_sorted_and_label_period_frequency(
-                pred_df, fit_live_predictions_candles, label_period_candles
-            )
-        )
-        min_pred = pred_df_sorted.iloc[-label_period_frequency:].median()
-        max_pred = pred_df_sorted.iloc[:label_period_frequency].median()
-        return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
-
-    def quantile_min_max_pred(
-        self,
-        pred_df: pd.DataFrame,
-        fit_live_predictions_candles: int,
-        label_period_candles: int,
-    ) -> tuple[pd.Series, pd.Series]:
-        pred_df_sorted, label_period_frequency = (
-            QuickAdapterRegressorV3.get_pred_df_sorted_and_label_period_frequency(
-                pred_df, fit_live_predictions_candles, label_period_candles
-            )
-        )
-        q = self.freqai_info.get("quantile", 0.75)
-        min_pred = pred_df_sorted.iloc[-label_period_frequency:].quantile(1 - q)
-        max_pred = pred_df_sorted.iloc[:label_period_frequency].quantile(q)
-        return min_pred[EXTREMA_COLUMN], max_pred[EXTREMA_COLUMN]
-
 
 def get_callbacks(trial: optuna.Trial, regressor: str) -> list[Callable]:
     if regressor == "xgboost":
@@ -632,11 +555,14 @@ def period_objective(
     y_test: pd.DataFrame,
     test_weights: np.ndarray,
     fit_live_predictions_candles: int,
+    label_period_candles: int,
     candles_step: int,
     model_training_parameters: dict,
 ) -> float:
     min_train_window: int = fit_live_predictions_candles * 2
-    max_train_window: int = max(len(X), min_train_window)
+    max_train_window: int = len(X)
+    if max_train_window < min_train_window:
+        min_train_window = max_train_window
     train_window: int = trial.suggest_int(
         "train_period_candles", min_train_window, max_train_window, step=candles_step
     )
@@ -645,7 +571,9 @@ def period_objective(
     train_weights = train_weights[-train_window:]
 
     min_test_window: int = fit_live_predictions_candles
-    max_test_window: int = max(len(X_test), min_test_window)
+    max_test_window: int = len(X_test)
+    if max_test_window < min_test_window:
+        min_test_window = max_test_window
     test_window: int = trial.suggest_int(
         "test_period_candles", min_test_window, max_test_window, step=candles_step
     )
@@ -665,46 +593,43 @@ def period_objective(
     )
     y_pred = model.predict(X_test)
 
-    min_label_period_candles: int = round_to_nearest(
-        max(fit_live_predictions_candles // 12, 20), candles_step
-    )
-    max_label_period_candles: int = round_to_nearest(
-        min(
-            max(fit_live_predictions_candles // 3, min_label_period_candles),
-            max(test_window // 2, min_label_period_candles),
-        ),
-        candles_step,
-    )
+    # TODO: implement a label_period_candles optimization compatible with ZigZag
     label_period_candles: int = trial.suggest_int(
         "label_period_candles",
-        min_label_period_candles,
-        max_label_period_candles,
+        label_period_candles,
+        label_period_candles,
         step=candles_step,
     )
-    label_periods_candles: int = (
-        test_window // label_period_candles
-    ) * label_period_candles
-    if label_periods_candles == 0 or label_period_candles > test_window:
-        return float("inf")
-    y_test_periods = [
-        y_test.iloc[-label_periods_candles:].to_numpy()[i : i + label_period_candles]
-        for i in range(0, label_periods_candles, label_period_candles)
-    ]
-    test_weights_periods = [
-        test_weights[-label_periods_candles:][i : i + label_period_candles]
-        for i in range(0, label_periods_candles, label_period_candles)
-    ]
-    y_pred_periods = [
-        y_pred[-label_periods_candles:][i : i + label_period_candles]
-        for i in range(0, label_periods_candles, label_period_candles)
-    ]
 
-    errors = [
-        sklearn.metrics.root_mean_squared_error(y_t, y_p, sample_weight=t_w)
-        for y_t, y_p, t_w in zip(y_test_periods, y_pred_periods, test_weights_periods)
-    ]
+    # min_label_period_candles: int = round_to_nearest(
+    #     max(fit_live_predictions_candles // 12, 20), candles_step
+    # )
+    # max_label_period_candles: int = round_to_nearest(
+    #     max(fit_live_predictions_candles // 4, min_label_period_candles),
+    #     candles_step,
+    # )
+    # label_period_candles: int = trial.suggest_int(
+    #     "label_period_candles",
+    #     min_label_period_candles,
+    #     max_label_period_candles,
+    #     step=candles_step,
+    # )
+    # if label_period_candles > test_window:
+    #     return float("inf")
+    # label_periods_candles: int = (
+    #     test_window // label_period_candles
+    # ) * label_period_candles
+    # if label_periods_candles == 0:
+    #     return float("inf")
+    # y_test = y_test.iloc[-label_periods_candles:]
+    # test_weights = test_weights[-label_periods_candles:]
+    # y_pred = y_pred[-label_periods_candles:]
 
-    return geometric_mean(errors)
+    error = sklearn.metrics.root_mean_squared_error(
+        y_test, y_pred, sample_weight=test_weights
+    )
+
+    return error
 
 
 def get_optuna_study_model_parameters(trial: optuna.Trial, regressor: str) -> dict:
@@ -767,3 +692,11 @@ def hp_objective(
     )
 
     return error
+
+
+def smoothed_max(series: pd.Series, temperature=1.0) -> float:
+    return sp.special.logsumexp(temperature * series.to_numpy()) / temperature
+
+
+def smoothed_min(series: pd.Series, temperature=1.0) -> float:
+    return -sp.special.logsumexp(-temperature * series.to_numpy()) / temperature
