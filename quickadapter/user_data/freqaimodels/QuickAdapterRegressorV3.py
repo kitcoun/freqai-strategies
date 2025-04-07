@@ -695,8 +695,15 @@ def hp_objective(
 
 
 def smoothed_max(series: pd.Series, temperature=1.0) -> float:
-    return sp.special.logsumexp(temperature * series.to_numpy()) / temperature
+    data_array = series.to_numpy()
+    if data_array.size == 0:
+        return np.nan
+    if temperature < 0:
+        raise ValueError("temperature must be non-negative.")
+    if temperature == 0:
+        return data_array.max()
+    return sp.special.logsumexp(temperature * data_array) / temperature
 
 
 def smoothed_min(series: pd.Series, temperature=1.0) -> float:
-    return -sp.special.logsumexp(-temperature * series.to_numpy()) / temperature
+    return -smoothed_max(-series, temperature=temperature)
