@@ -46,7 +46,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     version = "3.6.8"
 
     @cached_property
-    def __optuna_config(self) -> dict:
+    def _optuna_config(self) -> dict:
         optuna_default_config = {
             "enabled": False,
             "n_jobs": min(
@@ -79,33 +79,76 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             raise ValueError(
                 "FreqAI model requires 'identifier' defined in the freqai section configuration"
             )
-        self.__optuna_hyperopt: bool = (
+        self._optuna_hyperopt: bool = (
             self.freqai_info.get("enabled", False)
-            and self.__optuna_config.get("enabled")
+            and self._optuna_config.get("enabled")
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
-        self.__optuna_hp_rmse: dict[str, float] = {}
-        self.__optuna_period_rmse: dict[str, float] = {}
-        self.__optuna_hp_params: dict[str, dict] = {}
-        self.__optuna_period_params: dict[str, dict] = {}
+        self._optuna_hp_rmse: dict[str, float] = {}
+        self._optuna_period_rmse: dict[str, float] = {}
+        self._optuna_hp_params: dict[str, dict] = {}
+        self._optuna_period_params: dict[str, dict] = {}
         for pair in self.pairs:
-            self.__optuna_hp_rmse[pair] = -1
-            self.__optuna_period_rmse[pair] = -1
-            self.__optuna_hp_params[pair] = (
+            self._optuna_hp_rmse[pair] = -1
+            self._optuna_period_rmse[pair] = -1
+            self._optuna_hp_params[pair] = (
                 self.optuna_load_best_params(pair, "hp") or {}
             )
-            self.__optuna_period_params[pair] = (
+            self._optuna_period_params[pair] = (
                 self.optuna_load_best_params(pair, "period") or {}
             )
         logger.info(
             f"Initialized {self.__class__.__name__} {self.freqai_info.get('regressor', 'xgboost')} regressor model version {self.version}"
         )
 
+    def get_optuna_params(self, pair: str, namespace: str) -> dict[str, Any]:
+        if namespace == "hp":
+            params = self._optuna_hp_params.get(pair)
+        elif namespace == "period":
+            params = self._optuna_period_params.get(pair)
+        else:
+            raise ValueError(f"Invalid namespace: {namespace}")
+        return params
+
+    def set_optuna_params(self, pair: str, namespace: str, params: dict) -> None:
+        if namespace == "hp":
+            self._optuna_hp_params[pair] = params
+        elif namespace == "period":
+            self._optuna_period_params[pair] = params
+        else:
+            raise ValueError(f"Invalid namespace: {namespace}")
+
+    def get_optuna_rmse(self, pair: str, namespace: str) -> float:
+        if namespace == "hp":
+            rmse = self._optuna_hp_rmse.get(pair)
+        elif namespace == "period":
+            rmse = self._optuna_period_rmse.get(pair)
+        else:
+            raise ValueError(f"Invalid namespace: {namespace}")
+        return rmse
+
+    def set_optuna_rmse(self, pair: str, namespace: str, rmse: float) -> None:
+        if namespace == "hp":
+            self._optuna_hp_rmse[pair] = rmse
+        elif namespace == "period":
+            self._optuna_period_rmse[pair] = rmse
+        else:
+            raise ValueError(f"Invalid namespace: {namespace}")
+
+    def get_label_period_candles(self, pair: str) -> int:
+        label_period_candles = self.get_optuna_params(pair, "period").get(
+            "label_period_candles"
+        )
+        if label_period_candles:
+            return label_period_candles
+        return self.ft_params.get("label_period_candles", 50)
+
     def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
         User sets up the training and test data to fit their desired model here
         :param data_dictionary: the dictionary constructed by DataHandler to hold
                                 all the training and test data/labels.
+        :param dk: the FreqaiDataKitchen object
         """
 
         X = data_dictionary["train_features"]
@@ -121,7 +164,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         init_model = self.get_init_model(dk.pair)
 
         start = time.time()
-        if self.__optuna_hyperopt:
+        if self._optuna_hyperopt:
             self.optuna_optimize(
                 dk.pair,
                 "hp",
@@ -136,14 +179,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     test_weights,
                     model_training_parameters,
                 ),
-                self.__optuna_hp_params,
-                self.__optuna_hp_rmse,
             )
 
-            if self.__optuna_hp_params.get(dk.pair):
+            optuna_hp_params = self.get_optuna_params(dk.pair, "hp")
+            if optuna_hp_params:
                 model_training_parameters = {
                     **model_training_parameters,
-                    **self.__optuna_hp_params[dk.pair],
+                    **optuna_hp_params,
                 }
 
             self.optuna_optimize(
@@ -160,24 +202,19 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     test_weights,
                     self.freqai_info.get("fit_live_predictions_candles", 100),
                     self.ft_params.get("label_period_candles", 50),
-                    self.__optuna_config.get("candles_step"),
+                    self._optuna_config.get("candles_step"),
                     model_training_parameters,
                 ),
-                self.__optuna_period_params,
-                self.__optuna_period_rmse,
             )
 
-            if self.__optuna_period_params.get(dk.pair):
-                train_window = self.__optuna_period_params[dk.pair].get(
-                    "train_period_candles"
-                )
+            optuna_period_params = self.get_optuna_params(dk.pair, "period")
+            if optuna_period_params:
+                train_window = optuna_period_params.get("train_period_candles")
                 X = X.iloc[-train_window:]
                 y = y.iloc[-train_window:]
                 train_weights = train_weights[-train_window:]
 
-                test_window = self.__optuna_period_params[dk.pair].get(
-                    "test_period_candles"
-                )
+                test_window = optuna_period_params.get("test_period_candles")
                 X_test = X_test.iloc[-test_window:]
                 y_test = y_test.iloc[-test_window:]
                 test_weights = test_weights[-test_window:]
@@ -198,14 +235,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
 
         return model
-
-    def get_label_period_candles(self, pair: str) -> int:
-        label_period_candles = self.__optuna_period_params.get(pair).get(
-            "label_period_candles"
-        )
-        if label_period_candles:
-            return label_period_candles
-        return self.ft_params.get("label_period_candles", 50)
 
     def fit_live_predictions(self, dk: FreqaiDataKitchen, pair: str) -> None:
         warmed_up = True
@@ -269,11 +298,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         dk.data["extra_returns_per_train"]["label_period_candles"] = (
             self.get_label_period_candles(pair)
         )
-        dk.data["extra_returns_per_train"]["hp_rmse"] = self.__optuna_hp_rmse.get(
-            pair, -1
-        )
-        dk.data["extra_returns_per_train"]["period_rmse"] = (
-            self.__optuna_period_rmse.get(pair, -1)
+        dk.data["extra_returns_per_train"]["hp_rmse"] = self.get_optuna_rmse(pair, "hp")
+        dk.data["extra_returns_per_train"]["period_rmse"] = self.get_optuna_rmse(
+            pair, "period"
         )
 
     def eval_set_and_weights(
@@ -307,15 +334,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         pair: str,
         namespace: str,
         objective: Callable[[optuna.Trial], float],
-        params_storage: dict[str, dict],
-        rmse_storage: dict[str, float],
     ) -> None:
         identifier = self.freqai_info.get("identifier")
         study = self.optuna_create_study(pair, f"{identifier}-{namespace}-{pair}")
         if not study:
             return
 
-        if self.__optuna_config.get("warm_start"):
+        if self._optuna_config.get("warm_start"):
             self.optuna_enqueue_previous_best_params(pair, namespace, study)
 
         logger.info(f"Optuna {namespace} hyperopt started")
@@ -323,9 +348,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         try:
             study.optimize(
                 objective,
-                n_trials=self.__optuna_config.get("n_trials"),
-                n_jobs=self.__optuna_config.get("n_jobs"),
-                timeout=self.__optuna_config.get("timeout"),
+                n_trials=self._optuna_config.get("n_trials"),
+                n_jobs=self._optuna_config.get("n_jobs"),
+                timeout=self._optuna_config.get("timeout"),
                 gc_after_trial=True,
             )
         except Exception as e:
@@ -338,15 +363,15 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         time_spent = time.time() - start_time
         if QuickAdapterRegressorV3.optuna_study_has_best_params(study):
-            params_storage[pair] = study.best_params
-            rmse_storage[pair] = study.best_value
             logger.info(f"Optuna {namespace} hyperopt done ({time_spent:.2f} secs)")
+            self.set_optuna_params(pair, namespace, study.best_params)
+            self.set_optuna_rmse(pair, namespace, study.best_value)
             for key, value in {
-                "rmse": rmse_storage[pair],
-                **params_storage[pair],
+                "rmse": self.get_optuna_rmse(pair, namespace),
+                **self.get_optuna_params(pair, namespace),
             }.items():
                 logger.info(f"Optuna {namespace} hyperopt | {key:>20s} : {value}")
-            self.optuna_save_best_params(pair, namespace, params_storage[pair])
+            self.optuna_save_best_params(pair, namespace)
         else:
             logger.error(
                 f"Optuna {namespace} hyperopt failed ({time_spent:.2f} secs): no study best params found"
@@ -355,7 +380,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def optuna_storage(self, pair: str) -> optuna.storages.BaseStorage:
         storage_dir = self.full_path
         storage_filename = f"optuna-{pair.split('/')[0]}"
-        storage_backend = self.__optuna_config.get("storage")
+        storage_backend = self._optuna_config.get("storage")
         if storage_backend == "sqlite":
             storage = f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
         elif storage_backend == "file":
@@ -382,7 +407,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
             return None
 
-        if self.__optuna_config.get("continuous"):
+        if self._optuna_config.get("continuous"):
             QuickAdapterRegressorV3.optuna_study_delete(study_name, storage)
 
         try:
@@ -394,7 +419,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 pruner=optuna.pruners.HyperbandPruner(),
                 direction=optuna.study.StudyDirection.MINIMIZE,
                 storage=storage,
-                load_if_exists=not self.__optuna_config.get("continuous"),
+                load_if_exists=not self._optuna_config.get("continuous"),
             )
         except Exception as e:
             logger.error(
@@ -405,10 +430,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def optuna_enqueue_previous_best_params(
         self, pair: str, namespace: str, study: optuna.study.Study
     ) -> None:
-        if namespace == "hp":
-            best_params = self.__optuna_hp_params.get(pair)
-        elif namespace == "period":
-            best_params = self.__optuna_period_params.get(pair)
+        best_params = self.get_optuna_params(pair, namespace)
         if best_params:
             study.enqueue_trial(best_params)
         else:
@@ -416,15 +438,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             if best_params:
                 study.enqueue_trial(best_params)
 
-    def optuna_save_best_params(
-        self, pair: str, namespace: str, best_params: dict
-    ) -> None:
+    def optuna_save_best_params(self, pair: str, namespace: str) -> None:
         best_params_path = Path(
             self.full_path / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
         )
         try:
             with best_params_path.open("w", encoding="utf-8") as write_file:
-                json.dump(best_params, write_file, indent=4)
+                json.dump(self.get_optuna_params(pair, namespace), write_file, indent=4)
         except Exception as e:
             logger.error(
                 f"Failed to save optuna {namespace} best params for {pair}: {str(e)}",

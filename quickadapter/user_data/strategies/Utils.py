@@ -144,7 +144,7 @@ def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], pd.Series]:
     return mamodes.get(mamode, mamodes["sma"])
 
 
-def __fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
+def _fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
     """Original fractal dimension computation implementation per Ehlers' paper."""
     if period % 2 != 0:
         raise ValueError("period must be even")
@@ -191,7 +191,7 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
     for i in range(period, len(close)):
         window_high = high.iloc[i - period : i]
         window_low = low.iloc[i - period : i]
-        fd.iloc[i] = __fractal_dimension(window_high.values, window_low.values, period)
+        fd.iloc[i] = _fractal_dimension(window_high.values, window_low.values, period)
 
     alpha = np.exp(-4.6 * (fd - 1)).clip(0.01, 1)
 

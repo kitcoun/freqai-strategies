@@ -182,9 +182,9 @@ class QuickAdapterV3(IStrategy):
             / "models"
             / f"{self.freqai_info.get('identifier', 'no_id_provided')}"
         )
-        self.__period_params: dict[str, dict] = {}
+        self._period_params: dict[str, dict] = {}
         for pair in self.pairs:
-            self.__period_params[pair] = self.load_period_best_params(pair) or {}
+            self._period_params[pair] = self.load_period_best_params(pair) or {}
 
     def feature_engineering_expand_all(self, dataframe, period, **kwargs):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
@@ -344,9 +344,7 @@ class QuickAdapterV3(IStrategy):
         return dataframe
 
     def get_label_period_candles(self, pair: str) -> int:
-        label_period_candles = self.__period_params.get(pair).get(
-            "label_period_candles"
-        )
+        label_period_candles = self._period_params.get(pair).get("label_period_candles")
         if label_period_candles:
             return label_period_candles
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
@@ -378,7 +376,7 @@ class QuickAdapterV3(IStrategy):
 
         pair = str(metadata.get("pair"))
 
-        self.__period_params[pair]["label_period_candles"] = dataframe[
+        self._period_params[pair]["label_period_candles"] = dataframe[
             "label_period_candles"
         ].iloc[-1]
 
@@ -685,10 +683,9 @@ class QuickAdapterV3(IStrategy):
         )
 
     def load_period_best_params(self, pair: str) -> Optional[dict]:
-        namespace = "period"
         best_params_path = Path(
             self.models_full_path
-            / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
+            / f"optuna-period-best-params-{pair.split('/')[0]}.json"
         )
         if best_params_path.is_file():
             with best_params_path.open("r", encoding="utf-8") as read_file:
