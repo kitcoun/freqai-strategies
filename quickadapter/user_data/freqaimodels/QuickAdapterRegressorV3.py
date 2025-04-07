@@ -289,7 +289,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         return eval_set, eval_weights
 
     def min_max_pred(self, pred_df: pd.DataFrame) -> tuple[float, float]:
-        temperature = self.freqai_info.get("predictions_temperature", 140.0)
+        temperature = float(
+            self.freqai_info.get("prediction_thresholds_temperature", 140.0)
+        )
         min_pred = smoothed_min(
             pred_df[EXTREMA_COLUMN],
             temperature=temperature,
