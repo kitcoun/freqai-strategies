@@ -1,4 +1,3 @@
-import json
 import logging
 from functools import reduce, cached_property
 import datetime
@@ -59,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.15"
+        return "3.2.16"
 
     timeframe = "5m"
 
@@ -120,7 +119,7 @@ class QuickAdapterV3(IStrategy):
             "subplots": {
                 "accuracy": {
                     "hp_rmse": {"color": "#c28ce3", "type": "line"},
-                    "period_rmse": {"color": "#a3087a", "type": "line"},
+                    "train_rmse": {"color": "#a3087a", "type": "line"},
                 },
                 "extrema": {
                     EXTREMA_COLUMN: {"color": "#f53580", "type": "line"},
@@ -182,11 +181,10 @@ class QuickAdapterV3(IStrategy):
             / "models"
             / f"{self.freqai_info.get('identifier', 'no_id_provided')}"
         )
-        self._period_params: dict[str, dict] = {}
-        for pair in self.pairs:
-            self._period_params[pair] = self.load_period_best_params(pair) or {}
 
-    def feature_engineering_expand_all(self, dataframe, period, **kwargs):
+    def feature_engineering_expand_all(
+        self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
+    ):
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
         dataframe["%-aroonosc-period"] = ta.AROONOSC(dataframe, timeperiod=period)
         dataframe["%-mfi-period"] = ta.MFI(dataframe, timeperiod=period)
@@ -219,10 +217,20 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-natr-period"] = ta.NATR(dataframe, timeperiod=period)
         return dataframe
 
-    def feature_engineering_expand_basic(self, dataframe, **kwargs):
+    def feature_engineering_expand_basic(
+        self, dataframe: DataFrame, metadata: dict, **kwargs
+    ):
         dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
+        pair = str(metadata.get("pair"))
+        label_period_candles = self.get_label_period_candles(pair)
+        dataframe["%-natr_label_period_candles"] = ta.NATR(
+            dataframe, timeperiod=label_period_candles
+        )
+        dataframe["%-atr_label_period_candles"] = ta.ATR(
+            dataframe, timeperiod=label_period_candles
+        )
         dataframe["%-ewo"] = ewo(
             dataframe=dataframe,
             pricemode="close",
@@ -338,18 +346,15 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-raw_high"] = dataframe["high"]
         return dataframe
 
-    def feature_engineering_standard(self, dataframe, **kwargs):
+    def feature_engineering_standard(self, dataframe: DataFrame, **kwargs):
         dataframe["%-day_of_week"] = (dataframe["date"].dt.dayofweek + 1) / 7
         dataframe["%-hour_of_day"] = (dataframe["date"].dt.hour + 1) / 25
         return dataframe
 
     def get_label_period_candles(self, pair: str) -> int:
-        label_period_candles = self._period_params.get(pair).get("label_period_candles")
-        if label_period_candles:
-            return label_period_candles
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
 
-    def set_freqai_targets(self, dataframe, metadata, **kwargs):
+    def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
         peak_indices, _, peak_directions = dynamic_zigzag(
             dataframe, period=label_period_candles, ratio=self.label_natr_ratio
@@ -375,10 +380,6 @@ class QuickAdapterV3(IStrategy):
         )
 
         pair = str(metadata.get("pair"))
-
-        self._period_params[pair]["label_period_candles"] = dataframe[
-            "label_period_candles"
-        ].iloc[-1]
 
         label_period_candles = self.get_label_period_candles(pair)
         dataframe["natr_label_period_candles"] = ta.NATR(
@@ -681,13 +682,3 @@ class QuickAdapterV3(IStrategy):
             extrema_smoothing,
             smoothing_methods["gaussian"],
         )
-
-    def load_period_best_params(self, pair: str) -> Optional[dict]:
-        best_params_path = Path(
-            self.models_full_path
-            / f"optuna-period-best-params-{pair.split('/')[0]}.json"
-        )
-        if best_params_path.is_file():
-            with best_params_path.open("r", encoding="utf-8") as read_file:
-                return json.load(read_file)
-        return None
