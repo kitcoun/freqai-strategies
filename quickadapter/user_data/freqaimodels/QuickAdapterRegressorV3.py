@@ -43,7 +43,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.6.7"
+    version = "3.6.9"
 
     @cached_property
     def _optuna_config(self) -> dict:
