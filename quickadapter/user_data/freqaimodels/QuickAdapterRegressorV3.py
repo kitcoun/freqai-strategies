@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.0"
+    version = "3.7.1"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -381,38 +381,38 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         best_trials = study.best_trials
         if namespace == "label":
             range_sizes = [trial.values[1] for trial in best_trials]
-            mean_range_size = np.mean(range_sizes)
-            equal_mean_trials = [
+            median_range_size = np.median(range_sizes)
+            equal_median_trials = [
                 trial
                 for trial in best_trials
-                if np.isclose(trial.values[1], mean_range_size)
+                if np.isclose(trial.values[1], median_range_size)
             ]
-            if equal_mean_trials:
-                return max(equal_mean_trials, key=lambda trial: trial.values[0])
-            nearest_above_mean = (np.inf, -np.inf, None)
-            nearest_below_mean = (-np.inf, -np.inf, None)
+            if equal_median_trials:
+                return max(equal_median_trials, key=lambda trial: trial.values[0])
+            nearest_above_median = (np.inf, -np.inf, None)
+            nearest_below_median = (-np.inf, -np.inf, None)
             for idx, trial in enumerate(best_trials):
                 range_size = trial.values[1]
-                if range_size >= mean_range_size:
-                    if range_size < nearest_above_mean[0] or (
-                        range_size == nearest_above_mean[0]
-                        and trial.values[0] > nearest_above_mean[1]
+                if range_size >= median_range_size:
+                    if range_size < nearest_above_median[0] or (
+                        range_size == nearest_above_median[0]
+                        and trial.values[0] > nearest_above_median[1]
                     ):
-                        nearest_above_mean = (range_size, trial.values[0], idx)
-                if range_size <= mean_range_size:
-                    if range_size > nearest_below_mean[0] or (
-                        range_size == nearest_below_mean[0]
-                        and trial.values[0] > nearest_below_mean[1]
+                        nearest_above_median = (range_size, trial.values[0], idx)
+                if range_size <= median_range_size:
+                    if range_size > nearest_below_median[0] or (
+                        range_size == nearest_below_median[0]
+                        and trial.values[0] > nearest_below_median[1]
                     ):
-                        nearest_below_mean = (range_size, trial.values[0], idx)
-            if nearest_above_mean[2] is None or nearest_below_mean[2] is None:
+                        nearest_below_median = (range_size, trial.values[0], idx)
+            if nearest_above_median[2] is None or nearest_below_median[2] is None:
                 return None
-            above_mean_trial = best_trials[nearest_above_mean[2]]
-            below_mean_trial = best_trials[nearest_below_mean[2]]
-            if above_mean_trial.values[0] >= below_mean_trial.values[0]:
-                return above_mean_trial
+            above_median_trial = best_trials[nearest_above_median[2]]
+            below_median_trial = best_trials[nearest_below_median[2]]
+            if above_median_trial.values[0] >= below_median_trial.values[0]:
+                return above_median_trial
             else:
-                return below_mean_trial
+                return below_median_trial
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
 
@@ -953,7 +953,7 @@ def label_objective(
         peak_ranges.append(abs(peak_value - previous_value))
         previous_value = peak_value
 
-    return np.mean(peak_ranges), len(peak_ranges)
+    return np.median(peak_ranges), len(peak_ranges)
 
 
 def smoothed_max(series: pd.Series, temperature=1.0) -> float:

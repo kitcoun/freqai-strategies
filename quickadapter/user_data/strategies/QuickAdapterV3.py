@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.0"
+        return "3.3.1"
 
     timeframe = "5m"
 
@@ -520,7 +520,7 @@ class QuickAdapterV3(IStrategy):
         )
         return max(
             trade_take_profit_distance,
-            np.mean(
+            np.median(
                 [
                     trade_take_profit_distance,
                     current_rate
