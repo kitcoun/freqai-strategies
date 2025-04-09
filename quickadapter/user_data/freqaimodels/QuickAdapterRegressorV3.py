@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.4"
+    version = "3.7.5"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -470,9 +470,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         time_spent = time.time() - start_time
         if is_study_multi_objective is False:
-            if not QuickAdapterRegressorV3.optuna_study_has_best_params(study):
+            if not QuickAdapterRegressorV3.optuna_study_has_best_trial(study):
                 logger.error(
-                    f"Optuna {pair} {namespace} {objective_type} hyperopt failed ({time_spent:.2f} secs): no study best params found"
+                    f"Optuna {pair} {namespace} {objective_type} hyperopt failed ({time_spent:.2f} secs): no study best trial found"
                 )
                 return
             self.set_optuna_rmse(pair, namespace, study.best_value)
@@ -614,11 +614,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         return study
 
     @staticmethod
-    def optuna_study_has_best_params(study: Optional[optuna.study.Study]) -> bool:
+    def optuna_study_has_best_trial(study: Optional[optuna.study.Study]) -> bool:
         if study is None:
             return False
         try:
-            _ = study.best_params
+            _ = study.best_trial
             return True
         # file backend storage raises KeyError
         except KeyError:

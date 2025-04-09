@@ -506,11 +506,11 @@ class ReforceXY(BaseReinforcementLearningModel):
         return storage
 
     @staticmethod
-    def study_has_best_trial_params(study: Optional[Study]) -> bool:
+    def study_has_best_trial(study: Optional[Study]) -> bool:
         if study is None:
             return False
         try:
-            _ = study.best_trial.params
+            _ = study.best_trial
             return True
         # file backend storage raises KeyError
         except KeyError:
@@ -576,9 +576,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             hyperopt_failed = True
         time_spent = time.time() - start
-        if ReforceXY.study_has_best_trial_params(study) is False:
+        if ReforceXY.study_has_best_trial(study) is False:
             logger.error(
-                f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no study best trial params found"
+                f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no study best trial found"
             )
             hyperopt_failed = True
 
