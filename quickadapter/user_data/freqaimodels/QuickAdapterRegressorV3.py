@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.1"
+    version = "3.7.2"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -96,17 +96,25 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             self._optuna_train_rmse[pair] = -1
             self._optuna_label_values[pair] = [-1, -1]
             self._optuna_hp_params[pair] = (
-                self.optuna_load_best_params(pair, "hp") or {}
+                self.optuna_load_best_params(pair, "hp")
+                if self.optuna_load_best_params(pair, "hp")
+                else {}
             )
             self._optuna_train_params[pair] = (
-                self.optuna_load_best_params(pair, "train") or {}
+                self.optuna_load_best_params(pair, "train")
+                if self.optuna_load_best_params(pair, "train")
+                else {}
             )
-            self._optuna_label_params[pair] = self.optuna_load_best_params(
-                pair, "label"
-            ) or {
-                "label_period_candles": self.ft_params.get("label_period_candles", 50),
-                "label_natr_ratio": self.ft_params.get("label_natr_ratio", 0.075),
-            }
+            self._optuna_label_params[pair] = (
+                self.optuna_load_best_params(pair, "label")
+                if self.optuna_load_best_params(pair, "label")
+                else {
+                    "label_period_candles": self.ft_params.get(
+                        "label_period_candles", 50
+                    ),
+                    "label_natr_ratio": self.ft_params.get("label_natr_ratio", 0.075),
+                }
+            )
         logger.info(
             f"Initialized {self.__class__.__name__} {self.freqai_info.get('regressor', 'xgboost')} regressor model version {self.version}"
         )

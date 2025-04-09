@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.1"
+        return "3.3.2"
 
     timeframe = "5m"
 
@@ -175,14 +175,18 @@ class QuickAdapterV3(IStrategy):
         )
         self._label_params: dict[str, dict] = {}
         for pair in self.pairs:
-            self._label_params[pair] = self.optuna_load_best_params(pair, "label") or {
-                "label_period_candles": self.freqai_info["feature_parameters"].get(
-                    "label_period_candles", 50
-                ),
-                "label_natr_ratio": self.freqai_info["feature_parameters"].get(
-                    "label_natr_ratio", 0.075
-                ),
-            }
+            self._label_params[pair] = (
+                self.optuna_load_best_params(pair, "label")
+                if self.optuna_load_best_params(pair, "label")
+                else {
+                    "label_period_candles": self.freqai_info["feature_parameters"].get(
+                        "label_period_candles", 50
+                    ),
+                    "label_natr_ratio": self.freqai_info["feature_parameters"].get(
+                        "label_natr_ratio", 0.075
+                    ),
+                }
+            )
 
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
@@ -354,7 +358,9 @@ class QuickAdapterV3(IStrategy):
         return dataframe
 
     def get_label_period_candles(self, pair: str) -> int:
-        label_period_candles = self._label_params.get(pair).get("label_period_candles")
+        label_period_candles = self._label_params.get(pair, {}).get(
+            "label_period_candles"
+        )
         if label_period_candles:
             return label_period_candles
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
@@ -364,7 +370,7 @@ class QuickAdapterV3(IStrategy):
             self._label_params[pair]["label_period_candles"] = label_period_candles
 
     def get_label_natr_ratio(self, pair: str) -> float:
-        label_natr_ratio = self._label_params.get(pair).get("label_natr_ratio")
+        label_natr_ratio = self._label_params.get(pair, {}).get("label_natr_ratio")
         if label_natr_ratio:
             return label_natr_ratio
         return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.075)
