@@ -318,10 +318,6 @@ def zigzag(
     extrema = []
     directions = []
 
-    current_dir = 0
-    current_extreme = None
-    current_extreme_idx = None
-
     first_high = df["high"].iloc[0]
     first_low = df["low"].iloc[0]
 
@@ -406,19 +402,15 @@ def dynamic_zigzag(
         thresholds = ta.NATR(df, timeperiod=period)
     else:
         thresholds = ta.ATR(df, timeperiod=period)
-    thresholds = thresholds.ffill().bfill()
+    thresholds = thresholds.ffill().bfill() * ratio
 
     indices = []
     extrema = []
     directions = []
 
-    current_dir = 0
-    current_extreme = None
-    current_extreme_idx = None
-
     first_high = df["high"].iloc[0]
     first_low = df["low"].iloc[0]
-    first_threshold = thresholds.iloc[0] * ratio
+    first_threshold = thresholds.iloc[0]
 
     if natr:
         first_move = (first_high - first_low) / first_low
@@ -441,47 +433,47 @@ def dynamic_zigzag(
         current_idx = df.index[i]
         h = df.at[current_idx, "high"]
         l = df.at[current_idx, "low"]
-        threshold = thresholds.iloc[i] * ratio
+        threshold = thresholds.iloc[i]
 
         if current_dir == 1:  # Looking for higher high
             if h > current_extreme:
                 current_extreme = h
                 current_extreme_idx = current_idx
+                continue
+            if natr:
+                reversal = (current_extreme - l) / current_extreme >= threshold
             else:
-                if natr:
-                    reversal = (current_extreme - l) / current_extreme >= threshold
-                else:
-                    reversal = (current_extreme - l) >= threshold
-                if reversal:
-                    if current_extreme_idx != last_idx:
-                        indices.append(current_extreme_idx)
-                        extrema.append(current_extreme)
-                        directions.append(current_dir)
-                        last_idx = current_extreme_idx
+                reversal = (current_extreme - l) >= threshold
+            if reversal:
+                if current_extreme_idx != last_idx:
+                    indices.append(current_extreme_idx)
+                    extrema.append(current_extreme)
+                    directions.append(current_dir)
+                    last_idx = current_extreme_idx
 
-                    current_dir = -1
-                    current_extreme = l
-                    current_extreme_idx = current_idx
+                current_dir = -1
+                current_extreme = l
+                current_extreme_idx = current_idx
 
         elif current_dir == -1:  # Looking for lower low
             if l < current_extreme:
                 current_extreme = l
                 current_extreme_idx = current_idx
+                continue
+            if natr:
+                reversal = (h - current_extreme) / current_extreme >= threshold
             else:
-                if natr:
-                    reversal = (h - current_extreme) / current_extreme >= threshold
-                else:
-                    reversal = (h - current_extreme) >= threshold
-                if reversal:
-                    if current_extreme_idx != last_idx:
-                        indices.append(current_extreme_idx)
-                        extrema.append(current_extreme)
-                        directions.append(current_dir)
-                        last_idx = current_extreme_idx
+                reversal = (h - current_extreme) >= threshold
+            if reversal:
+                if current_extreme_idx != last_idx:
+                    indices.append(current_extreme_idx)
+                    extrema.append(current_extreme)
+                    directions.append(current_dir)
+                    last_idx = current_extreme_idx
 
-                    current_dir = 1
-                    current_extreme = h
-                    current_extreme_idx = current_idx
+                current_dir = 1
+                current_extreme = h
+                current_extreme_idx = current_idx
 
     if current_extreme_idx != last_idx:
         indices.append(current_extreme_idx)

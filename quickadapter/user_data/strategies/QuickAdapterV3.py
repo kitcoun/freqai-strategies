@@ -1,9 +1,9 @@
+import json
 import logging
 from functools import reduce, cached_property
 import datetime
 import math
 from pathlib import Path
-from statistics import geometric_mean
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
 from typing import Optional
@@ -58,26 +58,18 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.2.16"
+        return "3.3.0"
 
     timeframe = "5m"
 
     stoploss = -0.02
     use_custom_stoploss = True
 
-    @cached_property
-    def trailing_stoploss_natr_ratio(self) -> float:
-        return self.config.get("trailing_stoploss_natr_ratio", 0.025)
-
     # Trailing stop:
     trailing_stop = False
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
-
-    @cached_property
-    def label_natr_ratio(self) -> float:
-        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.075)
 
     @cached_property
     def entry_natr_ratio(self) -> float:
@@ -181,6 +173,16 @@ class QuickAdapterV3(IStrategy):
             / "models"
             / f"{self.freqai_info.get('identifier', 'no_id_provided')}"
         )
+        self._label_params: dict[str, dict] = {}
+        for pair in self.pairs:
+            self._label_params[pair] = self.optuna_load_best_params(pair, "label") or {
+                "label_period_candles": self.freqai_info["feature_parameters"].get(
+                    "label_period_candles", 50
+                ),
+                "label_natr_ratio": self.freqai_info["feature_parameters"].get(
+                    "label_natr_ratio", 0.075
+                ),
+            }
 
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
@@ -352,12 +354,34 @@ class QuickAdapterV3(IStrategy):
         return dataframe
 
     def get_label_period_candles(self, pair: str) -> int:
+        label_period_candles = self._label_params.get(pair).get("label_period_candles")
+        if label_period_candles:
+            return label_period_candles
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
 
+    def set_label_period_candles(self, pair: str, label_period_candles: int):
+        if label_period_candles:
+            self._label_params[pair]["label_period_candles"] = label_period_candles
+
+    def get_label_natr_ratio(self, pair: str) -> float:
+        label_natr_ratio = self._label_params.get(pair).get("label_natr_ratio")
+        if label_natr_ratio:
+            return label_natr_ratio
+        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.075)
+
+    def set_label_natr_ratio(self, pair: str, label_natr_ratio: float):
+        if label_natr_ratio:
+            self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
+
+    def get_trailing_stoploss_natr_ratio(self, pair: str) -> float:
+        return self.get_label_natr_ratio(pair) * 0.025
+
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
-        label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
+        pair = str(metadata.get("pair"))
         peak_indices, _, peak_directions = dynamic_zigzag(
-            dataframe, period=label_period_candles, ratio=self.label_natr_ratio
+            dataframe,
+            period=self.get_label_period_candles(pair),
+            ratio=self.get_label_natr_ratio(pair),
         )
         dataframe[EXTREMA_COLUMN] = 0
         for peak_idx, peak_dir in zip(peak_indices, peak_directions):
@@ -381,9 +405,11 @@ class QuickAdapterV3(IStrategy):
 
         pair = str(metadata.get("pair"))
 
-        label_period_candles = self.get_label_period_candles(pair)
+        self.set_label_period_candles(pair, dataframe["label_period_candles"].iloc[-1])
+        self.set_label_natr_ratio(pair, dataframe["label_natr_ratio"].iloc[-1])
+
         dataframe["natr_label_period_candles"] = ta.NATR(
-            dataframe, timeperiod=label_period_candles
+            dataframe, timeperiod=self.get_label_period_candles(pair)
         )
 
         dataframe["minima_threshold"] = dataframe[MINIMA_THRESHOLD_COLUMN]
@@ -471,7 +497,7 @@ class QuickAdapterV3(IStrategy):
         return (
             current_rate
             * current_natr
-            * self.trailing_stoploss_natr_ratio
+            * self.get_trailing_stoploss_natr_ratio(trade.pair)
             * (1 / math.log10(1 + 0.25 * trade_duration_candles))
         )
 
@@ -488,14 +514,18 @@ class QuickAdapterV3(IStrategy):
         if isna(current_natr):
             return None
         trade_take_profit_distance = (
-            trade.open_rate * entry_natr * self.trailing_stoploss_natr_ratio
+            trade.open_rate
+            * entry_natr
+            * self.get_trailing_stoploss_natr_ratio(trade.pair)
         )
         return max(
             trade_take_profit_distance,
-            geometric_mean(
+            np.mean(
                 [
                     trade_take_profit_distance,
-                    current_rate * current_natr * self.trailing_stoploss_natr_ratio,
+                    current_rate
+                    * current_natr
+                    * self.get_trailing_stoploss_natr_ratio(trade.pair),
                 ]
             )
             * math.log10(9 + trade_duration_candles)
@@ -519,7 +549,7 @@ class QuickAdapterV3(IStrategy):
         stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
         if isna(stoploss_distance):
             return None
-        if stoploss_distance == 0:
+        if np.close(stoploss_distance, 0):
             return None
         sign = 1 if trade.is_short else -1
         return stoploss_from_absolute(
@@ -567,7 +597,7 @@ class QuickAdapterV3(IStrategy):
         take_profit_distance = self.get_take_profit_distance(df, trade, current_rate)
         if isna(take_profit_distance):
             return None
-        if take_profit_distance == 0:
+        if np.close(take_profit_distance, 0):
             return None
         if trade.is_short:
             take_profit_price = trade.open_rate - take_profit_distance
@@ -682,3 +712,13 @@ class QuickAdapterV3(IStrategy):
             extrema_smoothing,
             smoothing_methods["gaussian"],
         )
+
+    def optuna_load_best_params(self, pair: str, namespace: str) -> Optional[dict]:
+        best_params_path = Path(
+            self.models_full_path
+            / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
+        )
+        if best_params_path.is_file():
+            with best_params_path.open("r", encoding="utf-8") as read_file:
+                return json.load(read_file)
+        return None
