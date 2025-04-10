@@ -413,15 +413,15 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 if peaks_size >= median_peaks_size:
                     if peaks_size < nearest_above_median[0] or (
                         peaks_size == nearest_above_median[0]
-                        and trial.values[1] > nearest_above_median[1]
+                        and trial.values[0] > nearest_above_median[1]
                     ):
-                        nearest_above_median = (peaks_size, trial.values[1], idx)
+                        nearest_above_median = (peaks_size, trial.values[0], idx)
                 if peaks_size <= median_peaks_size:
                     if peaks_size > nearest_below_median[0] or (
                         peaks_size == nearest_below_median[0]
-                        and trial.values[1] > nearest_below_median[1]
+                        and trial.values[0] > nearest_below_median[1]
                     ):
-                        nearest_below_median = (peaks_size, trial.values[1], idx)
+                        nearest_below_median = (peaks_size, trial.values[0], idx)
             if nearest_above_median[2] is None or nearest_below_median[2] is None:
                 return None
             above_median_trial = best_trials[nearest_above_median[2]]
