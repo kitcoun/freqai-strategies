@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.2"
+        return "3.3.3"
 
     timeframe = "5m"
 
@@ -555,7 +555,7 @@ class QuickAdapterV3(IStrategy):
         stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
         if isna(stoploss_distance):
             return None
-        if np.close(stoploss_distance, 0):
+        if np.isclose(stoploss_distance, 0):
             return None
         sign = 1 if trade.is_short else -1
         return stoploss_from_absolute(
@@ -603,7 +603,7 @@ class QuickAdapterV3(IStrategy):
         take_profit_distance = self.get_take_profit_distance(df, trade, current_rate)
         if isna(take_profit_distance):
             return None
-        if np.close(take_profit_distance, 0):
+        if np.isclose(take_profit_distance, 0):
             return None
         if trade.is_short:
             take_profit_price = trade.open_rate - take_profit_distance

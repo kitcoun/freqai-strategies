@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.6"
+    version = "3.7.7"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -979,7 +979,7 @@ def smoothed_max(series: pd.Series, temperature=1.0) -> float:
         return np.nan
     if temperature < 0:
         raise ValueError("temperature must be non-negative.")
-    if np.close(temperature, 0):
+    if np.isclose(temperature, 0):
         return data_array.max()
     return sp.special.logsumexp(temperature * data_array) / temperature
 
@@ -990,7 +990,7 @@ def smoothed_min(series: pd.Series, temperature=1.0) -> float:
         return np.nan
     if temperature < 0:
         raise ValueError("temperature must be non-negative.")
-    if np.close(temperature, 0):
+    if np.isclose(temperature, 0):
         return data_array.min()
     return -sp.special.logsumexp(-temperature * data_array) / temperature
 
