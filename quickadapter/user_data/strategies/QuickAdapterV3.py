@@ -171,7 +171,7 @@ class QuickAdapterV3(IStrategy):
         self.models_full_path = Path(
             self.config["user_data_dir"]
             / "models"
-            / f"{self.freqai_info.get('identifier', 'no_id_provided')}"
+            / f"{self.freqai_info.get('identifier')}"
         )
         self._label_params: dict[str, dict] = {}
         for pair in self.pairs:
