@@ -183,7 +183,7 @@ class QuickAdapterV3(IStrategy):
                         "label_period_candles", 50
                     ),
                     "label_natr_ratio": self.freqai_info["feature_parameters"].get(
-                        "label_natr_ratio", 0.075
+                        "label_natr_ratio", 0.12125
                     ),
                 }
             )
@@ -373,7 +373,7 @@ class QuickAdapterV3(IStrategy):
         label_natr_ratio = self._label_params.get(pair, {}).get("label_natr_ratio")
         if label_natr_ratio:
             return label_natr_ratio
-        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.075)
+        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.12125)
 
     def set_label_natr_ratio(self, pair: str, label_natr_ratio: float):
         if label_natr_ratio:

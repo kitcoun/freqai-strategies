@@ -112,7 +112,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     "label_period_candles": self.ft_params.get(
                         "label_period_candles", 50
                     ),
-                    "label_natr_ratio": self.ft_params.get("label_natr_ratio", 0.075),
+                    "label_natr_ratio": self.ft_params.get("label_natr_ratio", 0.12125),
                 }
             )
         logger.info(
@@ -930,7 +930,7 @@ def label_objective(
     df: pd.DataFrame,
     fit_live_predictions_candles: int,
     candles_step: int,
-) -> tuple[float, float]:
+) -> tuple[float, int]:
     min_label_period_candles: int = round_to_nearest(
         max(fit_live_predictions_candles // 16, 20), candles_step
     )
