@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.5"
+    version = "3.7.6"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -271,21 +271,22 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "fit_live_predictions_candles", 100
         )
 
-        df = self.data_provider.get_pair_dataframe(pair)
-        self.optuna_optimize(
-            pair=pair,
-            namespace="label",
-            objective=lambda trial: label_objective(
-                trial,
-                df,
-                fit_live_predictions_candles,
-                self._optuna_config.get("candles_step"),
-            ),
-            directions=[
-                optuna.study.StudyDirection.MAXIMIZE,
-                optuna.study.StudyDirection.MAXIMIZE,
-            ],
-        )
+        if self._optuna_hyperopt:
+            df = self.data_provider.get_pair_dataframe(pair)
+            self.optuna_optimize(
+                pair=pair,
+                namespace="label",
+                objective=lambda trial: label_objective(
+                    trial,
+                    df,
+                    fit_live_predictions_candles,
+                    self._optuna_config.get("candles_step"),
+                ),
+                directions=[
+                    optuna.study.StudyDirection.MAXIMIZE,
+                    optuna.study.StudyDirection.MAXIMIZE,
+                ],
+            )
 
         if self.live:
             if not hasattr(self, "exchange_candles"):
