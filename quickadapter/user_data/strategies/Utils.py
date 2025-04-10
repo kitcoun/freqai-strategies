@@ -343,7 +343,8 @@ def zigzag(
             if h > current_extreme:
                 current_extreme = h
                 current_extreme_idx = current_idx
-            elif (current_extreme - l) / current_extreme >= threshold:
+                continue
+            if (current_extreme - l) / current_extreme >= threshold:
                 if current_extreme_idx != last_idx:
                     indices.append(current_extreme_idx)
                     extrema.append(current_extreme)
@@ -358,7 +359,8 @@ def zigzag(
             if l < current_extreme:
                 current_extreme = l
                 current_extreme_idx = current_idx
-            elif (h - current_extreme) / current_extreme >= threshold:
+                continue
+            if (h - current_extreme) / current_extreme >= threshold:
                 if current_extreme_idx != last_idx:
                     indices.append(current_extreme_idx)
                     extrema.append(current_extreme)
