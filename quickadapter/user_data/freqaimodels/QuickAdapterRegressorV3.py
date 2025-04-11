@@ -143,12 +143,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     def get_optuna_value(self, pair: str, namespace: str) -> float:
         if namespace == "hp":
-            rmse = self._optuna_hp_value.get(pair)
+            value = self._optuna_hp_value.get(pair)
         elif namespace == "train":
-            rmse = self._optuna_train_value.get(pair)
+            value = self._optuna_train_value.get(pair)
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
-        return rmse
+        return value
 
     def set_optuna_value(self, pair: str, namespace: str, value: float) -> None:
         if namespace == "hp":
