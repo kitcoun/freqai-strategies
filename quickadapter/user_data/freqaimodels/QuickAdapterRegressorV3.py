@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.7"
+    version = "3.7.8"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -60,6 +60,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "n_trials": 36,
             "timeout": 7200,
             "candles_step": 10,
+            "seed": 1,
         }
         return {
             **optuna_default_config,
@@ -381,55 +382,58 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
         return min_pred, max_pred
 
-    @staticmethod
     def get_multi_objective_study_best_trial(
-        namespace: str, study: optuna.study.Study
+        self, namespace: str, study: optuna.study.Study
     ) -> Optional[optuna.trial.FrozenTrial]:
         if not QuickAdapterRegressorV3.optuna_study_has_best_trials(study):
             return None
         best_trials = study.best_trials
         if namespace == "label":
             peaks_sizes = [trial.values[1] for trial in best_trials]
-            median_peaks_size = np.median(peaks_sizes)
-            equal_median_trials = [
+            quantile_peaks_size = np.quantile(
+                peaks_sizes, self.ft_params.get("label_quantile", 0.75)
+            )
+            equal_quantile_peaks_size_trials = [
                 trial
                 for trial in best_trials
-                if np.isclose(trial.values[1], median_peaks_size)
+                if np.isclose(trial.values[1], quantile_peaks_size)
             ]
-            if equal_median_trials:
-                return max(equal_median_trials, key=lambda trial: trial.values[0])
-            nearest_above_median = (
+            if equal_quantile_peaks_size_trials:
+                return max(
+                    equal_quantile_peaks_size_trials, key=lambda trial: trial.values[0]
+                )
+            nearest_above_quantile = (
                 np.inf,
                 -np.inf,
                 None,
             )  # (trial_peaks_size, trial_peaks_range, trial_index)
-            nearest_below_median = (
+            nearest_below_quantile = (
                 -np.inf,
                 -np.inf,
                 None,
             )  # (trial_peaks_size, trial_peaks_range, trial_index)
             for idx, trial in enumerate(best_trials):
                 peaks_size = trial.values[1]
-                if peaks_size >= median_peaks_size:
-                    if peaks_size < nearest_above_median[0] or (
-                        peaks_size == nearest_above_median[0]
-                        and trial.values[0] > nearest_above_median[1]
+                if peaks_size >= quantile_peaks_size:
+                    if peaks_size < nearest_above_quantile[0] or (
+                        peaks_size == nearest_above_quantile[0]
+                        and trial.values[0] > nearest_above_quantile[1]
                     ):
-                        nearest_above_median = (peaks_size, trial.values[0], idx)
-                if peaks_size <= median_peaks_size:
-                    if peaks_size > nearest_below_median[0] or (
-                        peaks_size == nearest_below_median[0]
-                        and trial.values[0] > nearest_below_median[1]
+                        nearest_above_quantile = (peaks_size, trial.values[0], idx)
+                if peaks_size <= quantile_peaks_size:
+                    if peaks_size > nearest_below_quantile[0] or (
+                        peaks_size == nearest_below_quantile[0]
+                        and trial.values[0] > nearest_below_quantile[1]
                     ):
-                        nearest_below_median = (peaks_size, trial.values[0], idx)
-            if nearest_above_median[2] is None or nearest_below_median[2] is None:
+                        nearest_below_quantile = (peaks_size, trial.values[0], idx)
+            if nearest_above_quantile[2] is None or nearest_below_quantile[2] is None:
                 return None
-            above_median_trial = best_trials[nearest_above_median[2]]
-            below_median_trial = best_trials[nearest_below_median[2]]
-            if above_median_trial.values[0] >= below_median_trial.values[0]:
-                return above_median_trial
+            above_quantile_trial = best_trials[nearest_above_quantile[2]]
+            below_quantile_trial = best_trials[nearest_below_quantile[2]]
+            if above_quantile_trial.values[0] >= below_quantile_trial.values[0]:
+                return above_quantile_trial
             else:
-                return below_median_trial
+                return below_quantile_trial
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
 
@@ -491,9 +495,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 **self.get_optuna_params(pair, namespace),
             }
         else:
-            best_trial = QuickAdapterRegressorV3.get_multi_objective_study_best_trial(
-                "label", study
-            )
+            best_trial = self.get_multi_objective_study_best_trial("label", study)
             if not best_trial:
                 logger.error(
                     f"Optuna {pair} {namespace} {objective_type} hyperopt failed ({time_spent:.2f} secs): no study best trial found"
@@ -555,7 +557,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return optuna.create_study(
                 study_name=study_name,
                 sampler=optuna.samplers.TPESampler(
-                    multivariate=True, group=True, seed=1
+                    multivariate=True, group=True, seed=self._optuna_config.get("seed")
                 ),
                 pruner=optuna.pruners.HyperbandPruner(),
                 direction=direction,

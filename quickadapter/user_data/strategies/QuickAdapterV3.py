@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.3"
+        return "3.3.4"
 
     timeframe = "5m"
 
@@ -488,8 +488,8 @@ class QuickAdapterV3(IStrategy):
         return trade_duration_minutes // timeframe_to_minutes(self.timeframe)
 
     @staticmethod
-    def is_trade_duration_valid(trade_duration_candles: int) -> bool:
-        return not (isna(trade_duration_candles) or trade_duration_candles <= 0)
+    def is_trade_duration_valid(trade_duration: float) -> bool:
+        return not (isna(trade_duration) or trade_duration <= 0.0)
 
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
