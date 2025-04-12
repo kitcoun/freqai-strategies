@@ -649,15 +649,17 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return False
         last_candle = df.iloc[-1]
-        entry_price_fluctuation_threshold = (
-            last_candle["natr_label_period_candles"] * self.entry_natr_ratio
-        )
+        last_candle_close = last_candle["close"]
+        last_candle_natr = last_candle["natr_label_period_candles"]
+        if isna(last_candle_natr):
+            return False
+        entry_price_fluctuation_threshold = last_candle_natr * self.entry_natr_ratio
         if (
             side == "long"
-            and rate > last_candle["close"] * (1 + entry_price_fluctuation_threshold)
+            and rate > last_candle_close * (1 + entry_price_fluctuation_threshold)
         ) or (
             side == "short"
-            and rate < last_candle["close"] * (1 - entry_price_fluctuation_threshold)
+            and rate < last_candle_close * (1 - entry_price_fluctuation_threshold)
         ):
             return False
 
