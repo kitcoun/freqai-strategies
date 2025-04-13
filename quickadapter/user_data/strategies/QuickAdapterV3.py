@@ -225,12 +225,11 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
         dataframe["%-raw_volume"] = dataframe["volume"]
         dataframe["%-obv"] = ta.OBV(dataframe)
-        pair = str(metadata.get("pair"))
-        label_period_candles = self.get_label_period_candles(pair)
-        dataframe["%-natr_label_period_candles"] = ta.NATR(
+        label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
+        dataframe["%-atr_label_period_candles"] = ta.ATR(
             dataframe, timeperiod=label_period_candles
         )
-        dataframe["%-atr_label_period_candles"] = ta.ATR(
+        dataframe["%-natr_label_period_candles"] = ta.NATR(
             dataframe, timeperiod=label_period_candles
         )
         dataframe["%-ewo"] = ewo(
