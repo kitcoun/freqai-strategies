@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.8"
+    version = "3.7.9"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -460,11 +460,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         if self._optuna_config.get("warm_start"):
             self.optuna_enqueue_previous_best_params(pair, namespace, study)
 
-        is_study_multi_objective = direction is None and directions is not None
-        if is_study_multi_objective is True:
-            objective_type = "multi objective"
-        else:
+        is_study_single_objective = direction is not None and directions is None
+        if is_study_single_objective is True:
             objective_type = "single objective"
+        else:
+            objective_type = "multi objective"
         logger.info(f"Optuna {pair} {namespace} {objective_type} hyperopt started")
         start_time = time.time()
         try:
@@ -484,7 +484,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return
 
         time_spent = time.time() - start_time
-        if is_study_multi_objective is False:
+        if is_study_single_objective:
             if not QuickAdapterRegressorV3.optuna_study_has_best_trial(study):
                 logger.error(
                     f"Optuna {pair} {namespace} {objective_type} hyperopt failed ({time_spent:.2f} secs): no study best trial found"
