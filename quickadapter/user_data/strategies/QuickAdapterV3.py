@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.5"
+        return "3.3.6"
 
     timeframe = "5m"
 
@@ -70,10 +70,6 @@ class QuickAdapterV3(IStrategy):
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
-
-    @cached_property
-    def entry_natr_ratio(self) -> float:
-        return self.config.get("entry_pricing", {}).get("entry_natr_ratio", 0.00025)
 
     # reward_risk_ratio = reward / risk
     # reward_risk_ratio = 1.0 means 1:1 RR
@@ -382,6 +378,9 @@ class QuickAdapterV3(IStrategy):
     def get_trailing_stoploss_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.25
 
+    def get_entry_natr_ratio(self, pair: str) -> float:
+        return self.get_label_natr_ratio(pair) * 0.025
+
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
         peak_indices, _, peak_directions = dynamic_zigzag(
@@ -653,7 +652,9 @@ class QuickAdapterV3(IStrategy):
         last_candle_natr = last_candle["natr_label_period_candles"]
         if isna(last_candle_natr):
             return False
-        entry_price_fluctuation_threshold = last_candle_natr * self.entry_natr_ratio
+        entry_price_fluctuation_threshold = (
+            last_candle_natr * self.get_entry_natr_ratio(pair)
+        )
         if (
             side == "long"
             and rate > last_candle_close * (1 + entry_price_fluctuation_threshold)
