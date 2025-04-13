@@ -329,7 +329,6 @@ class QuickAdapterV3(IStrategy):
             dataframe["high"] - np.maximum(dataframe["open"], dataframe["close"])
         ).clip(lower=0)
         pp = pivots_points(dataframe)
-        dataframe["pivot"] = pp["pivot"]
         dataframe["r1"] = pp["r1"]
         dataframe["s1"] = pp["s1"]
         dataframe["r2"] = pp["r2"]
