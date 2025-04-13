@@ -375,11 +375,11 @@ class QuickAdapterV3(IStrategy):
         if label_natr_ratio:
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
-    def get_trailing_stoploss_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.25
-
     def get_entry_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.025
+
+    def get_trailing_stoploss_natr_ratio(self, pair: str) -> float:
+        return self.get_label_natr_ratio(pair) * 0.25
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
