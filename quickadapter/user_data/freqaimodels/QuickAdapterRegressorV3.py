@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.10"
+    version = "3.7.11"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -372,7 +372,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     def min_max_pred(self, pred_df: pd.DataFrame) -> tuple[float, float]:
         temperature = float(
-            self.freqai_info.get("prediction_thresholds_temperature", 150.0)
+            self.freqai_info.get("prediction_thresholds_temperature", 125.0)
         )
         min_pred = smoothed_min(
             pred_df[EXTREMA_COLUMN],
