@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.12"
+    version = "3.7.13"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -311,7 +311,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = -2
             dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = 2
         else:
-            min_pred, max_pred = self.min_max_pred(pred_df_full)
+            min_pred, max_pred = self.min_max_pred(
+                pred_df_full,
+                fit_live_predictions_candles,
+                self.get_optuna_params(pair, "label").get("label_period_candles"),
+            )
             dk.data["extra_returns_per_train"][MINIMA_THRESHOLD_COLUMN] = min_pred
             dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = max_pred
 
@@ -370,18 +374,23 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         return eval_set, eval_weights
 
-    def min_max_pred(self, pred_df: pd.DataFrame) -> tuple[float, float]:
+    def min_max_pred(
+        self,
+        pred_df: pd.DataFrame,
+        fit_live_prediction_candles: int,
+        label_period_candles: int,
+    ) -> tuple[float, float]:
         temperature = float(
             self.freqai_info.get("prediction_thresholds_temperature", 135.0)
         )
-        min_pred = smoothed_min(
-            pred_df[EXTREMA_COLUMN],
-            temperature=temperature,
-        )
-        max_pred = smoothed_max(
-            pred_df[EXTREMA_COLUMN],
-            temperature=temperature,
-        )
+        extrema = pred_df[EXTREMA_COLUMN].iloc[
+            -(
+                (fit_live_prediction_candles // label_period_candles)
+                * label_period_candles
+            ) :
+        ]
+        min_pred = smoothed_min(extrema, temperature=temperature)
+        max_pred = smoothed_max(extrema, temperature=temperature)
         return min_pred, max_pred
 
     def get_multi_objective_study_best_trial(
