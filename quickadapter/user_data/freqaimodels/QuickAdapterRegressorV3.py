@@ -377,7 +377,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def min_max_pred(
         self,
         pred_df: pd.DataFrame,
-        fit_live_prediction_candles: int,
+        fit_live_predictions_candles: int,
         label_period_candles: int,
     ) -> tuple[float, float]:
         temperature = float(
@@ -385,7 +385,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
         extrema = pred_df[EXTREMA_COLUMN].iloc[
             -(
-                (fit_live_prediction_candles // label_period_candles)
+                (fit_live_predictions_candles // label_period_candles)
                 * label_period_candles
             ) :
         ]
