@@ -1001,7 +1001,7 @@ def smoothed_min(series: pd.Series, temperature=1.0) -> float:
 
 def boltzmann_operator(series: pd.Series, alpha: float) -> float:
     """
-    Compute the Boltzmann operator of an series with parameter alpha.
+    Compute the Boltzmann operator of a series with parameter alpha.
     """
     data_array = series.to_numpy()
     if data_array.size == 0:
