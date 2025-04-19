@@ -999,6 +999,22 @@ def smoothed_min(series: pd.Series, temperature=1.0) -> float:
     return -sp.special.logsumexp(-temperature * data_array) / temperature
 
 
+def boltzmann_operator(series: pd.Series, alpha: float) -> float:
+    """
+    Compute the Boltzmann operator of an series with parameter alpha.
+    """
+    data_array = series.to_numpy()
+    if data_array.size == 0:
+        return np.nan
+    if alpha == 0:
+        return np.mean(data_array)
+    scaled_data = alpha * data_array
+    shifted_exponentials = np.exp(scaled_data - np.max(scaled_data))
+    numerator = np.sum(data_array * shifted_exponentials)
+    denominator = np.sum(shifted_exponentials)
+    return numerator / denominator
+
+
 def round_to_nearest(value: float, step: int) -> int:
     """
     Round a value to the nearest multiple of a given step.
