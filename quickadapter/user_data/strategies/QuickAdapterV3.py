@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.8"
+        return "3.3.9"
 
     timeframe = "5m"
 
@@ -376,8 +376,11 @@ class QuickAdapterV3(IStrategy):
     def get_entry_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.025
 
-    def get_trailing_stoploss_natr_ratio(self, pair: str) -> float:
+    def get_stoploss_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.75
+
+    def get_take_profit_natr_ratio(self, pair: str) -> float:
+        return self.get_label_natr_ratio(pair) * 0.5
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
@@ -500,7 +503,7 @@ class QuickAdapterV3(IStrategy):
         return (
             current_rate
             * current_natr
-            * self.get_trailing_stoploss_natr_ratio(trade.pair)
+            * self.get_stoploss_natr_ratio(trade.pair)
             * (1 / math.log10(1 + 0.25 * trade_duration_candles))
         )
 
@@ -517,9 +520,7 @@ class QuickAdapterV3(IStrategy):
         if isna(current_natr):
             return None
         trade_take_profit_distance = (
-            trade.open_rate
-            * entry_natr
-            * self.get_trailing_stoploss_natr_ratio(trade.pair)
+            trade.open_rate * entry_natr * self.get_take_profit_natr_ratio(trade.pair)
         )
         return max(
             trade_take_profit_distance,
@@ -528,7 +529,7 @@ class QuickAdapterV3(IStrategy):
                     trade_take_profit_distance,
                     current_rate
                     * current_natr
-                    * self.get_trailing_stoploss_natr_ratio(trade.pair),
+                    * self.get_take_profit_natr_ratio(trade.pair),
                 ]
             )
             * math.log10(9 + trade_duration_candles)
