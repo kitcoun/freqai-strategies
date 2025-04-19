@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.13"
+    version = "3.7.14"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -967,6 +967,13 @@ def label_objective(
         step=candles_step,
     )
     label_natr_ratio = trial.suggest_float("label_natr_ratio", 0.0675, 0.175)
+
+    df = df.iloc[
+        -(
+            (fit_live_predictions_candles // label_period_candles)
+            * label_period_candles
+        ) :
+    ]
 
     _, peak_values, _ = dynamic_zigzag(
         df,
