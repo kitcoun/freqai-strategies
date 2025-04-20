@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.15"
+    version = "3.7.16"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -417,12 +417,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 np.inf,
                 -np.inf,
                 None,
-            )  # (trial_peaks_size, trial_peaks_range, trial_index)
+            )  # (trial_peaks_size, trial_scaled_natr, trial_index)
             nearest_below_quantile = (
                 -np.inf,
                 -np.inf,
                 None,
-            )  # (trial_peaks_size, trial_peaks_range, trial_index)
+            )  # (trial_peaks_size, trial_scaled_natr, trial_index)
             for idx, trial in enumerate(best_trials):
                 peaks_size = trial.values[1]
                 if peaks_size >= quantile_peaks_size:
@@ -981,16 +981,11 @@ def label_objective(
         ratio=label_natr_ratio,
     )
 
-    if len(peak_values) < 2:
-        return -float("inf"), -float("inf")
+    scaled_natr_label_period_candles = (
+        ta.NATR(df, timeperiod=label_period_candles) * label_natr_ratio
+    )
 
-    previous_value = peak_values[0]
-    peak_ranges = []
-    for peak_value in peak_values[1:]:
-        peak_ranges.append(abs(peak_value - previous_value))
-        previous_value = peak_value
-
-    return np.median(peak_ranges), len(peak_ranges)
+    return scaled_natr_label_period_candles.median(), len(peak_values)
 
 
 def smoothed_max(series: pd.Series, temperature=1.0) -> float:

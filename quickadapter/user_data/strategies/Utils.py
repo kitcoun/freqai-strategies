@@ -118,7 +118,7 @@ def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series
 # VWAP bands
 def vwapb(dataframe: pd.DataFrame, window=20, num_of_std=1) -> tuple:
     vwap = qtpylib.rolling_vwap(dataframe, window=window)
-    rolling_std = vwap.rolling(window=window).std()
+    rolling_std = vwap.rolling(window=window, min_periods=window).std()
     vwap_low = vwap - (rolling_std * num_of_std)
     vwap_high = vwap + (rolling_std * num_of_std)
     return vwap_low, vwap, vwap_high
