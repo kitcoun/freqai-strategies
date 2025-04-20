@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.9"
+        return "3.3.10"
 
     timeframe = "5m"
 
@@ -360,7 +360,7 @@ class QuickAdapterV3(IStrategy):
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
 
     def set_label_period_candles(self, pair: str, label_period_candles: int):
-        if label_period_candles:
+        if label_period_candles and isinstance(label_period_candles, int):
             self._label_params[pair]["label_period_candles"] = label_period_candles
 
     def get_label_natr_ratio(self, pair: str) -> float:
@@ -370,7 +370,7 @@ class QuickAdapterV3(IStrategy):
         return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.12125)
 
     def set_label_natr_ratio(self, pair: str, label_natr_ratio: float):
-        if label_natr_ratio:
+        if label_natr_ratio and isinstance(label_natr_ratio, float):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
     def get_entry_natr_ratio(self, pair: str) -> float:
