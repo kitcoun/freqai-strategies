@@ -975,11 +975,17 @@ def label_objective(
         ) :
     ]
 
+    if df.empty:
+        return -float("inf"), -float("inf")
+
     _, peak_values, _ = dynamic_zigzag(
         df,
         period=label_period_candles,
         ratio=label_natr_ratio,
     )
+
+    if len(peak_values) < 2:
+        return -float("inf"), -float("inf")
 
     scaled_natr_label_period_candles = (
         ta.NATR(df, timeperiod=label_period_candles) * label_natr_ratio
