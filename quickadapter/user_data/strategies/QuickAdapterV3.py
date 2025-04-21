@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.10"
+        return "3.3.11"
 
     timeframe = "5m"
 
@@ -522,18 +522,16 @@ class QuickAdapterV3(IStrategy):
         trade_take_profit_distance = (
             trade.open_rate * entry_natr * self.get_take_profit_natr_ratio(trade.pair)
         )
-        return max(
-            trade_take_profit_distance,
-            np.median(
-                [
-                    trade_take_profit_distance,
-                    current_rate
-                    * current_natr
-                    * self.get_take_profit_natr_ratio(trade.pair),
-                ]
+        current_take_profit_distance = (
+            current_rate * current_natr * self.get_take_profit_natr_ratio(trade.pair)
+        )
+        return (
+            max(
+                trade_take_profit_distance,
+                np.median([trade_take_profit_distance, current_take_profit_distance]),
             )
             * math.log10(9 + trade_duration_candles)
-            * self.reward_risk_ratio,
+            * self.reward_risk_ratio
         )
 
     def custom_stoploss(
