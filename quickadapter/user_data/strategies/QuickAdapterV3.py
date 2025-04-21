@@ -519,11 +519,12 @@ class QuickAdapterV3(IStrategy):
         current_natr = df["natr_label_period_candles"].iloc[-1]
         if isna(current_natr):
             return None
+        take_profit_natr_ratio = self.get_take_profit_natr_ratio(trade.pair)
         trade_take_profit_distance = (
-            trade.open_rate * entry_natr * self.get_take_profit_natr_ratio(trade.pair)
+            trade.open_rate * entry_natr * take_profit_natr_ratio
         )
         current_take_profit_distance = (
-            current_rate * current_natr * self.get_take_profit_natr_ratio(trade.pair)
+            current_rate * current_natr * take_profit_natr_ratio
         )
         return (
             max(

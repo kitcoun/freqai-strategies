@@ -44,7 +44,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.16"
+    version = "3.7.17"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -229,6 +229,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     X_test,
                     y_test,
                     test_weights,
+                    self.data_split_parameters.get("test_size", TEST_SIZE),
                     self.freqai_info.get("fit_live_predictions_candles", 100),
                     self._optuna_config.get("candles_step"),
                     model_training_parameters,
@@ -384,9 +385,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             self.freqai_info.get("prediction_thresholds_temperature", 125.0)
         )
         extrema = pred_df[EXTREMA_COLUMN].iloc[
-            -(
-                (fit_live_predictions_candles // label_period_candles)
-                * label_period_candles
+            -max(
+                label_period_candles,
+                int((fit_live_predictions_candles / 2) / label_period_candles)
+                * label_period_candles,
             ) :
         ]
         min_pred = smoothed_min(extrema, temperature=temperature)
@@ -732,11 +734,12 @@ def train_objective(
     X_test: pd.DataFrame,
     y_test: pd.DataFrame,
     test_weights: np.ndarray,
+    test_size: float,
     fit_live_predictions_candles: int,
     candles_step: int,
     model_training_parameters: dict,
 ) -> float:
-    min_train_window: int = fit_live_predictions_candles * 2
+    min_train_window: int = fit_live_predictions_candles * int(1 / test_size)
     max_train_window: int = len(X)
     if max_train_window < min_train_window:
         min_train_window = max_train_window
@@ -970,7 +973,7 @@ def label_objective(
 
     df = df.iloc[
         -(
-            (fit_live_predictions_candles // label_period_candles)
+            int(fit_live_predictions_candles / label_period_candles)
             * label_period_candles
         ) :
     ]
