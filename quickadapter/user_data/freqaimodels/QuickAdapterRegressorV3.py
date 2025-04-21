@@ -385,10 +385,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             self.freqai_info.get("prediction_thresholds_temperature", 125.0)
         )
         extrema = pred_df[EXTREMA_COLUMN].iloc[
-            -max(
-                label_period_candles,
-                int((fit_live_predictions_candles / 2) / label_period_candles)
-                * label_period_candles,
+            -(
+                max(2, int((fit_live_predictions_candles / 2) / label_period_candles))
+                * label_period_candles
             ) :
         ]
         min_pred = smoothed_min(extrema, temperature=temperature)
