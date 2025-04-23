@@ -374,7 +374,7 @@ class QuickAdapterV3(IStrategy):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
     def get_entry_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.025
+        return self.get_label_natr_ratio(pair) * 0.0175
 
     def get_stoploss_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.75
