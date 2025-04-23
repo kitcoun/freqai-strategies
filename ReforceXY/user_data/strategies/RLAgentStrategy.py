@@ -1,5 +1,5 @@
 import logging
-from functools import reduce
+from functools import cached_property, reduce
 
 # import talib.abstract as ta
 from pandas import DataFrame
@@ -32,7 +32,7 @@ class RLAgentStrategy(IStrategy):
 
     startup_candle_count: int = 300
 
-    # @property
+    # @cached_property
     # def protections(self):
     #     fit_live_predictions_candles = self.freqai_info.get(
     #         "fit_live_predictions_candles", 100
@@ -55,7 +55,7 @@ class RLAgentStrategy(IStrategy):
     #         },
     #     ]
 
-    @property
+    @cached_property
     def can_short(self):
         return self.is_short_allowed()
 
