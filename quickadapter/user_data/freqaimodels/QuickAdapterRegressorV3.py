@@ -382,11 +382,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[float, float]:
         temperature = float(
-            self.freqai_info.get("prediction_thresholds_temperature", 125.0)
+            self.freqai_info.get("prediction_thresholds_temperature", 175.0)
         )
         extrema = pred_df[EXTREMA_COLUMN].iloc[
             -(
-                max(2, int((fit_live_predictions_candles / 2) / label_period_candles))
+                max(2, int(fit_live_predictions_candles / label_period_candles))
                 * label_period_candles
             ) :
         ]
@@ -972,7 +972,7 @@ def label_objective(
 
     df = df.iloc[
         -(
-            int(fit_live_predictions_candles / label_period_candles)
+            max(2, int(fit_live_predictions_candles / label_period_candles))
             * label_period_candles
         ) :
     ]
