@@ -299,187 +299,92 @@ def alligator(
 
 
 def zigzag(
-    df: pd.DataFrame, threshold: float = 0.05
-) -> tuple[list[int], list[float], list[int]]:
-    """
-    Calculate the ZigZag indicator for a OHLCV DataFrame.
-
-    Parameters:
-    df (pd.DataFrame): OHLCV DataFrame.
-    threshold (float): Percentage threshold for reversal (default 0.05 for 5%).
-
-    Returns:
-    tuple: Lists of indices, extrema, and directions.
-    """
-    if df.empty:
-        return [], [], []
-
-    indices = []
-    extrema = []
-    directions = []
-
-    first_high = df["high"].iloc[0]
-    first_low = df["low"].iloc[0]
-
-    if (first_high - first_low) / first_low >= threshold:
-        current_dir = 1
-        current_extreme = first_high
-    else:
-        current_dir = -1
-        current_extreme = first_low
-    current_extreme_idx = df.index[0]
-
-    indices.append(current_extreme_idx)
-    extrema.append(current_extreme)
-    directions.append(current_dir)
-    last_idx = current_extreme_idx
-
-    for i in range(1, len(df)):
-        current_idx = df.index[i]
-        h = df.at[current_idx, "high"]
-        l = df.at[current_idx, "low"]
-
-        if current_dir == 1:  # Looking for higher high
-            if h > current_extreme:
-                current_extreme = h
-                current_extreme_idx = current_idx
-                continue
-            if (current_extreme - l) / current_extreme >= threshold:
-                if current_extreme_idx != last_idx:
-                    indices.append(current_extreme_idx)
-                    extrema.append(current_extreme)
-                    directions.append(current_dir)
-                    last_idx = current_extreme_idx
-
-                current_dir = -1
-                current_extreme = l
-                current_extreme_idx = current_idx
-
-        elif current_dir == -1:  # Looking for lower low
-            if l < current_extreme:
-                current_extreme = l
-                current_extreme_idx = current_idx
-                continue
-            if (h - current_extreme) / current_extreme >= threshold:
-                if current_extreme_idx != last_idx:
-                    indices.append(current_extreme_idx)
-                    extrema.append(current_extreme)
-                    directions.append(current_dir)
-                    last_idx = current_extreme_idx
-
-                current_dir = 1
-                current_extreme = h
-                current_extreme_idx = current_idx
-
-    if current_extreme_idx != last_idx:
-        indices.append(current_extreme_idx)
-        extrema.append(current_extreme)
-        directions.append(current_dir)
-
-    return indices[1:], extrema[1:], directions[1:]
-
-
-def dynamic_zigzag(
     df: pd.DataFrame,
     period: int = 14,
-    natr: bool = True,
     ratio: float = 1.0,
+    depth: int = 7,
 ) -> tuple[list[int], list[float], list[int]]:
-    """
-    Calculate the ZigZag indicator for a OHLCV DataFrame with dynamic threshold using ATR/NATR.
-
-    Parameters:
-    df (pd.DataFrame): OHLCV DataFrame.
-    period (int): Period for ATR/NATR calculation (default: 14).
-    natr (bool): Use NATR (True) or ATR (False) (default: True).
-    ratio (float): ratio for dynamic threshold (default: 1.0).
-
-    Returns:
-    tuple: Lists of indices, extrema, and directions.
-    """
-    if df.empty:
+    if df.empty or len(df) < 2:
         return [], [], []
 
-    if natr:
-        thresholds = ta.NATR(df, timeperiod=period)
-    else:
-        thresholds = ta.ATR(df, timeperiod=period)
-    thresholds = thresholds.ffill().bfill() * ratio
+    indices = df.index.tolist()
+    thresholds = (
+        (ta.NATR(df, timeperiod=period).shift(1) * ratio).fillna(method="bfill").values
+    )
+    highs = df["high"].values
+    lows = df["low"].values
 
-    indices = []
-    extrema = []
-    directions = []
+    pivots_indices, pivots_values, pivots_directions = [], [], []
+    state = 0  # 0=neutral, 1=up, -1=down
+    last_pivot_pos = -depth
 
-    first_high = df["high"].iloc[0]
-    first_low = df["low"].iloc[0]
-    first_threshold = thresholds.iloc[0]
+    def add_pivot(pos: int, value: float, direction: int):
+        nonlocal last_pivot_pos
+        pivots_indices.append(indices[pos])
+        pivots_values.append(value)
+        pivots_directions.append(direction)
+        last_pivot_pos = pos
 
-    if natr:
-        first_move = (first_high - first_low) / first_low
-    else:
-        first_move = first_high - first_low
-    if first_move >= first_threshold:
-        current_dir = 1
-        current_extreme = first_high
-    else:
-        current_dir = -1
-        current_extreme = first_low
-    current_extreme_idx = df.index[0]
+    def update_last_pivot(pos: int, value: float, direction: int):
+        if pivots_indices:
+            pivots_indices[-1] = indices[pos]
+            pivots_values[-1] = value
+            pivots_directions[-1] = direction
 
-    indices.append(current_extreme_idx)
-    extrema.append(current_extreme)
-    directions.append(current_dir)
-    last_idx = current_extreme_idx
-
+    initial_high = highs[0]
+    initial_low = lows[0]
+    initial_high_pos = 0
+    initial_low_pos = 0
     for i in range(1, len(df)):
-        current_idx = df.index[i]
-        h = df.at[current_idx, "high"]
-        l = df.at[current_idx, "low"]
-        threshold = thresholds.iloc[i]
+        if highs[i] > initial_high:
+            initial_high, initial_high_pos = highs[i], i
+        if lows[i] < initial_low:
+            initial_low, initial_low_pos = lows[i], i
 
-        if current_dir == 1:  # Looking for higher high
-            if h > current_extreme:
-                current_extreme = h
-                current_extreme_idx = current_idx
-                continue
-            if natr:
-                reversal = (current_extreme - l) / current_extreme >= threshold
-            else:
-                reversal = (current_extreme - l) >= threshold
-            if reversal:
-                if current_extreme_idx != last_idx:
-                    indices.append(current_extreme_idx)
-                    extrema.append(current_extreme)
-                    directions.append(current_dir)
-                    last_idx = current_extreme_idx
+        if (highs[i] - initial_low) / initial_low > thresholds[i]:
+            add_pivot(initial_low_pos, initial_low, -1)
+            state = 1
+            break
+        elif (initial_high - lows[i]) / initial_high > thresholds[i]:
+            add_pivot(initial_high_pos, initial_high, 1)
+            state = -1
+            break
+    else:
+        return [], [], []
 
-                current_dir = -1
-                current_extreme = l
-                current_extreme_idx = current_idx
+    for i in range(i + 1, len(df)):
+        if state == 1:
+            if highs[i] > pivots_values[-1]:
+                update_last_pivot(i, highs[i], 1)
+            elif (pivots_values[-1] - lows[i]) / pivots_values[-1] >= thresholds[
+                i
+            ] and (i - last_pivot_pos) >= depth:
+                add_pivot(i, lows[i], -1)
+                state = -1
+        elif state == -1:
+            if lows[i] < pivots_values[-1]:
+                update_last_pivot(i, lows[i], -1)
+            elif (highs[i] - pivots_values[-1]) / pivots_values[-1] >= thresholds[
+                i
+            ] and (i - last_pivot_pos) >= depth:
+                add_pivot(i, highs[i], 1)
+                state = 1
 
-        elif current_dir == -1:  # Looking for lower low
-            if l < current_extreme:
-                current_extreme = l
-                current_extreme_idx = current_idx
-                continue
-            if natr:
-                reversal = (h - current_extreme) / current_extreme >= threshold
-            else:
-                reversal = (h - current_extreme) >= threshold
-            if reversal:
-                if current_extreme_idx != last_idx:
-                    indices.append(current_extreme_idx)
-                    extrema.append(current_extreme)
-                    directions.append(current_dir)
-                    last_idx = current_extreme_idx
+    if state != 0 and (len(df) - 1 - last_pivot_pos) >= depth:
+        final_pos = len(df) - 1
+        last_pivot_val = pivots_values[-1]
+        price_move = (
+            (highs[final_pos] - last_pivot_val) / last_pivot_val
+            if state == 1
+            else (last_pivot_val - lows[final_pos]) / last_pivot_val
+        )
 
-                current_dir = 1
-                current_extreme = h
-                current_extreme_idx = current_idx
+        if (
+            price_move >= thresholds[final_pos]
+            and indices[final_pos] != pivots_indices[-1]
+        ):
+            add_pivot(
+                final_pos, highs[final_pos] if state == 1 else lows[final_pos], state
+            )
 
-    if current_extreme_idx != last_idx:
-        indices.append(current_extreme_idx)
-        extrema.append(current_extreme)
-        directions.append(current_dir)
-
-    return indices[1:], extrema[1:], directions[1:]
+    return pivots_indices, pivots_values, pivots_directions

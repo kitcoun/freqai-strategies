@@ -18,7 +18,7 @@ import pandas_ta as pta
 from Utils import (
     alligator,
     bottom_change_percent,
-    dynamic_zigzag,
+    zigzag,
     ewo,
     non_zero_range,
     price_retracement_percent,
@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.11"
+        return "3.3.12"
 
     timeframe = "5m"
 
@@ -384,14 +384,14 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
-        peak_indices, _, peak_directions = dynamic_zigzag(
+        pivot_indices, _, pivot_directions = zigzag(
             dataframe,
             period=self.get_label_period_candles(pair),
             ratio=self.get_label_natr_ratio(pair),
         )
         dataframe[EXTREMA_COLUMN] = 0
-        for peak_idx, peak_dir in zip(peak_indices, peak_directions):
-            dataframe.at[peak_idx, EXTREMA_COLUMN] = peak_dir
+        for pivot_idx, pivot_dir in zip(pivot_indices, pivot_directions):
+            dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
         dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
         dataframe[EXTREMA_COLUMN] = self.smooth_extrema(
