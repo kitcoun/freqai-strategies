@@ -967,20 +967,20 @@ def label_objective(
     if df.empty:
         return -float("inf"), -float("inf")
 
-    _, pivot_values, _ = zigzag(
+    _, pivots_values, _ = zigzag(
         df,
         period=label_period_candles,
         ratio=label_natr_ratio,
     )
 
-    if len(pivot_values) < 2:
+    if len(pivots_values) < 2:
         return -float("inf"), -float("inf")
 
     scaled_natr_label_period_candles = (
         ta.NATR(df, timeperiod=label_period_candles) * label_natr_ratio
     )
 
-    return scaled_natr_label_period_candles.median(), len(pivot_values)
+    return scaled_natr_label_period_candles.median(), len(pivots_values)
 
 
 def smoothed_max(series: pd.Series, temperature=1.0) -> float:

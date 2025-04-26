@@ -384,13 +384,13 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
-        pivot_indices, _, pivot_directions = zigzag(
+        pivots_indices, _, pivots_directions = zigzag(
             dataframe,
             period=self.get_label_period_candles(pair),
             ratio=self.get_label_natr_ratio(pair),
         )
         dataframe[EXTREMA_COLUMN] = 0
-        for pivot_idx, pivot_dir in zip(pivot_indices, pivot_directions):
+        for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
             dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
         dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
         dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
