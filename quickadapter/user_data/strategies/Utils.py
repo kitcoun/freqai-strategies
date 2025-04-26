@@ -353,20 +353,21 @@ def zigzag(
         return [], [], []
 
     for i in range(i + 1, len(df)):
+        last_pivot_val = pivots_values[-1]
         if state == 1:
-            if highs[i] > pivots_values[-1]:
+            if highs[i] > last_pivot_val:
                 update_last_pivot(i, highs[i], 1)
-            elif (pivots_values[-1] - lows[i]) / pivots_values[-1] >= thresholds[
-                i
-            ] and (i - last_pivot_pos) >= depth:
+            elif (last_pivot_val - lows[i]) / last_pivot_val >= thresholds[i] and (
+                i - last_pivot_pos
+            ) >= depth:
                 add_pivot(i, lows[i], -1)
                 state = -1
         elif state == -1:
-            if lows[i] < pivots_values[-1]:
+            if lows[i] < last_pivot_val:
                 update_last_pivot(i, lows[i], -1)
-            elif (highs[i] - pivots_values[-1]) / pivots_values[-1] >= thresholds[
-                i
-            ] and (i - last_pivot_pos) >= depth:
+            elif (highs[i] - last_pivot_val) / last_pivot_val >= thresholds[i] and (
+                i - last_pivot_pos
+            ) >= depth:
                 add_pivot(i, highs[i], 1)
                 state = 1
 
