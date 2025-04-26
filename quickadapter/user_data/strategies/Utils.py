@@ -302,7 +302,7 @@ def zigzag(
     df: pd.DataFrame,
     period: int = 14,
     ratio: float = 1.0,
-    depth: int = 7,
+    depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
     if df.empty or len(df) < 2:
         return [], [], []

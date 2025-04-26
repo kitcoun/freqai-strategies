@@ -401,43 +401,43 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return None
         best_trials = study.best_trials
         if namespace == "label":
-            peaks_sizes = [trial.values[1] for trial in best_trials]
-            quantile_peaks_size = np.quantile(
-                peaks_sizes, self.ft_params.get("label_quantile", 0.75)
+            pivots_sizes = [trial.values[1] for trial in best_trials]
+            quantile_pivots_size = np.quantile(
+                pivots_sizes, self.ft_params.get("label_quantile", 0.75)
             )
-            equal_quantile_peaks_size_trials = [
+            equal_quantile_pivots_size_trials = [
                 trial
                 for trial in best_trials
-                if np.isclose(trial.values[1], quantile_peaks_size)
+                if np.isclose(trial.values[1], quantile_pivots_size)
             ]
-            if equal_quantile_peaks_size_trials:
+            if equal_quantile_pivots_size_trials:
                 return max(
-                    equal_quantile_peaks_size_trials, key=lambda trial: trial.values[0]
+                    equal_quantile_pivots_size_trials, key=lambda trial: trial.values[0]
                 )
             nearest_above_quantile = (
                 np.inf,
                 -np.inf,
                 None,
-            )  # (trial_peaks_size, trial_scaled_natr, trial_index)
+            )  # (trial_pivots_size, trial_scaled_natr, trial_index)
             nearest_below_quantile = (
                 -np.inf,
                 -np.inf,
                 None,
-            )  # (trial_peaks_size, trial_scaled_natr, trial_index)
+            )  # (trial_pivots_size, trial_scaled_natr, trial_index)
             for idx, trial in enumerate(best_trials):
-                peaks_size = trial.values[1]
-                if peaks_size >= quantile_peaks_size:
-                    if peaks_size < nearest_above_quantile[0] or (
-                        peaks_size == nearest_above_quantile[0]
+                pivots_size = trial.values[1]
+                if pivots_size >= quantile_pivots_size:
+                    if pivots_size < nearest_above_quantile[0] or (
+                        pivots_size == nearest_above_quantile[0]
                         and trial.values[0] > nearest_above_quantile[1]
                     ):
-                        nearest_above_quantile = (peaks_size, trial.values[0], idx)
-                if peaks_size <= quantile_peaks_size:
-                    if peaks_size > nearest_below_quantile[0] or (
-                        peaks_size == nearest_below_quantile[0]
+                        nearest_above_quantile = (pivots_size, trial.values[0], idx)
+                if pivots_size <= quantile_pivots_size:
+                    if pivots_size > nearest_below_quantile[0] or (
+                        pivots_size == nearest_below_quantile[0]
                         and trial.values[0] > nearest_below_quantile[1]
                     ):
-                        nearest_below_quantile = (peaks_size, trial.values[0], idx)
+                        nearest_below_quantile = (pivots_size, trial.values[0], idx)
             if nearest_above_quantile[2] is None or nearest_below_quantile[2] is None:
                 return None
             above_quantile_trial = best_trials[nearest_above_quantile[2]]
@@ -847,7 +847,7 @@ def zigzag(
     df: pd.DataFrame,
     period: int = 14,
     ratio: float = 1.0,
-    depth: int = 7,
+    depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
     if df.empty or len(df) < 2:
         return [], [], []
