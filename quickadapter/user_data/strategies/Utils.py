@@ -347,11 +347,13 @@ def zigzag(
         if lows[i] < initial_low:
             initial_low, initial_low_pos = lows[i], i
 
-        if (initial_high - lows[i]) / initial_high >= thresholds[i]:
+        initial_move_up = (initial_high - lows[i]) / initial_high
+        initial_move_down = (highs[i] - initial_low) / initial_low
+        if initial_move_up >= thresholds[i]:
             add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
             state = TrendDirection.DOWN
             break
-        elif (highs[i] - initial_low) / initial_low >= thresholds[i]:
+        elif initial_move_down >= thresholds[i]:
             add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
             state = TrendDirection.UP
             break
