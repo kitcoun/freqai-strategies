@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.19"
+    version = "3.7.20"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -844,6 +844,12 @@ def hp_objective(
     return error
 
 
+class TrendDirection(IntEnum):
+    NEUTRAL = 0
+    UP = 1
+    DOWN = -1
+
+
 def zigzag(
     df: pd.DataFrame,
     period: int = 14,
@@ -854,20 +860,13 @@ def zigzag(
         return [], [], []
 
     indices = df.index.tolist()
-    thresholds = (
-        (ta.NATR(df, timeperiod=period).shift(1) * ratio).fillna(method="bfill").values
-    )
+    thresholds = (ta.NATR(df, timeperiod=period) * ratio).fillna(method="bfill").values
     highs = df["high"].values
     lows = df["low"].values
 
-    class TrendDirection(IntEnum):
-        NEUTRAL = 0
-        UP = 1
-        DOWN = -1
-
     state: TrendDirection = TrendDirection.NEUTRAL
     pivots_indices, pivots_values, pivots_directions = [], [], []
-    last_pivot_pos = -depth
+    last_pivot_pos = -depth - 1
 
     def add_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal last_pivot_pos
@@ -882,23 +881,23 @@ def zigzag(
             pivots_values[-1] = value
             pivots_directions[-1] = direction
 
-    initial_high = highs[0]
-    initial_low = lows[0]
     initial_high_pos = 0
     initial_low_pos = 0
+    initial_high = highs[initial_high_pos]
+    initial_low = lows[initial_low_pos]
     for i in range(1, len(df)):
         if highs[i] > initial_high:
             initial_high, initial_high_pos = highs[i], i
         if lows[i] < initial_low:
             initial_low, initial_low_pos = lows[i], i
 
-        initial_move_up = (initial_high - lows[i]) / initial_high
-        initial_move_down = (highs[i] - initial_low) / initial_low
-        if initial_move_up >= thresholds[i]:
+        initial_move_from_high = (initial_high - lows[i]) / initial_high
+        initial_move_from_low = (highs[i] - initial_low) / initial_low
+        if initial_move_from_high >= thresholds[i]:
             add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
             state = TrendDirection.DOWN
             break
-        elif initial_move_down >= thresholds[i]:
+        elif initial_move_from_low >= thresholds[i]:
             add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
             state = TrendDirection.UP
             break
