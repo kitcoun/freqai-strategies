@@ -372,7 +372,7 @@ class QuickAdapterV3(IStrategy):
         return self.get_label_natr_ratio(pair) * 0.625
 
     def get_take_profit_natr_ratio(self, pair: str) -> float:
-        return self.get_stoploss_natr_ratio(pair)
+        return self.get_stoploss_natr_ratio(pair) * 0.5
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
