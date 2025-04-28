@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.14"
+        return "3.3.15"
 
     timeframe = "5m"
 
@@ -70,14 +70,6 @@ class QuickAdapterV3(IStrategy):
     trailing_stop_positive = 0.01
     trailing_stop_positive_offset = 0.011
     trailing_only_offset_is_reached = True
-
-    # reward_risk_ratio = reward / risk
-    # reward_risk_ratio = 1.0 means 1:1 RR
-    # reward_risk_ratio = 2.0 means 1:2 RR
-    # ...
-    @cached_property
-    def reward_risk_ratio(self) -> float:
-        return self.config.get("exit_pricing", {}).get("reward_risk_ratio", 2.0)
 
     order_types = {
         "entry": "limit",
@@ -377,7 +369,7 @@ class QuickAdapterV3(IStrategy):
         return self.get_label_natr_ratio(pair) * 0.0175
 
     def get_stoploss_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.5
+        return self.get_label_natr_ratio(pair) * 0.625
 
     def get_take_profit_natr_ratio(self, pair: str) -> float:
         return self.get_stoploss_natr_ratio(pair)
@@ -526,14 +518,10 @@ class QuickAdapterV3(IStrategy):
         current_take_profit_distance = (
             current_rate * current_natr * take_profit_natr_ratio
         )
-        return (
-            max(
-                trade_take_profit_distance,
-                np.median([trade_take_profit_distance, current_take_profit_distance]),
-            )
-            * math.log10(9 + trade_duration_candles)
-            * self.reward_risk_ratio
-        )
+        return max(
+            trade_take_profit_distance,
+            np.median([trade_take_profit_distance, current_take_profit_distance]),
+        ) * math.log10(9 + trade_duration_candles)
 
     def custom_stoploss(
         self,
