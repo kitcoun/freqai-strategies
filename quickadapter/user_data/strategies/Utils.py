@@ -378,8 +378,8 @@ def zigzag(
                 add_pivot(i, highs[i], TrendDirection.UP)
                 state = TrendDirection.UP
 
-    if state != TrendDirection.NEUTRAL and (len(df) - 1 - last_pivot_pos) >= depth:
-        final_pos = len(df) - 1
+    final_pos = len(df) - 1
+    if state != TrendDirection.NEUTRAL and (final_pos - last_pivot_pos) >= depth:
         last_pivot_val = pivots_values[-1]
         price_move = (
             (highs[final_pos] - last_pivot_val) / last_pivot_val
