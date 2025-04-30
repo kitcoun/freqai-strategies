@@ -366,13 +366,13 @@ class QuickAdapterV3(IStrategy):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
     def get_entry_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.0125
+        return self.get_label_natr_ratio(pair) * 0.0175
 
     def get_stoploss_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.625
 
     def get_take_profit_natr_ratio(self, pair: str) -> float:
-        return self.get_stoploss_natr_ratio(pair) * 0.85
+        return self.get_stoploss_natr_ratio(pair) * 0.825
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
@@ -619,15 +619,8 @@ class QuickAdapterV3(IStrategy):
         max_open_trades_per_side = self.max_open_trades_per_side()
         if max_open_trades_per_side >= 0:
             open_trades = Trade.get_open_trades()
-            num_shorts, num_longs = 0, 0
-            for trade in open_trades:
-                if "short" in trade.enter_tag:
-                    num_shorts += 1
-                elif "long" in trade.enter_tag:
-                    num_longs += 1
-            if (side == "long" and num_longs >= max_open_trades_per_side) or (
-                side == "short" and num_shorts >= max_open_trades_per_side
-            ):
+            trades_per_side = sum(1 for trade in open_trades if trade.side == side)
+            if trades_per_side >= max_open_trades_per_side:
                 return False
 
         df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
@@ -641,10 +634,11 @@ class QuickAdapterV3(IStrategy):
         entry_price_fluctuation_threshold = (
             last_candle_natr * self.get_entry_natr_ratio(pair)
         )
-        # Confirm extrema with reversal with price movement boundaries
-        if (rate > last_candle_close * (1 + entry_price_fluctuation_threshold)) or (
-            rate < last_candle_close * (1 - entry_price_fluctuation_threshold)
-        ):
+        upper_bound = last_candle_close * (1 + entry_price_fluctuation_threshold)
+        lower_bound = last_candle_close * (1 - entry_price_fluctuation_threshold)
+        if side == "long" and (rate > upper_bound or rate < lower_bound):
+            return False
+        elif side == "short" and (rate < lower_bound or rate > upper_bound):
             return False
 
         return True
