@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.15"
+        return "3.3.16"
 
     timeframe = "5m"
 
@@ -366,13 +366,13 @@ class QuickAdapterV3(IStrategy):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
     def get_entry_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.0175
+        return self.get_label_natr_ratio(pair) * 0.0125
 
     def get_stoploss_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.625
 
     def get_take_profit_natr_ratio(self, pair: str) -> float:
-        return self.get_stoploss_natr_ratio(pair) * 0.5
+        return self.get_stoploss_natr_ratio(pair) * 0.525
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
@@ -641,12 +641,9 @@ class QuickAdapterV3(IStrategy):
         entry_price_fluctuation_threshold = (
             last_candle_natr * self.get_entry_natr_ratio(pair)
         )
-        if (
-            side == "long"
-            and rate > last_candle_close * (1 + entry_price_fluctuation_threshold)
-        ) or (
-            side == "short"
-            and rate < last_candle_close * (1 - entry_price_fluctuation_threshold)
+        # Confirm extrema with reversal with price movement boundaries
+        if (rate > last_candle_close * (1 + entry_price_fluctuation_threshold)) or (
+            rate < last_candle_close * (1 - entry_price_fluctuation_threshold)
         ):
             return False
 
