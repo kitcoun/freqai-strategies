@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.20"
+    version = "3.7.21"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -383,7 +383,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[float, float]:
         temperature = float(
-            self.freqai_info.get("prediction_thresholds_temperature", 225.0)
+            self.freqai_info.get("prediction_thresholds_temperature", 250.0)
         )
         extrema = pred_df[EXTREMA_COLUMN].iloc[
             -(
