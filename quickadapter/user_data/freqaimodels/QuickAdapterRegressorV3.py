@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.21"
+    version = "3.7.22"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -190,10 +190,23 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         model_training_parameters = self.model_training_parameters
 
-        init_model = self.get_init_model(dk.pair)
-
         start = time.time()
         if self._optuna_hyperopt:
+            self.optuna_optimize(
+                pair=dk.pair,
+                namespace="label",
+                objective=lambda trial: label_objective(
+                    trial,
+                    self.data_provider.get_pair_dataframe(dk.pair),
+                    self.freqai_info.get("fit_live_predictions_candles", 100),
+                    self._optuna_config.get("candles_step"),
+                ),
+                directions=[
+                    optuna.study.StudyDirection.MAXIMIZE,
+                    optuna.study.StudyDirection.MAXIMIZE,
+                ],
+            )
+
             self.optuna_optimize(
                 pair=dk.pair,
                 namespace="hp",
@@ -260,7 +273,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             eval_set=eval_set,
             eval_weights=eval_weights,
             model_training_parameters=model_training_parameters,
-            init_model=init_model,
+            init_model=self.get_init_model(dk.pair),
         )
         time_spent = time.time() - start
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
@@ -273,23 +286,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         fit_live_predictions_candles = self.freqai_info.get(
             "fit_live_predictions_candles", 100
         )
-
-        if self._optuna_hyperopt:
-            df = self.data_provider.get_pair_dataframe(pair)
-            self.optuna_optimize(
-                pair=pair,
-                namespace="label",
-                objective=lambda trial: label_objective(
-                    trial,
-                    df,
-                    fit_live_predictions_candles,
-                    self._optuna_config.get("candles_step"),
-                ),
-                directions=[
-                    optuna.study.StudyDirection.MAXIMIZE,
-                    optuna.study.StudyDirection.MAXIMIZE,
-                ],
-            )
 
         if self.live:
             if not hasattr(self, "exchange_candles"):
