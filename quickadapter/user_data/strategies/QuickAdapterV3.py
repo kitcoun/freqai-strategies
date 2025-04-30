@@ -369,7 +369,7 @@ class QuickAdapterV3(IStrategy):
         return self.get_label_natr_ratio(pair) * 0.0175
 
     def get_stoploss_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.625
+        return self.get_label_natr_ratio(pair) * 0.65
 
     def get_take_profit_natr_ratio(self, pair: str) -> float:
         return self.get_stoploss_natr_ratio(pair) * 0.825
@@ -650,7 +650,7 @@ class QuickAdapterV3(IStrategy):
         if self.is_short_allowed():
             if max_open_trades % 2 == 1:
                 max_open_trades += 1
-            return max_open_trades // 2
+            return int(max_open_trades / 2)
         else:
             return max_open_trades
 
