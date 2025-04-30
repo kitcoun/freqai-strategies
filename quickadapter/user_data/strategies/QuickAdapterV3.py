@@ -619,7 +619,7 @@ class QuickAdapterV3(IStrategy):
         max_open_trades_per_side = self.max_open_trades_per_side()
         if max_open_trades_per_side >= 0:
             open_trades = Trade.get_open_trades()
-            trades_per_side = sum(1 for trade in open_trades if trade.side == side)
+            trades_per_side = sum(1 for trade in open_trades if trade.enter_tag == side)
             if trades_per_side >= max_open_trades_per_side:
                 return False
 
