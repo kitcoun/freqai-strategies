@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.16"
+        return "3.3.17"
 
     timeframe = "5m"
 
@@ -378,8 +378,8 @@ class QuickAdapterV3(IStrategy):
         pair = str(metadata.get("pair"))
         pivots_indices, _, pivots_directions = zigzag(
             dataframe,
-            period=self.get_label_period_candles(pair),
-            ratio=self.get_label_natr_ratio(pair),
+            natr_period=self.get_label_period_candles(pair),
+            natr_ratio=self.get_label_natr_ratio(pair),
         )
         dataframe[EXTREMA_COLUMN] = 0
         for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
