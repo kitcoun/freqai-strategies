@@ -419,7 +419,6 @@ def zigzag(
 
     final_pos = len(df) - 1
     last_pivot_val = pivots_values[-1]
-
     if state == TrendDirection.UP:
         if (
             (last_pivot_val - lows[final_pos]) / last_pivot_val >= thresholds[final_pos]
