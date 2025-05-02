@@ -417,24 +417,4 @@ def zigzag(
                 add_pivot(i, highs[i], TrendDirection.UP)
                 state = TrendDirection.UP
 
-    final_pos = len(df) - 1
-    last_pivot_val = pivots_values[-1]
-    if state == TrendDirection.UP:
-        if (
-            (last_pivot_val - lows[final_pos]) / last_pivot_val >= thresholds[final_pos]
-            and (final_pos - last_pivot_pos) >= depth
-            and is_fractal_low[final_pos]
-            and indices[final_pos] != pivots_indices[-1]
-        ):
-            add_pivot(final_pos, lows[final_pos], TrendDirection.DOWN)
-    elif state == TrendDirection.DOWN:
-        if (
-            (highs[final_pos] - last_pivot_val) / last_pivot_val
-            >= thresholds[final_pos]
-            and (final_pos - last_pivot_pos) >= depth
-            and is_fractal_high[final_pos]
-            and indices[final_pos] != pivots_indices[-1]
-        ):
-            add_pivot(final_pos, highs[final_pos], TrendDirection.UP)
-
     return pivots_indices, pivots_values, pivots_directions
