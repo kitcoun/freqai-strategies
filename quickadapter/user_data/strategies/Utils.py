@@ -310,7 +310,7 @@ def find_fractals(df: pd.DataFrame, fractal_period: int) -> tuple[list[int], lis
     lows = df["low"].values
     fractal_highs = []
     fractal_lows = []
-    for i in range(fractal_period, max(fractal_period, len(df) - fractal_period)):
+    for i in range(fractal_period, len(df) - fractal_period):
         valid_high = True
         valid_low = True
         for j in range(1, fractal_period + 1):
@@ -338,10 +338,10 @@ def zigzag(
         return [], [], []
 
     fractal_highs, fractal_lows = find_fractals(df, fractal_period)
-    fractal_high_set = set(fractal_highs)
-    fractal_low_set = set(fractal_lows)
-    is_fractal_high = [i in fractal_high_set for i in range(len(df))]
-    is_fractal_low = [i in fractal_low_set for i in range(len(df))]
+    fractal_highs_set = set(fractal_highs)
+    fractal_lows_set = set(fractal_lows)
+    is_fractal_high = [i in fractal_highs_set for i in range(len(df))]
+    is_fractal_low = [i in fractal_lows_set for i in range(len(df))]
 
     indices = df.index.tolist()
     thresholds = (
@@ -419,25 +419,23 @@ def zigzag(
 
     final_pos = len(df) - 1
     last_pivot_val = pivots_values[-1]
-    final_price_move = (
-        (highs[final_pos] - last_pivot_val) / last_pivot_val
-        if state == TrendDirection.UP
-        else (last_pivot_val - lows[final_pos]) / last_pivot_val
-    )
-    if (
-        state != TrendDirection.NEUTRAL
-        and (final_pos - last_pivot_pos) >= depth
-        and final_price_move >= thresholds[final_pos]
-        and indices[final_pos] != pivots_indices[-1]
-        and (
-            (state == TrendDirection.UP and is_fractal_high[final_pos])
-            or (state == TrendDirection.DOWN and is_fractal_low[final_pos])
-        )
-    ):
-        add_pivot(
-            final_pos,
-            highs[final_pos] if state == TrendDirection.UP else lows[final_pos],
-            state,
-        )
+
+    if state == TrendDirection.UP:
+        if (
+            (last_pivot_val - lows[final_pos]) / last_pivot_val >= thresholds[final_pos]
+            and (final_pos - last_pivot_pos) >= depth
+            and is_fractal_low[final_pos]
+            and indices[final_pos] != pivots_indices[-1]
+        ):
+            add_pivot(final_pos, lows[final_pos], TrendDirection.DOWN)
+    elif state == TrendDirection.DOWN:
+        if (
+            (highs[final_pos] - last_pivot_val) / last_pivot_val
+            >= thresholds[final_pos]
+            and (final_pos - last_pivot_pos) >= depth
+            and is_fractal_high[final_pos]
+            and indices[final_pos] != pivots_indices[-1]
+        ):
+            add_pivot(final_pos, highs[final_pos], TrendDirection.UP)
 
     return pivots_indices, pivots_values, pivots_directions
