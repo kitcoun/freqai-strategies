@@ -509,7 +509,6 @@ class QuickAdapterV3(IStrategy):
         current_natr = df["natr_label_period_candles"].iloc[-1]
         if isna(current_natr):
             return None
-        take_profit_natr_ratio = self.get_take_profit_natr_ratio(trade.pair)
         natr_change_pct = abs(current_natr - entry_natr) / entry_natr
         if natr_change_pct > 0.2:
             if current_natr > entry_natr:
@@ -521,13 +520,15 @@ class QuickAdapterV3(IStrategy):
         else:
             entry_natr_weight = 0.5
             current_natr_weight = 0.5
-        blended_take_profit_natr = (
+        take_profit_natr = (
             entry_natr_weight * entry_natr + current_natr_weight * current_natr
         )
-        take_profit_distance = (
-            trade.open_rate * blended_take_profit_natr * take_profit_natr_ratio
+        return (
+            trade.open_rate
+            * take_profit_natr
+            * self.get_take_profit_natr_ratio(trade.pair)
+            * math.log10(9 + trade_duration_candles)
         )
-        return take_profit_distance * math.log10(9 + trade_duration_candles)
 
     def custom_stoploss(
         self,

@@ -967,10 +967,10 @@ def label_objective(
     fit_live_predictions_candles: int,
     candles_step: int,
 ) -> tuple[float, int]:
-    min_label_period_candles: int = round_to_nearest(
+    min_label_period_candles: int = round_to_nearest_int(
         max(fit_live_predictions_candles // 16, 20), candles_step
     )
-    max_label_period_candles: int = round_to_nearest(
+    max_label_period_candles: int = round_to_nearest_int(
         max(fit_live_predictions_candles // 4, min_label_period_candles),
         candles_step,
     )
@@ -1046,7 +1046,7 @@ def boltzmann_operator(series: pd.Series, alpha: float) -> float:
     return numerator / denominator
 
 
-def round_to_nearest(value: float, step: int) -> int:
+def round_to_nearest_int(value: float, step: int) -> int:
     """
     Round a value to the nearest multiple of a given step.
     :param value: The value to round.
