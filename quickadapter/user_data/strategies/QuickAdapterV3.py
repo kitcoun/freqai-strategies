@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.19"
+        return "3.3.20"
 
     timeframe = "5m"
 
@@ -477,7 +477,7 @@ class QuickAdapterV3(IStrategy):
         trade_duration_minutes = (
             current_candle_date - entry_candle_date
         ).total_seconds() / 60.0
-        return trade_duration_minutes // timeframe_to_minutes(self.timeframe)
+        return int(trade_duration_minutes / timeframe_to_minutes(self.timeframe))
 
     @staticmethod
     def is_trade_duration_valid(trade_duration: float) -> bool:
@@ -499,9 +499,7 @@ class QuickAdapterV3(IStrategy):
             * (1 / math.log10(1 + 0.25 * trade_duration_candles))
         )
 
-    def get_take_profit_distance(
-        self, df: DataFrame, trade: Trade, current_rate: float
-    ) -> Optional[float]:
+    def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
@@ -512,16 +510,24 @@ class QuickAdapterV3(IStrategy):
         if isna(current_natr):
             return None
         take_profit_natr_ratio = self.get_take_profit_natr_ratio(trade.pair)
-        trade_take_profit_distance = (
-            trade.open_rate * entry_natr * take_profit_natr_ratio
+        natr_change_pct = abs(current_natr - entry_natr) / entry_natr
+        if natr_change_pct > 0.2:
+            if current_natr > entry_natr:
+                entry_natr_weight = 0.4
+                current_natr_weight = 0.6
+            else:
+                entry_natr_weight = 0.6
+                current_natr_weight = 0.4
+        else:
+            entry_natr_weight = 0.5
+            current_natr_weight = 0.5
+        blended_take_profit_natr = (
+            entry_natr_weight * entry_natr + current_natr_weight * current_natr
         )
-        current_take_profit_distance = (
-            current_rate * current_natr * take_profit_natr_ratio
+        take_profit_distance = (
+            trade.open_rate * blended_take_profit_natr * take_profit_natr_ratio
         )
-        return max(
-            trade_take_profit_distance,
-            np.median([trade_take_profit_distance, current_take_profit_distance]),
-        ) * math.log10(9 + trade_duration_candles)
+        return take_profit_distance * math.log10(9 + trade_duration_candles)
 
     def custom_stoploss(
         self,
@@ -585,19 +591,22 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        take_profit_distance = self.get_take_profit_distance(df, trade, current_rate)
+        take_profit_distance = self.get_take_profit_distance(df, trade)
         if isna(take_profit_distance):
             return None
         if np.isclose(take_profit_distance, 0):
             return None
+        take_profit_price = (
+            trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
+        )
+        trade.set_custom_data(key="take_profit_price", value=take_profit_price)
+        logger.info(
+            f"Trade with direction {trade.trade_direction} and open price {trade.open_rate} for {pair}: TP price: {take_profit_price} vs current price: {current_rate}"
+        )
         if trade.is_short:
-            take_profit_price = trade.open_rate - take_profit_distance
-            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
             if current_rate <= take_profit_price:
                 return "take_profit_short"
         else:
-            take_profit_price = trade.open_rate + take_profit_distance
-            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
             if current_rate >= take_profit_price:
                 return "take_profit_long"
 
@@ -628,20 +637,44 @@ class QuickAdapterV3(IStrategy):
             return False
         last_candle = df.iloc[-1]
         last_candle_close = last_candle["close"]
+        last_candle_high = last_candle["high"]
+        last_candle_low = last_candle["low"]
         last_candle_natr = last_candle["natr_label_period_candles"]
         if isna(last_candle_natr):
             return False
-        entry_price_fluctuation_threshold = (
-            last_candle_natr * self.get_entry_natr_ratio(pair)
+        entry_price_fluctuation = (
+            last_candle_close * last_candle_natr * self.get_entry_natr_ratio(pair)
         )
-        upper_bound = last_candle_close * (1 + entry_price_fluctuation_threshold)
-        lower_bound = last_candle_close * (1 - entry_price_fluctuation_threshold)
-        if side == "long" and (rate > upper_bound or rate < lower_bound):
-            return False
-        elif side == "short" and (rate < lower_bound or rate > upper_bound):
-            return False
+        if side == "long":
+            lower_bound = last_candle_low - entry_price_fluctuation
+            upper_bound = last_candle_close + entry_price_fluctuation
+            if lower_bound < 0:
+                logger.info(
+                    f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
+                )
+                return False
+            if lower_bound <= rate <= upper_bound:
+                return True
+            else:
+                logger.info(
+                    f"User denied {side} entry for {pair}: rate {rate} outside bounds [{lower_bound}, {upper_bound}]"
+                )
+        elif side == "short":
+            lower_bound = last_candle_close - entry_price_fluctuation
+            upper_bound = last_candle_high + entry_price_fluctuation
+            if lower_bound < 0:
+                logger.info(
+                    f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
+                )
+                return False
+            if lower_bound <= rate <= upper_bound:
+                return True
+            else:
+                logger.info(
+                    f"User denied {side} entry for {pair}: rate {rate} outside bounds [{lower_bound}, {upper_bound}]"
+                )
 
-        return True
+        return False
 
     def max_open_trades_per_side(self) -> int:
         max_open_trades = self.config.get("max_open_trades")
