@@ -850,7 +850,7 @@ def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
     natr_ratio: float = 1.0,
-    confirmation_window: int = 2,
+    confirmation_window: int = 6,
     depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
     if df.empty or len(df) < natr_period + confirmation_window:
@@ -860,6 +860,7 @@ def zigzag(
     thresholds = (
         (ta.NATR(df, timeperiod=natr_period) * natr_ratio).fillna(method="bfill").values
     )
+    closes = df["close"].values
     highs = df["high"].values
     lows = df["low"].values
 
@@ -883,11 +884,11 @@ def zigzag(
     def is_reversal_confirmed(pos: int, direction: TrendDirection) -> bool:
         if pos + confirmation_window >= len(df):
             return False
-        next_closes = df["close"].values[pos + 1 : pos + confirmation_window + 1]
+        next_closes = closes[pos + 1 : pos + confirmation_window + 1]
         if direction == TrendDirection.DOWN:
-            return all(c < highs[pos] for c in next_closes)
+            return np.all(next_closes < highs[pos])
         elif direction == TrendDirection.UP:
-            return all(c > lows[pos] for c in next_closes)
+            return np.all(next_closes > lows[pos])
         return False
 
     start_pos = 0
