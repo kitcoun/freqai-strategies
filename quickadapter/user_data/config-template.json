@@ -2,6 +2,8 @@
   "$schema": "https://schema.freqtrade.io/schema.json",
   "strategy": "QuickAdapterV3",
   "freqaimodel": "QuickAdapterRegressorV3",
+  "db_url": "sqlite:////freqtrade/user_data/reqtrade-quickadapter-tradesv3.sqlite",
+  "logfile": "/freqtrade/user_data/logs/freqtrade-quickadapter.log",
   "max_open_trades": 10,
   "stake_currency": "USDT",
   "stake_amount": "unlimited",
