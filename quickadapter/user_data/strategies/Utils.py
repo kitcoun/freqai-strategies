@@ -359,13 +359,15 @@ def zigzag(
 
     def add_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal last_pivot_pos
+        if pivots_indices and indices[pos] == pivots_indices[-1]:
+            return
         pivots_indices.append(indices[pos])
         pivots_values.append(value)
         pivots_directions.append(direction)
         last_pivot_pos = pos
 
     def update_last_pivot(pos: int, value: float, direction: TrendDirection):
-        if pivots_indices:
+        if pivots_indices and indices[pos] != pivots_indices[-1]:
             pivots_indices[-1] = indices[pos]
             pivots_values[-1] = value
             pivots_directions[-1] = direction
@@ -390,6 +392,11 @@ def zigzag(
             initial_high, initial_high_pos = highs[i], i
         if lows[i] < initial_low:
             initial_low, initial_low_pos = lows[i], i
+        if (
+            i - initial_high_pos < confirmation_window
+            or i - initial_low_pos < confirmation_window
+        ):
+            continue
 
         initial_move_from_high = (initial_high - lows[i]) / initial_high
         initial_move_from_low = (highs[i] - initial_low) / initial_low
@@ -417,7 +424,7 @@ def zigzag(
                 update_last_pivot(i, current_high, TrendDirection.UP)
             elif (
                 (last_pivot_val - current_low) / last_pivot_val >= thresholds[i]
-                and (i - last_pivot_pos) >= depth
+                and (i - last_pivot_pos) > depth
                 and is_reversal_confirmed(i, TrendDirection.DOWN)
             ):
                 add_pivot(i, current_low, TrendDirection.DOWN)
@@ -427,7 +434,7 @@ def zigzag(
                 update_last_pivot(i, current_low, TrendDirection.DOWN)
             elif (
                 (current_high - last_pivot_val) / last_pivot_val >= thresholds[i]
-                and (i - last_pivot_pos) >= depth
+                and (i - last_pivot_pos) > depth
                 and is_reversal_confirmed(i, TrendDirection.UP)
             ):
                 add_pivot(i, current_high, TrendDirection.UP)
