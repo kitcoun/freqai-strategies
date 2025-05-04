@@ -850,7 +850,7 @@ def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
     natr_ratio: float = 1.0,
-    confirmation_window: int = 6,
+    confirmation_window: int = 3,
     depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
     if df.empty or len(df) < natr_period + confirmation_window:
