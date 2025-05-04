@@ -840,36 +840,6 @@ def hp_objective(
     return error
 
 
-def find_fractals(df: pd.DataFrame, fractal_period: int) -> tuple[list[int], list[int]]:
-    if len(df) < 2 * fractal_period + 1:
-        return [], []
-
-    highs = df["high"].values
-    lows = df["low"].values
-
-    fractal_candidate_indices = np.arange(fractal_period, len(df) - fractal_period)
-
-    is_fractal_high = np.ones(len(fractal_candidate_indices), dtype=bool)
-    is_fractal_low = np.ones(len(fractal_candidate_indices), dtype=bool)
-
-    for i in range(1, fractal_period + 1):
-        is_fractal_high &= (
-            highs[fractal_candidate_indices] > highs[fractal_candidate_indices - i]
-        ) & (highs[fractal_candidate_indices] > highs[fractal_candidate_indices + i])
-
-        is_fractal_low &= (
-            lows[fractal_candidate_indices] < lows[fractal_candidate_indices - i]
-        ) & (lows[fractal_candidate_indices] < lows[fractal_candidate_indices + i])
-
-        if not np.any(is_fractal_high) and not np.any(is_fractal_low):
-            break
-
-    return (
-        fractal_candidate_indices[is_fractal_high].tolist(),
-        fractal_candidate_indices[is_fractal_low].tolist(),
-    )
-
-
 class TrendDirection(IntEnum):
     NEUTRAL = 0
     UP = 1
