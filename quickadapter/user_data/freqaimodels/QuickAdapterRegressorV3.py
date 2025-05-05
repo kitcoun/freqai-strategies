@@ -961,7 +961,7 @@ def zigzag(
     else:
         return [], [], []
 
-    if last_pivot_pos + depth >= n:
+    if n - last_pivot_pos - 1 < depth:
         return pivots_indices, pivots_values, pivots_directions
 
     for i in range(last_pivot_pos + 1, n):
