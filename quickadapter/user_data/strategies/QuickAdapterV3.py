@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.22"
+        return "3.3.23"
 
     timeframe = "5m"
 
@@ -643,12 +643,15 @@ class QuickAdapterV3(IStrategy):
         last_candle_natr = last_candle["natr_label_period_candles"]
         if isna(last_candle_natr):
             return False
-        entry_price_fluctuation = (
-            last_candle_close * last_candle_natr * self.get_entry_natr_ratio(pair)
-        )
+        entry_natr_ratio = self.get_entry_natr_ratio(pair)
         if side == "long":
-            lower_bound = last_candle_low - entry_price_fluctuation
-            upper_bound = last_candle_close + entry_price_fluctuation
+            lower_bound = (
+                last_candle_low - last_candle_low * last_candle_natr * entry_natr_ratio
+            )
+            upper_bound = (
+                last_candle_close
+                + last_candle_close * last_candle_natr * entry_natr_ratio
+            )
             if lower_bound < 0:
                 logger.info(
                     f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
@@ -661,8 +664,14 @@ class QuickAdapterV3(IStrategy):
                     f"User denied {side} entry for {pair}: rate {rate} outside bounds [{lower_bound}, {upper_bound}]"
                 )
         elif side == "short":
-            lower_bound = last_candle_close - entry_price_fluctuation
-            upper_bound = last_candle_high + entry_price_fluctuation
+            lower_bound = (
+                last_candle_close
+                - last_candle_close * last_candle_natr * entry_natr_ratio
+            )
+            upper_bound = (
+                last_candle_high
+                + last_candle_high * last_candle_natr * entry_natr_ratio
+            )
             if lower_bound < 0:
                 logger.info(
                     f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
