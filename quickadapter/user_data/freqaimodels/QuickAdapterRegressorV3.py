@@ -879,6 +879,12 @@ def zigzag(
         candidate_pivot_value = value
         candidate_pivot_direction = direction
 
+    def reset_candidate_pivot():
+        nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
+        candidate_pivot_pos = -1
+        candidate_pivot_value = np.nan
+        candidate_pivot_direction = TrendDirection.NEUTRAL
+
     def add_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal last_pivot_pos
         if pivots_indices and indices[pos] == pivots_indices[-1]:
@@ -887,13 +893,6 @@ def zigzag(
         pivots_values.append(value)
         pivots_directions.append(direction)
         last_pivot_pos = pos
-        update_candidate_pivot(
-            pos,
-            value,
-            TrendDirection.UP
-            if direction == TrendDirection.DOWN
-            else TrendDirection.DOWN,
-        )
 
     def is_reversal_confirmed(pos: int, direction: TrendDirection) -> bool:
         if pos - confirmation_window < 0 or pos + confirmation_window >= len(df):
@@ -911,15 +910,15 @@ def zigzag(
             return (
                 np.all(next_closes < highs[pos])
                 and np.all(previous_closes < highs[pos])
-                and np.all(next_highs <= highs[pos])
-                and np.all(previous_highs <= highs[pos])
+                and np.max(next_highs) <= highs[pos]
+                and np.max(previous_highs) <= highs[pos]
             )
         elif direction == TrendDirection.UP:
             return (
                 np.all(next_closes > lows[pos])
                 and np.all(previous_closes > lows[pos])
-                and np.all(next_lows >= lows[pos])
-                and np.all(previous_lows >= lows[pos])
+                and np.min(next_lows) >= lows[pos]
+                and np.min(previous_lows) >= lows[pos]
             )
         return False
 
@@ -967,6 +966,7 @@ def zigzag(
                 and is_reversal_confirmed(candidate_pivot_pos, TrendDirection.DOWN)
             ):
                 add_pivot(candidate_pivot_pos, candidate_pivot_value, TrendDirection.UP)
+                reset_candidate_pivot()
                 state = TrendDirection.DOWN
         elif state == TrendDirection.DOWN:
             if np.isnan(candidate_pivot_value) or current_low < candidate_pivot_value:
@@ -980,6 +980,7 @@ def zigzag(
                 add_pivot(
                     candidate_pivot_pos, candidate_pivot_value, TrendDirection.DOWN
                 )
+                reset_candidate_pivot()
                 state = TrendDirection.UP
 
     return pivots_indices, pivots_values, pivots_directions
