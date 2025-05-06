@@ -645,45 +645,22 @@ class QuickAdapterV3(IStrategy):
             return False
         entry_natr_ratio = self.get_entry_natr_ratio(pair)
         if side == "long":
-            lower_bound = (
-                last_candle_low - last_candle_low * last_candle_natr * entry_natr_ratio
-            )
-            upper_bound = (
-                last_candle_close
-                + last_candle_close * last_candle_natr * entry_natr_ratio
-            )
-            if lower_bound < 0:
-                logger.info(
-                    f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
-                )
-                return False
-            if lower_bound <= rate <= upper_bound:
-                return True
-            else:
-                logger.info(
-                    f"User denied {side} entry for {pair}: rate {rate} outside bounds [{lower_bound}, {upper_bound}]"
-                )
+            lower_bound = last_candle_low * (1 - last_candle_natr * entry_natr_ratio)
+            upper_bound = last_candle_close * (1 + last_candle_natr * entry_natr_ratio)
         elif side == "short":
-            lower_bound = (
-                last_candle_close
-                - last_candle_close * last_candle_natr * entry_natr_ratio
+            lower_bound = last_candle_close * (1 - last_candle_natr * entry_natr_ratio)
+            upper_bound = last_candle_high * (1 + last_candle_natr * entry_natr_ratio)
+        if lower_bound < 0:
+            logger.info(
+                f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
             )
-            upper_bound = (
-                last_candle_high
-                + last_candle_high * last_candle_natr * entry_natr_ratio
+            return False
+        if lower_bound <= rate <= upper_bound:
+            return True
+        else:
+            logger.info(
+                f"User denied {side} entry for {pair}: rate {rate} outside bounds [{lower_bound}, {upper_bound}]"
             )
-            if lower_bound < 0:
-                logger.info(
-                    f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
-                )
-                return False
-            if lower_bound <= rate <= upper_bound:
-                return True
-            else:
-                logger.info(
-                    f"User denied {side} entry for {pair}: rate {rate} outside bounds [{lower_bound}, {upper_bound}]"
-                )
-
         return False
 
     def max_open_trades_per_side(self) -> int:
