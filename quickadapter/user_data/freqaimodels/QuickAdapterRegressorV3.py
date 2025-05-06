@@ -899,16 +899,16 @@ def zigzag(
     def is_reversal_confirmed(pos: int, direction: TrendDirection) -> bool:
         next_start = pos + 1
         next_end = min(pos + confirmation_window + 1, n)
-        prev_start = max(pos - confirmation_window, 0)
-        prev_end = pos
-        if next_start >= next_end or prev_start >= prev_end:
+        previous_start = max(pos - confirmation_window, 0)
+        previous_end = pos
+        if next_start >= next_end or previous_start >= previous_end:
             return False
 
         next_slice = slice(next_start, next_end)
         next_closes = closes[next_slice]
         next_highs = highs[next_slice]
         next_lows = lows[next_slice]
-        previous_slice = slice(prev_start, prev_end)
+        previous_slice = slice(previous_start, previous_end)
         previous_closes = closes[previous_slice]
         previous_highs = highs[previous_slice]
         previous_lows = lows[previous_slice]

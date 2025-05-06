@@ -299,7 +299,9 @@ def alligator(
     return jaw, teeth, lips
 
 
-def find_fractals(df: pd.DataFrame, fractal_period: int) -> tuple[list[int], list[int]]:
+def find_fractals(
+    df: pd.DataFrame, fractal_period: int = 2
+) -> tuple[list[int], list[int]]:
     n = len(df)
     if n < 2 * fractal_period + 1:
         return [], []
@@ -389,16 +391,16 @@ def zigzag(
     def is_reversal_confirmed(pos: int, direction: TrendDirection) -> bool:
         next_start = pos + 1
         next_end = min(pos + confirmation_window + 1, n)
-        prev_start = max(pos - confirmation_window, 0)
-        prev_end = pos
-        if next_start >= next_end or prev_start >= prev_end:
+        previous_start = max(pos - confirmation_window, 0)
+        previous_end = pos
+        if next_start >= next_end or previous_start >= previous_end:
             return False
 
         next_slice = slice(next_start, next_end)
         next_closes = closes[next_slice]
         next_highs = highs[next_slice]
         next_lows = lows[next_slice]
-        previous_slice = slice(prev_start, prev_end)
+        previous_slice = slice(previous_start, previous_end)
         previous_closes = closes[previous_slice]
         previous_highs = highs[previous_slice]
         previous_lows = lows[previous_slice]
