@@ -127,7 +127,9 @@ def vwapb(dataframe: pd.DataFrame, window=20, num_of_std=1) -> tuple:
 
 def zero_lag_series(series: pd.Series, period: int) -> pd.Series:
     """Applies a zero lag filter to reduce MA lag."""
-    lag = int(0.5 * (period - 1))
+    lag = max(int(0.5 * (period - 1)), 0)
+    if lag == 0:
+        return series
     return 2 * series - series.shift(lag)
 
 
