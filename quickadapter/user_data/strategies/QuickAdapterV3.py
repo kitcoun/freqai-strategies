@@ -644,12 +644,13 @@ class QuickAdapterV3(IStrategy):
         if isna(last_candle_natr):
             return False
         entry_natr_ratio = self.get_entry_natr_ratio(pair)
+        price_deviation = last_candle_natr * entry_natr_ratio
         if side == "long":
-            lower_bound = last_candle_low * (1 - last_candle_natr * entry_natr_ratio)
-            upper_bound = last_candle_close * (1 + last_candle_natr * entry_natr_ratio)
+            lower_bound = last_candle_low * (1 - price_deviation)
+            upper_bound = last_candle_close * (1 + price_deviation)
         elif side == "short":
-            lower_bound = last_candle_close * (1 - last_candle_natr * entry_natr_ratio)
-            upper_bound = last_candle_high * (1 + last_candle_natr * entry_natr_ratio)
+            lower_bound = last_candle_close * (1 - price_deviation)
+            upper_bound = last_candle_high * (1 + price_deviation)
         if lower_bound < 0:
             logger.info(
                 f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
