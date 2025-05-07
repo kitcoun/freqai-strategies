@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.24"
+        return "3.3.25"
 
     timeframe = "5m"
 
@@ -481,7 +481,7 @@ class QuickAdapterV3(IStrategy):
 
     @staticmethod
     def is_trade_duration_valid(trade_duration: float) -> bool:
-        return not (isna(trade_duration) or trade_duration <= 0.0)
+        return not (isna(trade_duration) or trade_duration <= 0)
 
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
@@ -490,7 +490,7 @@ class QuickAdapterV3(IStrategy):
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         current_natr = df["natr_label_period_candles"].iloc[-1]
-        if isna(current_natr):
+        if isna(current_natr) or current_natr < 0:
             return None
         return (
             current_rate
@@ -504,22 +504,34 @@ class QuickAdapterV3(IStrategy):
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         entry_natr = self.get_trade_entry_natr(df, trade)
-        if isna(entry_natr):
+        if isna(entry_natr) or entry_natr <= 0:
             return None
         current_natr = df["natr_label_period_candles"].iloc[-1]
-        if isna(current_natr):
+        if isna(current_natr) or current_natr < 0:
             return None
-        natr_change_pct = abs(current_natr - entry_natr) / entry_natr
-        if natr_change_pct > 0.2:
+        entry_natr_weight = 0.5
+        current_natr_weight = 0.5
+        natr_pct_change = abs(current_natr - entry_natr) / entry_natr
+        natr_pct_change_thresholds = [
+            (0.8, 0.4),  # (threshold, adjustment)
+            (0.6, 0.3),
+            (0.4, 0.2),
+            (0.2, 0.1),
+        ]
+        weight_adjustment = 0.0
+        for threshold, adjustment in natr_pct_change_thresholds:
+            if natr_pct_change > threshold:
+                weight_adjustment = adjustment
+                break
+        if weight_adjustment > 0:
             if current_natr > entry_natr:
-                entry_natr_weight = 0.4
-                current_natr_weight = 0.6
+                entry_natr_weight -= weight_adjustment
+                current_natr_weight += weight_adjustment
             else:
-                entry_natr_weight = 0.6
-                current_natr_weight = 0.4
-        else:
-            entry_natr_weight = 0.5
-            current_natr_weight = 0.5
+                entry_natr_weight += weight_adjustment
+                current_natr_weight -= weight_adjustment
+        entry_natr_weight = max(0.0, min(1.0, entry_natr_weight))
+        current_natr_weight = max(0.0, min(1.0, current_natr_weight))
         take_profit_natr = (
             entry_natr_weight * entry_natr + current_natr_weight * current_natr
         )
@@ -547,7 +559,7 @@ class QuickAdapterV3(IStrategy):
         stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
         if isna(stoploss_distance):
             return None
-        if np.isclose(stoploss_distance, 0):
+        if np.isclose(stoploss_distance, 0) or stoploss_distance < 0:
             return None
         sign = 1 if trade.is_short else -1
         return stoploss_from_absolute(
@@ -595,7 +607,7 @@ class QuickAdapterV3(IStrategy):
         take_profit_distance = self.get_take_profit_distance(df, trade)
         if isna(take_profit_distance):
             return None
-        if np.isclose(take_profit_distance, 0):
+        if np.isclose(take_profit_distance, 0) or take_profit_distance < 0:
             return None
         take_profit_price = (
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
@@ -641,7 +653,7 @@ class QuickAdapterV3(IStrategy):
         last_candle_high = last_candle["high"]
         last_candle_low = last_candle["low"]
         last_candle_natr = last_candle["natr_label_period_candles"]
-        if isna(last_candle_natr):
+        if isna(last_candle_natr) or last_candle_natr < 0:
             return False
         entry_natr_ratio = self.get_entry_natr_ratio(pair)
         price_deviation = last_candle_natr * entry_natr_ratio
