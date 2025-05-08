@@ -915,12 +915,52 @@ def zigzag(
         if len(next_closes) == 0 or len(previous_closes) == 0:
             return False
 
+        next_slope_ok = True
+        if len(next_closes) >= 2:
+            next_slope = np.polyfit(range(len(next_closes)), next_closes, 1)[0]
+            if direction == TrendDirection.DOWN:
+                next_slope_ok = next_slope < 0
+            elif direction == TrendDirection.UP:
+                next_slope_ok = next_slope > 0
+        previous_slope_ok = True
+        if len(previous_closes) >= 2:
+            previous_slope = np.polyfit(
+                range(len(previous_closes)), previous_closes, 1
+            )[0]
+            if direction == TrendDirection.DOWN:
+                previous_slope_ok = previous_slope > 0
+            elif direction == TrendDirection.UP:
+                previous_slope_ok = previous_slope < 0
+
+        previous_timing_ok = True
+        if direction == TrendDirection.DOWN:
+            if len(previous_highs) >= 1:
+                previous_timing_ok = (
+                    highs[previous_slice].argmax() >= len(previous_highs) // 2
+                )
+        elif direction == TrendDirection.UP:
+            if len(previous_lows) >= 1:
+                previous_timing_ok = (
+                    lows[previous_slice].argmin() <= len(previous_lows) // 2
+                )
+        next_timing_ok = True
+        if direction == TrendDirection.DOWN:
+            if len(next_lows) >= 1:
+                next_timing_ok = lows[next_slice].argmin() >= len(next_lows) // 2
+        elif direction == TrendDirection.UP:
+            if len(next_highs) >= 1:
+                next_timing_ok = highs[next_slice].argmax() >= len(next_highs) // 2
+
         if direction == TrendDirection.DOWN:
             return (
                 np.all(next_closes < highs[pos])
                 and np.all(previous_closes < highs[pos])
                 and np.max(next_highs) <= highs[pos]
                 and np.max(previous_highs) <= highs[pos]
+                and next_timing_ok
+                and previous_timing_ok
+                and next_slope_ok
+                and previous_slope_ok
             )
         elif direction == TrendDirection.UP:
             return (
@@ -928,6 +968,10 @@ def zigzag(
                 and np.all(previous_closes > lows[pos])
                 and np.min(next_lows) >= lows[pos]
                 and np.min(previous_lows) >= lows[pos]
+                and next_timing_ok
+                and previous_timing_ok
+                and next_slope_ok
+                and previous_slope_ok
             )
         return False
 
