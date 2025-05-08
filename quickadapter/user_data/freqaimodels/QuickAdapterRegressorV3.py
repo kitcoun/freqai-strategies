@@ -896,11 +896,13 @@ def zigzag(
         pivots_directions.append(direction)
         last_pivot_pos = pos
 
-    def is_reversal_confirmed(pos: int, direction: TrendDirection) -> bool:
-        next_start = pos + 1
-        next_end = min(pos + confirmation_window + 1, n)
-        previous_start = max(pos - confirmation_window, 0)
-        previous_end = pos
+    def is_reversal_confirmed(
+        candidate_pivot_pos: int, next_confirmation_pos: int, direction: TrendDirection
+    ) -> bool:
+        next_start = next_confirmation_pos + 1
+        next_end = min(next_confirmation_pos + confirmation_window + 1, n)
+        previous_start = max(candidate_pivot_pos - confirmation_window, 0)
+        previous_end = candidate_pivot_pos
         if next_start >= next_end or previous_start >= previous_end:
             return False
 
@@ -934,19 +936,19 @@ def zigzag(
 
         if direction == TrendDirection.DOWN:
             return (
-                np.all(next_closes < highs[pos])
-                and np.all(previous_closes < highs[pos])
-                and np.max(next_highs) <= highs[pos]
-                and np.max(previous_highs) <= highs[pos]
+                np.all(next_closes < highs[candidate_pivot_pos])
+                and np.all(previous_closes < highs[candidate_pivot_pos])
+                and np.max(next_highs) <= highs[candidate_pivot_pos]
+                and np.max(previous_highs) <= highs[candidate_pivot_pos]
                 and next_slope_ok
                 and previous_slope_ok
             )
         elif direction == TrendDirection.UP:
             return (
-                np.all(next_closes > lows[pos])
-                and np.all(previous_closes > lows[pos])
-                and np.min(next_lows) >= lows[pos]
-                and np.min(previous_lows) >= lows[pos]
+                np.all(next_closes > lows[candidate_pivot_pos])
+                and np.all(previous_closes > lows[candidate_pivot_pos])
+                and np.min(next_lows) >= lows[candidate_pivot_pos]
+                and np.min(previous_lows) >= lows[candidate_pivot_pos]
                 and next_slope_ok
                 and previous_slope_ok
             )
@@ -969,13 +971,17 @@ def zigzag(
         initial_move_from_low = (current_high - initial_low) / initial_low
         if initial_move_from_high >= thresholds[
             initial_high_pos
-        ] and is_reversal_confirmed(initial_high_pos, TrendDirection.DOWN):
+        ] and is_reversal_confirmed(
+            initial_high_pos, initial_high_pos, TrendDirection.DOWN
+        ):
             add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
             state = TrendDirection.DOWN
             break
         elif initial_move_from_low >= thresholds[
             initial_low_pos
-        ] and is_reversal_confirmed(initial_low_pos, TrendDirection.UP):
+        ] and is_reversal_confirmed(
+            initial_low_pos, initial_low_pos, TrendDirection.UP
+        ):
             add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
             state = TrendDirection.UP
             break
@@ -996,7 +1002,7 @@ def zigzag(
                 (candidate_pivot_value - current_low) / candidate_pivot_value
                 >= thresholds[candidate_pivot_pos]
                 and (candidate_pivot_pos - last_pivot_pos) >= depth
-                and is_reversal_confirmed(candidate_pivot_pos, TrendDirection.DOWN)
+                and is_reversal_confirmed(candidate_pivot_pos, i, TrendDirection.DOWN)
             ):
                 add_pivot(candidate_pivot_pos, candidate_pivot_value, TrendDirection.UP)
                 reset_candidate_pivot()
@@ -1008,7 +1014,7 @@ def zigzag(
                 (current_high - candidate_pivot_value) / candidate_pivot_value
                 >= thresholds[candidate_pivot_pos]
                 and (candidate_pivot_pos - last_pivot_pos) >= depth
-                and is_reversal_confirmed(candidate_pivot_pos, TrendDirection.UP)
+                and is_reversal_confirmed(candidate_pivot_pos, i, TrendDirection.UP)
             ):
                 add_pivot(
                     candidate_pivot_pos, candidate_pivot_value, TrendDirection.DOWN
