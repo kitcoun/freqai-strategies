@@ -936,20 +936,24 @@ def zigzag(
         if direction == TrendDirection.DOWN:
             if len(previous_highs) >= 1:
                 previous_timing_ok = (
-                    highs[previous_slice].argmax() >= len(previous_highs) // 2
+                    highs[previous_slice].argmax() >= (len(previous_highs) - 1) // 2
                 )
         elif direction == TrendDirection.UP:
             if len(previous_lows) >= 1:
                 previous_timing_ok = (
-                    lows[previous_slice].argmin() <= len(previous_lows) // 2
+                    lows[previous_slice].argmin() <= (len(previous_lows) - 1) // 2
                 )
+
         next_timing_ok = True
         if direction == TrendDirection.DOWN:
             if len(next_lows) >= 1:
-                next_timing_ok = lows[next_slice].argmin() >= len(next_lows) // 2
+                next_timing_ok = lows[next_slice].argmin() >= (len(next_lows) - 1) // 2
+
         elif direction == TrendDirection.UP:
             if len(next_highs) >= 1:
-                next_timing_ok = highs[next_slice].argmax() >= len(next_highs) // 2
+                next_timing_ok = (
+                    highs[next_slice].argmax() >= (len(next_highs) - 1) // 2
+                )
 
         if direction == TrendDirection.DOWN:
             return (
