@@ -428,6 +428,22 @@ def zigzag(
             elif direction == TrendDirection.UP:
                 previous_slope_ok = previous_slope < 0
 
+        significant_move_away_ok = False
+        if direction == TrendDirection.DOWN:
+            if np.any(
+                next_lows
+                < highs[candidate_pivot_pos]
+                * (1 - thresholds[candidate_pivot_pos] * 0.15)
+            ):
+                significant_move_away_ok = True
+        elif direction == TrendDirection.UP:
+            if np.any(
+                next_highs
+                > lows[candidate_pivot_pos]
+                * (1 + thresholds[candidate_pivot_pos] * 0.15)
+            ):
+                significant_move_away_ok = True
+
         if direction == TrendDirection.DOWN:
             return (
                 np.all(next_closes < highs[candidate_pivot_pos])
@@ -436,6 +452,7 @@ def zigzag(
                 and np.max(previous_highs) <= highs[candidate_pivot_pos]
                 and next_slope_ok
                 and previous_slope_ok
+                and significant_move_away_ok
             )
         elif direction == TrendDirection.UP:
             return (
@@ -445,6 +462,7 @@ def zigzag(
                 and np.min(previous_lows) >= lows[candidate_pivot_pos]
                 and next_slope_ok
                 and previous_slope_ok
+                and significant_move_away_ok
             )
         return False
 
