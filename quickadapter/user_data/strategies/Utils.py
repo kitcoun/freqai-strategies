@@ -411,22 +411,13 @@ def zigzag(
         if len(next_closes) == 0 or len(previous_closes) == 0:
             return False
 
-        next_slope_ok = True
+        slope_ok = True
         if len(next_closes) >= 2:
             next_slope = np.polyfit(range(len(next_closes)), next_closes, 1)[0]
             if direction == TrendDirection.DOWN:
-                next_slope_ok = next_slope < 0
+                slope_ok = next_slope < 0
             elif direction == TrendDirection.UP:
-                next_slope_ok = next_slope > 0
-        previous_slope_ok = True
-        if len(previous_closes) >= 2:
-            previous_slope = np.polyfit(
-                range(len(previous_closes)), previous_closes, 1
-            )[0]
-            if direction == TrendDirection.DOWN:
-                previous_slope_ok = previous_slope > 0
-            elif direction == TrendDirection.UP:
-                previous_slope_ok = previous_slope < 0
+                slope_ok = next_slope > 0
 
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
@@ -450,8 +441,7 @@ def zigzag(
                 and np.all(previous_closes < highs[candidate_pivot_pos])
                 and np.max(next_highs) <= highs[candidate_pivot_pos]
                 and np.max(previous_highs) <= highs[candidate_pivot_pos]
-                and next_slope_ok
-                and previous_slope_ok
+                and slope_ok
                 and significant_move_away_ok
             )
         elif direction == TrendDirection.UP:
@@ -460,8 +450,7 @@ def zigzag(
                 and np.all(previous_closes > lows[candidate_pivot_pos])
                 and np.min(next_lows) >= lows[candidate_pivot_pos]
                 and np.min(previous_lows) >= lows[candidate_pivot_pos]
-                and next_slope_ok
-                and previous_slope_ok
+                and slope_ok
                 and significant_move_away_ok
             )
         return False
