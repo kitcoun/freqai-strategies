@@ -419,19 +419,20 @@ def zigzag(
             elif direction == TrendDirection.UP:
                 slope_ok = next_slope > 0
 
+        thresholds_ratio = 0.175
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
             if np.any(
                 next_lows
                 < highs[candidate_pivot_pos]
-                * (1 - thresholds[candidate_pivot_pos] * 0.15)
+                * (1 - thresholds[candidate_pivot_pos] * thresholds_ratio)
             ):
                 significant_move_away_ok = True
         elif direction == TrendDirection.UP:
             if np.any(
                 next_highs
                 > lows[candidate_pivot_pos]
-                * (1 + thresholds[candidate_pivot_pos] * 0.15)
+                * (1 + thresholds[candidate_pivot_pos] * thresholds_ratio)
             ):
                 significant_move_away_ok = True
 
