@@ -408,8 +408,24 @@ def zigzag(
         previous_closes = closes[previous_slice]
         previous_highs = highs[previous_slice]
         previous_lows = lows[previous_slice]
-        if len(next_closes) == 0 or len(previous_closes) == 0:
-            return False
+
+        local_extrema_ok = False
+        if direction == TrendDirection.DOWN:
+            if (
+                np.all(next_closes < highs[candidate_pivot_pos])
+                and np.all(previous_closes < highs[candidate_pivot_pos])
+                and np.max(next_highs) <= highs[candidate_pivot_pos]
+                and np.max(previous_highs) <= highs[candidate_pivot_pos]
+            ):
+                local_extrema_ok = True
+        elif direction == TrendDirection.UP:
+            if (
+                np.all(next_closes > lows[candidate_pivot_pos])
+                and np.all(previous_closes > lows[candidate_pivot_pos])
+                and np.min(next_lows) >= lows[candidate_pivot_pos]
+                and np.min(previous_lows) >= lows[candidate_pivot_pos]
+            ):
+                local_extrema_ok = True
 
         slope_ok = True
         if len(next_closes) >= 2:
@@ -419,7 +435,7 @@ def zigzag(
             elif direction == TrendDirection.UP:
                 slope_ok = next_slope > 0
 
-        thresholds_ratio = 0.175
+        thresholds_ratio = 0.25
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
             if np.any(
@@ -436,25 +452,7 @@ def zigzag(
             ):
                 significant_move_away_ok = True
 
-        if direction == TrendDirection.DOWN:
-            return (
-                np.all(next_closes < highs[candidate_pivot_pos])
-                and np.all(previous_closes < highs[candidate_pivot_pos])
-                and np.max(next_highs) <= highs[candidate_pivot_pos]
-                and np.max(previous_highs) <= highs[candidate_pivot_pos]
-                and slope_ok
-                and significant_move_away_ok
-            )
-        elif direction == TrendDirection.UP:
-            return (
-                np.all(next_closes > lows[candidate_pivot_pos])
-                and np.all(previous_closes > lows[candidate_pivot_pos])
-                and np.min(next_lows) >= lows[candidate_pivot_pos]
-                and np.min(previous_lows) >= lows[candidate_pivot_pos]
-                and slope_ok
-                and significant_move_away_ok
-            )
-        return False
+        return local_extrema_ok and slope_ok and significant_move_away_ok
 
     start_pos = 0
     initial_high_pos = start_pos
