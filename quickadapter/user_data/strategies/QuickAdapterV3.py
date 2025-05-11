@@ -20,7 +20,7 @@ from Utils import (
     bottom_change_percent,
     zigzag,
     ewo,
-    non_zero_range,
+    non_zero_diff,
     price_retracement_percent,
     vwapb,
     top_change_percent,
@@ -260,7 +260,7 @@ class QuickAdapterV3(IStrategy):
             dataframe["bb_upperband"] - dataframe["bb_lowerband"]
         ) / dataframe["bb_middleband"]
         dataframe["%-ibs"] = (dataframe["close"] - dataframe["low"]) / (
-            non_zero_range(dataframe["high"], dataframe["low"])
+            non_zero_diff(dataframe["high"], dataframe["low"])
         )
         dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
             dataframe, pricemode="median", zero_lag=True

@@ -14,7 +14,7 @@ def get_distance(
     return abs(p1 - p2)
 
 
-def non_zero_range(s1: pd.Series, s2: pd.Series) -> pd.Series:
+def non_zero_diff(s1: pd.Series, s2: pd.Series) -> pd.Series:
     """Returns the difference of two series and adds epsilon to any zero values."""
     diff = s1 - s2
     diff = diff.mask(diff == 0, other=diff + np.finfo(float).eps)
@@ -112,7 +112,7 @@ def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series
     )
 
     return (dataframe["close"] - previous_close_low) / (
-        non_zero_range(previous_close_high, previous_close_low)
+        non_zero_diff(previous_close_high, previous_close_low)
     )
 
 
