@@ -614,7 +614,7 @@ class QuickAdapterV3(IStrategy):
         )
         trade.set_custom_data(key="take_profit_price", value=take_profit_price)
         logger.info(
-            f"Trade with direction {trade.trade_direction} and open price {trade.open_rate} for {pair}: TP price: {take_profit_price} vs current price: {current_rate}"
+            f"Trade {trade.trade_direction} for {pair}: open price {trade.open_rate}, current price {current_rate}, TP price {take_profit_price}"
         )
         if trade.is_short:
             if current_rate <= take_profit_price:
