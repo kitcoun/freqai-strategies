@@ -635,8 +635,7 @@ class QuickAdapterV3(IStrategy):
         side: str,
         **kwargs,
     ) -> bool:
-        open_trade_count = Trade.get_open_trade_count()
-        if open_trade_count >= self.config.get("max_open_trades"):
+        if Trade.get_open_trade_count() >= self.config.get("max_open_trades"):
             return False
         max_open_trades_per_side = self.max_open_trades_per_side()
         if max_open_trades_per_side >= 0:
@@ -655,8 +654,9 @@ class QuickAdapterV3(IStrategy):
         last_candle_natr = last_candle["natr_label_period_candles"]
         if isna(last_candle_natr) or last_candle_natr < 0:
             return False
-        entry_natr_ratio = self.get_entry_natr_ratio(pair)
-        price_deviation = last_candle_natr * entry_natr_ratio
+        lower_bound = 0
+        upper_bound = 0
+        price_deviation = last_candle_natr * self.get_entry_natr_ratio(pair)
         if side == "long":
             lower_bound = last_candle_low * (1 - price_deviation)
             upper_bound = last_candle_close * (1 + price_deviation)
