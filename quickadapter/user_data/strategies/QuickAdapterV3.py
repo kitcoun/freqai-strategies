@@ -369,7 +369,7 @@ class QuickAdapterV3(IStrategy):
         return self.get_label_natr_ratio(pair) * 0.0125
 
     def get_stoploss_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.75
+        return self.get_label_natr_ratio(pair) * 0.85
 
     def get_take_profit_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.65
