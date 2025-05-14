@@ -17,6 +17,8 @@ class RLAgentStrategy(IStrategy):
     RLAgentStrategy
     """
 
+    INTERFACE_VERSION = 3
+
     minimal_roi = {"0": 0.03}
 
     process_only_new_candles = True
