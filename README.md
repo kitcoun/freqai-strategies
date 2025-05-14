@@ -1,2 +1,1 @@
-FreqAI strategies
-=================
+# FreqAI strategies
