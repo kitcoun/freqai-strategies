@@ -43,14 +43,16 @@ def derive_gaussian_std_from_window(window: int) -> float:
     return (window - 1) / 6.0 if window > 1 else 0.5
 
 
-def zero_phase_gaussian(series: pd.Series, window: int, std: float):
+def zero_phase_gaussian(series: pd.Series, window: int, std: float) -> pd.Series:
     kernel = gaussian(window, std=std)
     kernel /= kernel.sum()
 
     padding_length = window - 1
-    padded_series = np.pad(series.values, (padding_length, padding_length), mode="edge")
+    padded_series_values = np.pad(
+        series.values, (padding_length, padding_length), mode="edge"
+    )
 
-    forward = convolve(padded_series, kernel, mode="valid")
+    forward = convolve(padded_series_values, kernel, mode="valid")
     backward = convolve(forward[::-1], kernel, mode="valid")[::-1]
 
     return pd.Series(backward, index=series.index)
