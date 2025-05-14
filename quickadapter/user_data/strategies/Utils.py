@@ -147,21 +147,21 @@ def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], pd.Series]:
     return mamodes.get(mamode, mamodes["sma"])
 
 
-def _fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
+def _fractal_dimension(highs: np.ndarray, lows: np.ndarray, period: int) -> float:
     """Original fractal dimension computation implementation per Ehlers' paper."""
     if period % 2 != 0:
         raise ValueError("period must be even")
 
     half_period = period // 2
 
-    H1 = np.max(high[:half_period])
-    L1 = np.min(low[:half_period])
+    H1 = np.max(highs[:half_period])
+    L1 = np.min(lows[:half_period])
 
-    H2 = np.max(high[half_period:])
-    L2 = np.min(low[half_period:])
+    H2 = np.max(highs[half_period:])
+    L2 = np.min(lows[half_period:])
 
-    H3 = np.max(high)
-    L3 = np.min(low)
+    H3 = np.max(highs)
+    L3 = np.min(lows)
 
     HL1 = H1 - L1
     HL2 = H2 - L2
@@ -181,30 +181,30 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
     if period % 2 != 0:
         raise ValueError("period must be even")
 
-    high = df["high"]
-    low = df["low"]
-    close = df["close"]
+    highs = df["high"]
+    lows = df["low"]
+    closes = df["close"]
 
     if zero_lag:
-        high = zero_lag_series(high, period=period)
-        low = zero_lag_series(low, period=period)
-        close = zero_lag_series(close, period=period)
+        highs = zero_lag_series(highs, period=period)
+        lows = zero_lag_series(lows, period=period)
+        closes = zero_lag_series(closes, period=period)
 
-    fd = pd.Series(np.nan, index=close.index)
-    for i in range(period, len(close)):
-        window_high = high.iloc[i - period : i]
-        window_low = low.iloc[i - period : i]
-        fd.iloc[i] = _fractal_dimension(window_high.values, window_low.values, period)
+    fd = pd.Series(np.nan, index=closes.index)
+    for i in range(period, len(closes)):
+        window_highs = highs.iloc[i - period : i]
+        window_lows = lows.iloc[i - period : i]
+        fd.iloc[i] = _fractal_dimension(window_highs.values, window_lows.values, period)
 
     alpha = np.exp(-4.6 * (fd - 1)).clip(0.01, 1)
 
-    frama = pd.Series(np.nan, index=close.index)
-    frama.iloc[period - 1] = close.iloc[:period].mean()
-    for i in range(period, len(close)):
+    frama = pd.Series(np.nan, index=closes.index)
+    frama.iloc[period - 1] = closes.iloc[:period].mean()
+    for i in range(period, len(closes)):
         if pd.isna(frama.iloc[i - 1]) or pd.isna(alpha.iloc[i]):
             continue
         frama.iloc[i] = (
-            alpha.iloc[i] * close.iloc[i] + (1 - alpha.iloc[i]) * frama.iloc[i - 1]
+            alpha.iloc[i] * closes.iloc[i] + (1 - alpha.iloc[i]) * frama.iloc[i - 1]
         )
 
     return frama
