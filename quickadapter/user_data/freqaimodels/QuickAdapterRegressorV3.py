@@ -897,7 +897,11 @@ def zigzag(
         last_pivot_pos = pos
 
     def is_reversal_confirmed(
-        candidate_pivot_pos: int, next_confirmation_pos: int, direction: TrendDirection
+        candidate_pivot_pos: int,
+        next_confirmation_pos: int,
+        direction: TrendDirection,
+        move_away_ratio: float = 0.25,
+        min_price_change_ratio: float = 0.125,
     ) -> bool:
         next_start = next_confirmation_pos + 1
         next_end = min(next_confirmation_pos + confirmation_window + 1, n)
@@ -941,36 +945,26 @@ def zigzag(
             elif direction == TrendDirection.UP:
                 slope_ok = next_slope > 0
 
-        significant_move_away_thresholds_ratio = 0.25
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
             if np.any(
                 next_lows
                 < highs[candidate_pivot_pos]
-                * (
-                    1
-                    - thresholds[candidate_pivot_pos]
-                    * significant_move_away_thresholds_ratio
-                )
+                * (1 - thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
                 significant_move_away_ok = True
         elif direction == TrendDirection.UP:
             if np.any(
                 next_highs
                 > lows[candidate_pivot_pos]
-                * (
-                    1
-                    + thresholds[candidate_pivot_pos]
-                    * significant_move_away_thresholds_ratio
-                )
+                * (1 + thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
                 significant_move_away_ok = True
 
-        min_price_change_thresholds_ratio = 0.125
         min_price_change_ok = False
         required_price_change = (
             thresholds[next_confirmation_pos]
-            * min_price_change_thresholds_ratio
+            * min_price_change_ratio
             * closes[next_confirmation_pos]
         )
         if len(next_closes) > 0:
