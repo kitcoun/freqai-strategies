@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.32"
+    version = "3.7.33"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -935,30 +935,55 @@ def zigzag(
 
         slope_ok = True
         if len(next_closes) >= 2:
-            next_slope = np.polyfit(range(len(next_closes)), next_closes, 1)[0]
+            next_slope = (next_closes[-1] - next_closes[0]) / (len(next_closes) - 1)
             if direction == TrendDirection.DOWN:
                 slope_ok = next_slope < 0
             elif direction == TrendDirection.UP:
                 slope_ok = next_slope > 0
 
-        thresholds_ratio = 0.25
+        significant_move_away_thresholds_ratio = 0.25
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
             if np.any(
                 next_lows
                 < highs[candidate_pivot_pos]
-                * (1 - thresholds[candidate_pivot_pos] * thresholds_ratio)
+                * (
+                    1
+                    - thresholds[candidate_pivot_pos]
+                    * significant_move_away_thresholds_ratio
+                )
             ):
                 significant_move_away_ok = True
         elif direction == TrendDirection.UP:
             if np.any(
                 next_highs
                 > lows[candidate_pivot_pos]
-                * (1 + thresholds[candidate_pivot_pos] * thresholds_ratio)
+                * (
+                    1
+                    + thresholds[candidate_pivot_pos]
+                    * significant_move_away_thresholds_ratio
+                )
             ):
                 significant_move_away_ok = True
 
-        return local_extrema_ok and slope_ok and significant_move_away_ok
+        min_price_change_thresholds_ratio = 0.125
+        min_price_change_ok = False
+        required_price_change = (
+            thresholds[next_confirmation_pos]
+            * min_price_change_thresholds_ratio
+            * closes[next_confirmation_pos]
+        )
+        if len(next_closes) > 0:
+            actual_price_change = abs(next_closes[-1] - next_closes[0])
+            if actual_price_change >= required_price_change:
+                min_price_change_ok = True
+
+        return (
+            local_extrema_ok
+            and slope_ok
+            and significant_move_away_ok
+            and min_price_change_ok
+        )
 
     start_pos = 0
     initial_high_pos = start_pos
@@ -975,22 +1000,41 @@ def zigzag(
 
         initial_move_from_high = (initial_high - current_low) / initial_high
         initial_move_from_low = (current_high - initial_low) / initial_low
-        if initial_move_from_high >= thresholds[
-            initial_high_pos
-        ] and is_reversal_confirmed(
-            initial_high_pos, initial_high_pos, TrendDirection.DOWN
+        if (
+            initial_move_from_high >= thresholds[initial_high_pos]
+            and initial_move_from_low >= thresholds[initial_low_pos]
         ):
-            add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
-            state = TrendDirection.DOWN
-            break
-        elif initial_move_from_low >= thresholds[
-            initial_low_pos
-        ] and is_reversal_confirmed(
-            initial_low_pos, initial_low_pos, TrendDirection.UP
-        ):
-            add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
-            state = TrendDirection.UP
-            break
+            if initial_move_from_high > initial_move_from_low:
+                if is_reversal_confirmed(
+                    initial_high_pos, initial_high_pos, TrendDirection.DOWN
+                ):
+                    add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
+                    state = TrendDirection.DOWN
+                    break
+            else:
+                if is_reversal_confirmed(
+                    initial_low_pos, initial_low_pos, TrendDirection.UP
+                ):
+                    add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
+                    state = TrendDirection.UP
+                    break
+        else:
+            if initial_move_from_high >= thresholds[
+                initial_high_pos
+            ] and is_reversal_confirmed(
+                initial_high_pos, initial_high_pos, TrendDirection.DOWN
+            ):
+                add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
+                state = TrendDirection.DOWN
+                break
+            elif initial_move_from_low >= thresholds[
+                initial_low_pos
+            ] and is_reversal_confirmed(
+                initial_low_pos, initial_low_pos, TrendDirection.UP
+            ):
+                add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
+                state = TrendDirection.UP
+                break
     else:
         return [], [], []
 
