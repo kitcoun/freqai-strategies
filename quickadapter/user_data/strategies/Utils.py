@@ -347,7 +347,7 @@ def zigzag(
     natr_period: int = 14,
     natr_ratio: float = 1.0,
     confirmation_window: int = 3,
-    depth: int = 12,
+    initial_depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
     n = len(df)
     if df.empty or n < max(natr_period, 2 * confirmation_window + 1):
@@ -362,6 +362,7 @@ def zigzag(
     lows = df["low"].values
 
     state: TrendDirection = TrendDirection.NEUTRAL
+    depth = initial_depth
 
     last_pivot_pos = -depth - 1
     pivots_indices, pivots_values, pivots_directions = [], [], []
@@ -369,6 +370,19 @@ def zigzag(
     candidate_pivot_pos = -1
     candidate_pivot_value = np.nan
     candidate_pivot_direction: TrendDirection = TrendDirection.NEUTRAL
+
+    def calculate_depth(
+        pivots_indices: list[int],
+        min_depth: int = 6,
+        max_depth: int = 24,
+        depth_scaling_factor: float = 0.75,
+    ) -> int:
+        if len(pivots_indices) < 2:
+            return initial_depth
+        previous_interval = pivots_indices[-1] - pivots_indices[-2]
+        return max(
+            min_depth, min(max_depth, int(previous_interval * depth_scaling_factor))
+        )
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
@@ -384,13 +398,14 @@ def zigzag(
         candidate_pivot_direction = TrendDirection.NEUTRAL
 
     def add_pivot(pos: int, value: float, direction: TrendDirection):
-        nonlocal last_pivot_pos
+        nonlocal last_pivot_pos, depth
         if pivots_indices and indices[pos] == pivots_indices[-1]:
             return
         pivots_indices.append(indices[pos])
         pivots_values.append(value)
         pivots_directions.append(direction)
         last_pivot_pos = pos
+        depth = calculate_depth(pivots_indices)
 
     def is_reversal_confirmed(
         candidate_pivot_pos: int,
@@ -438,6 +453,8 @@ def zigzag(
                 >= extrema_threshold
             )
             local_extrema_ok = valid_next and valid_previous
+        if not local_extrema_ok:
+            return False
 
         slope_ok = False
         next_closes_std = np.std(next_closes)
@@ -451,6 +468,8 @@ def zigzag(
                 slope_ok = next_slope_strength < -min_slope_strength
             elif direction == TrendDirection.UP:
                 slope_ok = next_slope_strength > min_slope_strength
+        if not slope_ok:
+            return False
 
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
@@ -467,8 +486,7 @@ def zigzag(
                 * (1 + thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
                 significant_move_away_ok = True
-
-        return local_extrema_ok and slope_ok and significant_move_away_ok
+        return significant_move_away_ok
 
     start_pos = 0
     initial_high_pos = start_pos
