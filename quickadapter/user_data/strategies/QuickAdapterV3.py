@@ -504,7 +504,7 @@ class QuickAdapterV3(IStrategy):
         if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
             return None
         entry_natr = self.get_trade_entry_natr(df, trade)
-        if isna(entry_natr) or entry_natr <= 0:
+        if isna(entry_natr) or entry_natr < 0:
             return None
         current_natr = df["natr_label_period_candles"].iloc[-1]
         if isna(current_natr) or current_natr < 0:
