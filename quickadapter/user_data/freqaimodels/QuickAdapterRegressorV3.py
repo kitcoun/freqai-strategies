@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.38"
+    version = "3.7.39"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -857,10 +857,17 @@ def zigzag(
     if df.empty or n < max(natr_period, 2 * confirmation_window + 1):
         return [], [], []
 
+    natr_values_cache: dict[int, np.ndarray] = {}
+
+    def get_natr_values(period: int) -> np.ndarray:
+        if period not in natr_values_cache:
+            natr_values_cache[period] = (
+                ta.NATR(df, timeperiod=period).fillna(method="bfill").values
+            )
+        return natr_values_cache[period]
+
     indices = df.index.tolist()
-    thresholds = (
-        (ta.NATR(df, timeperiod=natr_period) * natr_ratio).fillna(method="bfill").values
-    )
+    thresholds = get_natr_values(natr_period) * natr_ratio
     closes = df["close"].values
     highs = df["high"].values
     lows = df["low"].values
@@ -875,34 +882,60 @@ def zigzag(
     candidate_pivot_value = np.nan
     candidate_pivot_direction: TrendDirection = TrendDirection.NEUTRAL
 
-    natr_values_cache: dict[int, np.ndarray] = {}
+    def calculate_depth_factor(
+        pos: int,
+        lookback_period: int = 20,
+        min_factor: float = 0.5,
+        max_factor: float = 1.5,
+    ) -> float:
+        natr_values = get_natr_values(natr_period)
 
-    def get_natr_values(period: int) -> np.ndarray:
-        if period not in natr_values_cache:
-            natr_values_cache[period] = ta.NATR(df, timeperiod=period).values
-        return natr_values_cache[period]
+        start = max(0, pos - lookback_period)
+        end = min(pos + 1, len(natr_values))
+        if start >= end:
+            return (min_factor + max_factor) / 2
+
+        lookback_natr = natr_values[start:end]
+        natr_pos = natr_values[pos]
+        median_natr = np.median(lookback_natr)
+
+        natr_ratio = natr_pos / (median_natr + np.finfo(float).eps)
+        smoothed_natr_ratio = np.sqrt(natr_ratio)
+
+        depth_factor = (
+            max_factor
+            - (max_factor - min_factor)
+            * (np.clip(smoothed_natr_ratio, 0.5, 2.0) - 0.5)
+            / 1.5
+        )
+
+        return np.clip(depth_factor, min_factor, max_factor)
 
     def calculate_depth(
         pivots_indices: list[int],
-        min_depth: int = int(initial_depth / 2),
-        max_depth: int = initial_depth * 2,
-        depth_scaling_factor: float = 0.75,
+        min_depth: int = 5,
+        max_depth: int = 30,
     ) -> int:
         if len(pivots_indices) < 2:
             return initial_depth
-        previous_period = pivots_indices[-1] - pivots_indices[-2]
-        return max(
-            min_depth, min(max_depth, int(previous_period * depth_scaling_factor))
-        )
+
+        previous_periods = np.diff(pivots_indices[-3:])
+        weights = np.linspace(0.5, 1.5, len(previous_periods))
+        average_period = np.average(previous_periods, weights=weights)
+
+        depth_factor = calculate_depth_factor(last_pivot_pos)
+        depth = int(average_period * depth_factor)
+
+        return np.clip(depth, min_depth, max_depth)
 
     def calculate_min_slope_strength(
         pos: int,
-        lookback_period: int = 14,
+        lookback_period: int = 20,
         min_value: float = 0.3,
-        max_value: float = 1.0,
+        max_value: float = 0.7,
     ) -> float:
-        natr_values = get_natr_values(lookback_period)
-        pos_natr = natr_values[pos]
+        natr_values = get_natr_values(natr_period)
+        natr_pos = natr_values[pos]
 
         start = max(0, pos - lookback_period)
         end = min(pos + 1, len(natr_values))
@@ -910,11 +943,11 @@ def zigzag(
             return min_value
         natr_min = np.min(natr_values[start:end])
         natr_max = np.max(natr_values[start:end])
-        normalized_natr = (pos_natr - natr_min) / (
+        normalized_natr_pos = (natr_pos - natr_min) / (
             natr_max - natr_min + np.finfo(float).eps
         )
 
-        return min_value + (max_value - min_value) * normalized_natr
+        return min_value + (max_value - min_value) * normalized_natr_pos
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
