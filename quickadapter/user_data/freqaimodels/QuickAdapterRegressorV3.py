@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.37"
+    version = "3.7.38"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -899,7 +899,7 @@ def zigzag(
         pos: int,
         lookback_period: int = 14,
         min_value: float = 0.3,
-        max_value: float = 0.7,
+        max_value: float = 1.0,
     ) -> float:
         natr_values = get_natr_values(lookback_period)
         pos_natr = natr_values[pos]

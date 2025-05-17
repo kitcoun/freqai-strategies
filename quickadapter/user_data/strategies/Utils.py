@@ -395,7 +395,7 @@ def zigzag(
         pos: int,
         lookback_period: int = 14,
         min_value: float = 0.3,
-        max_value: float = 0.7,
+        max_value: float = 1.0,
     ) -> float:
         natr_values = get_natr_values(lookback_period)
         pos_natr = natr_values[pos]
