@@ -884,8 +884,8 @@ def zigzag(
 
     def calculate_depth(
         pivots_indices: list[int],
-        min_depth: int = 6,
-        max_depth: int = 24,
+        min_depth: int = int(initial_depth / 2),
+        max_depth: int = initial_depth * 2,
         depth_scaling_factor: float = 0.75,
     ) -> int:
         if len(pivots_indices) < 2:
