@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.39"
+    version = "3.7.40"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -397,6 +397,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         if not QuickAdapterRegressorV3.optuna_study_has_best_trials(study):
             return None
         best_trials = study.best_trials
+        if len(best_trials) == 1:
+            return best_trials[0]
         if namespace == "label":
             pivots_sizes = [trial.values[1] for trial in best_trials]
             quantile_pivots_size = np.quantile(
