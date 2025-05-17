@@ -396,8 +396,9 @@ def zigzag(
         candidate_pivot_pos: int,
         next_confirmation_pos: int,
         direction: TrendDirection,
-        extrema_threshold: float = 0.95,
+        extrema_threshold: float = 0.85,
         min_slope_strength: float = 0.5,
+        min_slope_volatility: float = 0.001,
         move_away_ratio: float = 0.25,
     ) -> bool:
         next_start = next_confirmation_pos + 1
@@ -412,35 +413,35 @@ def zigzag(
         next_highs = highs[next_slice]
         next_lows = lows[next_slice]
         previous_slice = slice(previous_start, previous_end)
-        previous_closes = closes[previous_slice]
+        previous_highs = highs[previous_slice]
+        previous_lows = lows[previous_slice]
 
         local_extrema_ok = False
         if direction == TrendDirection.DOWN:
             valid_next = (
-                np.sum(next_closes < highs[candidate_pivot_pos]) / len(next_closes)
+                np.sum(next_highs < highs[candidate_pivot_pos]) / len(next_highs)
                 >= extrema_threshold
             )
             valid_previous = (
-                np.sum(previous_closes < highs[candidate_pivot_pos])
-                / len(previous_closes)
+                np.sum(previous_highs < highs[candidate_pivot_pos])
+                / len(previous_highs)
                 >= extrema_threshold
             )
             local_extrema_ok = valid_next and valid_previous
         elif direction == TrendDirection.UP:
             valid_next = (
-                np.sum(next_closes > lows[candidate_pivot_pos]) / len(next_closes)
+                np.sum(next_lows > lows[candidate_pivot_pos]) / len(next_lows)
                 >= extrema_threshold
             )
             valid_previous = (
-                np.sum(previous_closes > lows[candidate_pivot_pos])
-                / len(previous_closes)
+                np.sum(previous_lows > lows[candidate_pivot_pos]) / len(previous_lows)
                 >= extrema_threshold
             )
             local_extrema_ok = valid_next and valid_previous
 
         slope_ok = False
         next_closes_std = np.std(next_closes)
-        if len(next_closes) >= 2 and next_closes_std > np.finfo(float).eps:
+        if len(next_closes) >= 2 and next_closes_std > min_slope_volatility:
             weights = np.linspace(0.5, 1.5, len(next_closes))
             next_slope = np.polyfit(range(len(next_closes)), next_closes, 1, w=weights)[
                 0
