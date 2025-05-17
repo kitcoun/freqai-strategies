@@ -408,7 +408,7 @@ def zigzag(
         return np.clip(depth_factor, min_factor, max_factor)
 
     def calculate_depth(
-        pivots_indices: list[int],
+        pos: int,
         min_depth: int = 5,
         max_depth: int = 30,
     ) -> int:
@@ -419,7 +419,7 @@ def zigzag(
         weights = np.linspace(0.5, 1.5, len(previous_periods))
         average_period = np.average(previous_periods, weights=weights)
 
-        depth_factor = calculate_depth_factor(last_pivot_pos)
+        depth_factor = calculate_depth_factor(pos)
         depth = int(average_period * depth_factor)
 
         return np.clip(depth, min_depth, max_depth)
@@ -466,7 +466,7 @@ def zigzag(
         pivots_values.append(value)
         pivots_directions.append(direction)
         last_pivot_pos = pos
-        depth = calculate_depth(pivots_indices)
+        depth = calculate_depth(pos)
 
     def is_reversal_confirmed(
         candidate_pivot_pos: int,
