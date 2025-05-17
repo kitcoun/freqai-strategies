@@ -893,7 +893,7 @@ def zigzag(
         natr_values = get_natr_values(natr_period)
 
         start = max(0, pos - lookback_period)
-        end = min(pos + 1, len(natr_values))
+        end = min(pos + 1, n)
         if start >= end:
             return (min_factor + max_factor) / 2
 
@@ -940,7 +940,7 @@ def zigzag(
         natr_pos = natr_values[pos]
 
         start = max(0, pos - lookback_period)
-        end = min(pos + 1, len(natr_values))
+        end = min(pos + 1, n)
         if start >= end:
             return min_value
         natr_min = np.min(natr_values[start:end])
@@ -1182,14 +1182,15 @@ def label_objective(
         natr_ratio=label_natr_ratio,
     )
 
-    if len(pivots_values) < 2:
+    n = len(pivots_values)
+    if n < 2:
         return -float("inf"), -float("inf")
 
     scaled_natr_label_period_candles = (
         ta.NATR(df, timeperiod=label_period_candles) * label_natr_ratio
     )
 
-    return scaled_natr_label_period_candles.median(), len(pivots_values)
+    return scaled_natr_label_period_candles.median(), n
 
 
 def smoothed_max(series: pd.Series, temperature=1.0) -> float:

@@ -183,6 +183,8 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
     if period % 2 != 0:
         raise ValueError("period must be even")
 
+    n = len(df)
+
     highs = df["high"]
     lows = df["low"]
     closes = df["close"]
@@ -193,7 +195,7 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
         closes = zero_lag_series(closes, period=period)
 
     fd = pd.Series(np.nan, index=closes.index)
-    for i in range(period, len(closes)):
+    for i in range(period, n):
         window_highs = highs.iloc[i - period : i]
         window_lows = lows.iloc[i - period : i]
         fd.iloc[i] = _fractal_dimension(window_highs.values, window_lows.values, period)
@@ -202,7 +204,7 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
 
     frama = pd.Series(np.nan, index=closes.index)
     frama.iloc[period - 1] = closes.iloc[:period].mean()
-    for i in range(period, len(closes)):
+    for i in range(period, n):
         if pd.isna(frama.iloc[i - 1]) or pd.isna(alpha.iloc[i]):
             continue
         frama.iloc[i] = (
@@ -220,7 +222,8 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     """
     if period <= 0:
         raise ValueError("period must be greater than 0")
-    if len(series) < period:
+    n = len(series)
+    if n < period:
         return pd.Series(index=series.index, dtype=float)
 
     if zero_lag:
@@ -228,7 +231,7 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     smma = pd.Series(np.nan, index=series.index)
     smma.iloc[period - 1] = series.iloc[:period].mean()
 
-    for i in range(period, len(series)):
+    for i in range(period, n):
         smma.iloc[i] = (smma.iloc[i - 1] * (period - 1) + series.iloc[i]) / period
 
     if offset != 0:
@@ -387,7 +390,7 @@ def zigzag(
         natr_values = get_natr_values(natr_period)
 
         start = max(0, pos - lookback_period)
-        end = min(pos + 1, len(natr_values))
+        end = min(pos + 1, n)
         if start >= end:
             return (min_factor + max_factor) / 2
 
@@ -434,7 +437,7 @@ def zigzag(
         natr_pos = natr_values[pos]
 
         start = max(0, pos - lookback_period)
-        end = min(pos + 1, len(natr_values))
+        end = min(pos + 1, n)
         if start >= end:
             return min_value
         natr_min = np.min(natr_values[start:end])
