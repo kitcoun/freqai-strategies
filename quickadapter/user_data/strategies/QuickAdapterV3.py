@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.36"
+        return "3.3.37"
 
     timeframe = "5m"
 
@@ -530,8 +530,8 @@ class QuickAdapterV3(IStrategy):
             else:
                 entry_natr_weight += weight_adjustment
                 current_natr_weight -= weight_adjustment
-        entry_natr_weight = max(0.0, min(1.0, entry_natr_weight))
-        current_natr_weight = max(0.0, min(1.0, current_natr_weight))
+        entry_natr_weight = np.clip(entry_natr_weight, 0.0, 1.0)
+        current_natr_weight = np.clip(current_natr_weight, 0.0, 1.0)
         take_profit_natr = (
             entry_natr_weight * entry_natr + current_natr_weight * current_natr
         )
@@ -559,7 +559,7 @@ class QuickAdapterV3(IStrategy):
         stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
         if isna(stoploss_distance):
             return None
-        if np.isclose(stoploss_distance, 0) or stoploss_distance < 0:
+        if stoploss_distance <= 0:
             return None
         sign = 1 if trade.is_short else -1
         return stoploss_from_absolute(
@@ -607,7 +607,7 @@ class QuickAdapterV3(IStrategy):
         take_profit_distance = self.get_take_profit_distance(df, trade)
         if isna(take_profit_distance):
             return None
-        if np.isclose(take_profit_distance, 0) or take_profit_distance < 0:
+        if take_profit_distance <= 0:
             return None
         take_profit_price = (
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance

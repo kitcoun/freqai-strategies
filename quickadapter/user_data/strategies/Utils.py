@@ -397,8 +397,9 @@ def zigzag(
         lookback_natr = natr_values[start:end]
         natr_pos = natr_values[pos]
         median_natr = np.median(lookback_natr)
-
-        natr_ratio = natr_pos / (median_natr + np.finfo(float).eps)
+        if median_natr == 0:
+            median_natr = np.finfo(float).eps
+        natr_ratio = natr_pos / median_natr
         smoothed_natr_ratio = np.sqrt(natr_ratio)
 
         depth_factor = (
@@ -442,9 +443,10 @@ def zigzag(
             return min_value
         natr_min = np.min(natr_values[start:end])
         natr_max = np.max(natr_values[start:end])
-        normalized_natr_pos = (natr_pos - natr_min) / (
-            natr_max - natr_min + np.finfo(float).eps
-        )
+        natr_range = natr_max - natr_min
+        if natr_range == 0:
+            natr_range = np.finfo(float).eps
+        normalized_natr_pos = (natr_pos - natr_min) / natr_range
 
         return min_value + (max_value - min_value) * normalized_natr_pos
 
