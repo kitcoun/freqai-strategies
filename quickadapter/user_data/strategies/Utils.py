@@ -371,6 +371,13 @@ def zigzag(
     candidate_pivot_value = np.nan
     candidate_pivot_direction: TrendDirection = TrendDirection.NEUTRAL
 
+    natr_values_cache: dict[int, np.ndarray] = {}
+
+    def get_natr_values(period: int) -> np.ndarray:
+        if period not in natr_values_cache:
+            natr_values_cache[period] = ta.NATR(df, timeperiod=period).values
+        return natr_values_cache[period]
+
     def calculate_depth(
         pivots_indices: list[int],
         min_depth: int = 6,
@@ -379,10 +386,31 @@ def zigzag(
     ) -> int:
         if len(pivots_indices) < 2:
             return initial_depth
-        previous_interval = pivots_indices[-1] - pivots_indices[-2]
+        previous_period = pivots_indices[-1] - pivots_indices[-2]
         return max(
-            min_depth, min(max_depth, int(previous_interval * depth_scaling_factor))
+            min_depth, min(max_depth, int(previous_period * depth_scaling_factor))
         )
+
+    def calculate_min_slope_strength(
+        pos: int,
+        lookback_period: int = 14,
+        min_value: float = 0.3,
+        max_value: float = 0.7,
+    ) -> float:
+        natr_values = get_natr_values(lookback_period)
+        pos_natr = natr_values[pos]
+
+        start = max(0, pos - lookback_period)
+        end = min(pos + 1, len(natr_values))
+        if start >= end:
+            return min_value
+        natr_min = np.min(natr_values[start:end])
+        natr_max = np.max(natr_values[start:end])
+        normalized_natr = (pos_natr - natr_min) / (
+            natr_max - natr_min + np.finfo(float).eps
+        )
+
+        return min_value + (max_value - min_value) * normalized_natr
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
@@ -412,8 +440,7 @@ def zigzag(
         next_confirmation_pos: int,
         direction: TrendDirection,
         extrema_threshold: float = 0.85,
-        min_slope_strength: float = 0.5,
-        min_slope_volatility: float = 0.001,
+        min_slope_volatility: float = 0.00075,
         move_away_ratio: float = 0.25,
     ) -> bool:
         next_start = next_confirmation_pos + 1
@@ -464,6 +491,7 @@ def zigzag(
                 0
             ]
             next_slope_strength = next_slope / next_closes_std
+            min_slope_strength = calculate_min_slope_strength(candidate_pivot_pos)
             if direction == TrendDirection.DOWN:
                 slope_ok = next_slope_strength < -min_slope_strength
             elif direction == TrendDirection.UP:
