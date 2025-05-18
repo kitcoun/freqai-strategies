@@ -513,7 +513,8 @@ class QuickAdapterV3(IStrategy):
         current_natr_weight = 0.5
         natr_pct_change = abs(current_natr - entry_natr) / entry_natr
         natr_pct_change_thresholds = [
-            (0.8, 0.4),  # (threshold, adjustment)
+            (1.0, 0.5),  # (threshold, adjustment)
+            (0.8, 0.4),
             (0.6, 0.3),
             (0.4, 0.2),
             (0.2, 0.1),
@@ -557,9 +558,7 @@ class QuickAdapterV3(IStrategy):
             return None
 
         stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
-        if isna(stoploss_distance):
-            return None
-        if stoploss_distance <= 0:
+        if isna(stoploss_distance) or stoploss_distance <= 0:
             return None
         sign = 1 if trade.is_short else -1
         return stoploss_from_absolute(
@@ -605,9 +604,7 @@ class QuickAdapterV3(IStrategy):
             return "maxima_detected_long"
 
         take_profit_distance = self.get_take_profit_distance(df, trade)
-        if isna(take_profit_distance):
-            return None
-        if take_profit_distance <= 0:
+        if isna(take_profit_distance) or take_profit_distance <= 0:
             return None
         take_profit_price = (
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
