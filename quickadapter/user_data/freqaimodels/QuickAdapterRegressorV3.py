@@ -919,16 +919,15 @@ def zigzag(
         max_depth: int = 30,
     ) -> int:
         if len(pivots_indices) < 2:
-            return initial_depth
+            return depth
 
         previous_periods = np.diff(pivots_indices[-3:])
         weights = np.linspace(0.5, 1.5, len(previous_periods))
         average_period = np.average(previous_periods, weights=weights)
 
         depth_factor = calculate_depth_factor(pos)
-        depth = int(average_period * depth_factor)
 
-        return np.clip(depth, min_depth, max_depth)
+        return np.clip(int(average_period * depth_factor), min_depth, max_depth)
 
     def calculate_min_slope_strength(
         pos: int,
