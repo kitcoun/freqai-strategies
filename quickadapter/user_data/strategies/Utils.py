@@ -429,8 +429,8 @@ def zigzag(
     def calculate_min_slope_strength(
         pos: int,
         lookback_period: int = 20,
-        min_value: float = 0.3,
-        max_value: float = 0.7,
+        min_value: float = 0.03,
+        max_value: float = 0.07,
     ) -> float:
         start = max(0, pos - lookback_period)
         end = min(pos + 1, n)
@@ -477,7 +477,7 @@ def zigzag(
         next_confirmation_pos: int,
         direction: TrendDirection,
         extrema_threshold: float = 0.85,
-        min_slope_volatility: float = 0.00075,
+        min_slope_volatility: float = 0.0095,
         move_away_ratio: float = 0.25,
     ) -> bool:
         next_start = next_confirmation_pos + 1
@@ -521,13 +521,14 @@ def zigzag(
             return False
 
         slope_ok = False
-        next_closes_std = np.std(next_closes)
-        if len(next_closes) >= 2 and next_closes_std > min_slope_volatility:
-            weights = np.linspace(0.5, 1.5, len(next_closes))
-            next_slope = np.polyfit(range(len(next_closes)), next_closes, 1, w=weights)[
-                0
-            ]
-            next_slope_strength = next_slope / next_closes_std
+        log_next_closes = np.log(next_closes)
+        log_next_closes_std = np.std(log_next_closes)
+        if len(next_closes) >= 2 and log_next_closes_std > min_slope_volatility:
+            weights = np.linspace(0.5, 1.5, len(log_next_closes))
+            log_next_slope = np.polyfit(
+                range(len(log_next_closes)), log_next_closes, 1, w=weights
+            )[0]
+            next_slope_strength = log_next_slope / log_next_closes_std
             min_slope_strength = calculate_min_slope_strength(candidate_pivot_pos)
             if direction == TrendDirection.DOWN:
                 slope_ok = next_slope_strength < -min_slope_strength
@@ -539,16 +540,16 @@ def zigzag(
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
             if np.any(
-                next_lows
-                < highs[candidate_pivot_pos]
-                * (1 - thresholds[candidate_pivot_pos] * move_away_ratio)
+                np.log(next_lows)
+                < np.log(highs[candidate_pivot_pos])
+                + np.log(1 - thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
                 significant_move_away_ok = True
         elif direction == TrendDirection.UP:
             if np.any(
-                next_highs
-                > lows[candidate_pivot_pos]
-                * (1 + thresholds[candidate_pivot_pos] * move_away_ratio)
+                np.log(next_highs)
+                > np.log(lows[candidate_pivot_pos])
+                + np.log(1 + thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
                 significant_move_away_ok = True
         return significant_move_away_ok
