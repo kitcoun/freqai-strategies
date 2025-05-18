@@ -394,8 +394,8 @@ def zigzag(
         if start >= end:
             return (min_factor + max_factor) / 2
 
-        lookback_natr = natr_values[start:end]
         natr_pos = natr_values[pos]
+        lookback_natr = natr_values[start:end]
         median_natr = np.median(lookback_natr)
         if median_natr == 0:
             median_natr = np.finfo(float).eps
@@ -435,14 +435,15 @@ def zigzag(
         max_value: float = 0.7,
     ) -> float:
         natr_values = get_natr_values(natr_period)
-        natr_pos = natr_values[pos]
 
         start = max(0, pos - lookback_period)
         end = min(pos + 1, n)
         if start >= end:
             return min_value
-        natr_min = np.min(natr_values[start:end])
-        natr_max = np.max(natr_values[start:end])
+        natr_pos = natr_values[pos]
+        lookback_natr = natr_values[start:end]
+        natr_min = np.min(lookback_natr)
+        natr_max = np.max(lookback_natr)
         natr_range = natr_max - natr_min
         if natr_range == 0:
             natr_range = np.finfo(float).eps
