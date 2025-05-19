@@ -523,11 +523,14 @@ def zigzag(
         if len(next_closes) >= 2:
             log_next_closes = np.log(next_closes)
             log_next_closes_std = np.std(log_next_closes)
-            weights = np.linspace(0.5, 1.5, len(log_next_closes))
-            log_next_slope = np.polyfit(
-                range(len(log_next_closes)), log_next_closes, 1, w=weights
-            )[0]
-            next_slope_strength = log_next_slope / log_next_closes_std
+            if np.isclose(log_next_closes_std, 0):
+                next_slope_strength = 0
+            else:
+                weights = np.linspace(0.5, 1.5, len(log_next_closes))
+                log_next_slope = np.polyfit(
+                    range(len(log_next_closes)), log_next_closes, 1, w=weights
+                )[0]
+                next_slope_strength = log_next_slope / log_next_closes_std
             min_slope_strength = calculate_min_slope_strength(candidate_pivot_pos)
             if direction == TrendDirection.DOWN:
                 slope_ok = next_slope_strength < -min_slope_strength
