@@ -472,12 +472,12 @@ def zigzag(
 
     def is_reversal_confirmed(
         candidate_pivot_pos: int,
-        next_confirmation_pos: int,
+        confirmation_start_pos: int,
         direction: TrendDirection,
         extrema_threshold: float = 0.85,
         move_away_ratio: float = 0.25,
     ) -> bool:
-        next_start = next_confirmation_pos + 1
+        next_start = confirmation_start_pos + 1
         next_end = min(next_start + confirmation_window, n)
         previous_start = max(candidate_pivot_pos - confirmation_window, 0)
         previous_end = candidate_pivot_pos
