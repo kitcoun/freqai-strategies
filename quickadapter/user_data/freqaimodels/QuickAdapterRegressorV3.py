@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.43"
+    version = "3.7.44"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -899,8 +899,8 @@ def zigzag(
         natr_pos = natr_values[pos]
         lookback_natr = natr_values[start:end]
         median_natr = np.median(lookback_natr)
-        if median_natr == 0:
-            median_natr = np.finfo(float).eps
+        if np.isclose(median_natr, 0):
+            return max_factor
         natr_ratio = natr_pos / median_natr
         smoothed_natr_ratio = np.sqrt(natr_ratio)
 
@@ -946,8 +946,8 @@ def zigzag(
         natr_min = np.min(lookback_natr)
         natr_max = np.max(lookback_natr)
         natr_range = natr_max - natr_min
-        if natr_range == 0:
-            natr_range = np.finfo(float).eps
+        if np.isclose(natr_range, 0):
+            return min_value
         normalized_natr_pos = (natr_pos - natr_min) / natr_range
 
         return min_value + (max_value - min_value) * normalized_natr_pos
