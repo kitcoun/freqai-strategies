@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.41"
+    version = "3.7.42"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -932,8 +932,8 @@ def zigzag(
     def calculate_min_slope_strength(
         pos: int,
         lookback_period: int = 20,
-        min_value: float = 0.03,
-        max_value: float = 0.07,
+        min_value: float = 0.5,
+        max_value: float = 1.5,
     ) -> float:
         start = max(0, pos - lookback_period)
         end = min(pos + 1, n)
@@ -980,7 +980,6 @@ def zigzag(
         next_confirmation_pos: int,
         direction: TrendDirection,
         extrema_threshold: float = 0.85,
-        min_slope_volatility: float = 0.0095,
         move_away_ratio: float = 0.25,
     ) -> bool:
         next_start = next_confirmation_pos + 1
@@ -1024,9 +1023,9 @@ def zigzag(
             return False
 
         slope_ok = False
-        log_next_closes = np.log(next_closes)
-        log_next_closes_std = np.std(log_next_closes)
-        if len(next_closes) >= 2 and log_next_closes_std > min_slope_volatility:
+        if len(next_closes) >= 2:
+            log_next_closes = np.log(next_closes)
+            log_next_closes_std = np.std(log_next_closes)
             weights = np.linspace(0.5, 1.5, len(log_next_closes))
             log_next_slope = np.polyfit(
                 range(len(log_next_closes)), log_next_closes, 1, w=weights
