@@ -851,7 +851,7 @@ class TrendDirection(IntEnum):
 def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
-    natr_ratio: float = 1.0,
+    natr_ratio: float = 0.12125,
     confirmation_window: int = 3,
     initial_depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
@@ -1042,16 +1042,16 @@ def zigzag(
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
             if np.any(
-                np.log(next_lows)
-                < np.log(highs[candidate_pivot_pos])
-                + np.log(1 - thresholds[candidate_pivot_pos] * move_away_ratio)
+                next_lows
+                < highs[candidate_pivot_pos]
+                * (1 - thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
                 significant_move_away_ok = True
         elif direction == TrendDirection.UP:
             if np.any(
-                np.log(next_highs)
-                > np.log(lows[candidate_pivot_pos])
-                + np.log(1 + thresholds[candidate_pivot_pos] * move_away_ratio)
+                next_highs
+                > lows[candidate_pivot_pos]
+                * (1 + thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
                 significant_move_away_ok = True
         return significant_move_away_ok
@@ -1071,10 +1071,13 @@ def zigzag(
 
         initial_move_from_high = (initial_high - current_low) / initial_high
         initial_move_from_low = (current_high - initial_low) / initial_low
-        if (
+        is_initial_high_move_significant = (
             initial_move_from_high >= thresholds[initial_high_pos]
-            and initial_move_from_low >= thresholds[initial_low_pos]
-        ):
+        )
+        is_initial_low_move_significant = (
+            initial_move_from_low >= thresholds[initial_low_pos]
+        )
+        if is_initial_high_move_significant and is_initial_low_move_significant:
             if initial_move_from_high > initial_move_from_low:
                 if is_reversal_confirmed(
                     initial_high_pos, initial_high_pos, TrendDirection.DOWN
@@ -1090,17 +1093,13 @@ def zigzag(
                     state = TrendDirection.UP
                     break
         else:
-            if initial_move_from_high >= thresholds[
-                initial_high_pos
-            ] and is_reversal_confirmed(
+            if is_initial_high_move_significant and is_reversal_confirmed(
                 initial_high_pos, initial_high_pos, TrendDirection.DOWN
             ):
                 add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
                 state = TrendDirection.DOWN
                 break
-            elif initial_move_from_low >= thresholds[
-                initial_low_pos
-            ] and is_reversal_confirmed(
+            elif is_initial_low_move_significant and is_reversal_confirmed(
                 initial_low_pos, initial_low_pos, TrendDirection.UP
             ):
                 add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
