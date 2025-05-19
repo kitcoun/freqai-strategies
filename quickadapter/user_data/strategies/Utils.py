@@ -381,6 +381,13 @@ def zigzag(
     candidate_pivot_value = np.nan
     candidate_pivot_direction: TrendDirection = TrendDirection.NEUTRAL
 
+    def calculate_quantile(values: np.ndarray, pos: int, start: int, end: int) -> float:
+        if start >= end:
+            return 0.5
+        if np.all(np.isclose(values[start:end], values[start])):
+            return 0.5
+        return np.sum(values[start:end] <= values[pos]) / len(values[start:end])
+
     def calculate_depth_factor(
         pos: int,
         min_factor: float = 0.5,
@@ -391,22 +398,9 @@ def zigzag(
         if start >= end:
             return (min_factor + max_factor) / 2
 
-        natr_values = get_natr_values(natr_period)
-        natr_pos = natr_values[pos]
-        median_natr = np.median(natr_values[start:end])
-        if np.isclose(median_natr, 0):
-            return max_factor
-        natr_ratio = natr_pos / median_natr
-        smoothed_natr_ratio = np.sqrt(natr_ratio)
+        quantile = calculate_quantile(get_natr_values(natr_period), pos, start, end)
 
-        depth_factor = (
-            max_factor
-            - (max_factor - min_factor)
-            * (np.clip(smoothed_natr_ratio, 0.5, 2.0) - 0.5)
-            / 1.5
-        )
-
-        return np.clip(depth_factor, min_factor, max_factor)
+        return max_factor - (max_factor - min_factor) * quantile
 
     def calculate_depth(
         pos: int,
@@ -434,17 +428,9 @@ def zigzag(
         if start >= end:
             return min_strength
 
-        natr_values = get_natr_values(natr_period)
-        natr_pos = natr_values[pos]
-        lookback_natr = natr_values[start:end]
-        natr_min = np.min(lookback_natr)
-        natr_max = np.max(lookback_natr)
-        natr_range = natr_max - natr_min
-        if np.isclose(natr_range, 0):
-            return min_strength
-        normalized_natr_pos = (natr_pos - natr_min) / natr_range
+        quantile = calculate_quantile(get_natr_values(natr_period), pos, start, end)
 
-        return min_strength + (max_strength - min_strength) * normalized_natr_pos
+        return min_strength + (max_strength - min_strength) * quantile
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
