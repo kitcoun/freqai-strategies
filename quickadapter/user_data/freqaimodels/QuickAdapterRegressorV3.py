@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.44"
+    version = "3.7.45"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -886,19 +886,17 @@ def zigzag(
 
     def calculate_depth_factor(
         pos: int,
-        lookback_period: int = 20,
         min_factor: float = 0.5,
         max_factor: float = 1.5,
     ) -> float:
-        start = max(0, pos - lookback_period)
+        start = max(0, pos - natr_period)
         end = min(pos + 1, n)
         if start >= end:
             return (min_factor + max_factor) / 2
 
         natr_values = get_natr_values(natr_period)
         natr_pos = natr_values[pos]
-        lookback_natr = natr_values[start:end]
-        median_natr = np.median(lookback_natr)
+        median_natr = np.median(natr_values[start:end])
         if np.isclose(median_natr, 0):
             return max_factor
         natr_ratio = natr_pos / median_natr
@@ -931,14 +929,13 @@ def zigzag(
 
     def calculate_min_slope_strength(
         pos: int,
-        lookback_period: int = 20,
-        min_value: float = 0.5,
-        max_value: float = 1.5,
+        min_strength: float = 0.5,
+        max_strength: float = 1.5,
     ) -> float:
-        start = max(0, pos - lookback_period)
+        start = max(0, pos - natr_period)
         end = min(pos + 1, n)
         if start >= end:
-            return min_value
+            return min_strength
 
         natr_values = get_natr_values(natr_period)
         natr_pos = natr_values[pos]
@@ -947,10 +944,10 @@ def zigzag(
         natr_max = np.max(lookback_natr)
         natr_range = natr_max - natr_min
         if np.isclose(natr_range, 0):
-            return min_value
+            return min_strength
         normalized_natr_pos = (natr_pos - natr_min) / natr_range
 
-        return min_value + (max_value - min_value) * normalized_natr_pos
+        return min_strength + (max_strength - min_strength) * normalized_natr_pos
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
@@ -1154,10 +1151,10 @@ def label_objective(
     candles_step: int,
 ) -> tuple[float, int]:
     min_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 16, 20), candles_step
+        max(fit_live_predictions_candles // 18, 20), candles_step
     )
     max_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 4, min_label_period_candles),
+        max(fit_live_predictions_candles // 2, min_label_period_candles),
         candles_step,
     )
     label_period_candles = trial.suggest_int(
@@ -1166,7 +1163,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 0.08, 0.25)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 0.06, 0.3)
 
     df = df.iloc[
         -(
