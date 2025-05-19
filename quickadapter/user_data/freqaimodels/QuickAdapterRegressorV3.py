@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.45"
+    version = "3.7.46"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -929,8 +929,8 @@ def zigzag(
 
     def calculate_min_slope_strength(
         pos: int,
-        min_strength: float = 0.5,
-        max_strength: float = 1.5,
+        min_strength: float = 1.0,
+        max_strength: float = 2.0,
     ) -> float:
         start = max(0, pos - natr_period)
         end = min(pos + 1, n)
@@ -1151,7 +1151,7 @@ def label_objective(
     candles_step: int,
 ) -> tuple[float, int]:
     min_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 18, 20), candles_step
+        max(fit_live_predictions_candles // 20, 20), candles_step
     )
     max_label_period_candles: int = round_to_nearest_int(
         max(fit_live_predictions_candles // 2, min_label_period_candles),
