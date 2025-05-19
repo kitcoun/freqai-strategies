@@ -915,8 +915,8 @@ def zigzag(
 
     def calculate_depth(
         pos: int,
-        min_depth: int = 5,
-        max_depth: int = 30,
+        min_depth: int = 6,
+        max_depth: int = 36,
     ) -> int:
         if len(pivots_indices) < 2:
             return depth
@@ -974,6 +974,7 @@ def zigzag(
         pivots_directions.append(direction)
         last_pivot_pos = pos
         depth = calculate_depth(pos)
+        reset_candidate_pivot()
 
     def is_reversal_confirmed(
         candidate_pivot_pos: int,
@@ -1128,7 +1129,6 @@ def zigzag(
                 and is_reversal_confirmed(candidate_pivot_pos, i, TrendDirection.DOWN)
             ):
                 add_pivot(candidate_pivot_pos, candidate_pivot_value, TrendDirection.UP)
-                reset_candidate_pivot()
                 state = TrendDirection.DOWN
         elif state == TrendDirection.DOWN:
             if np.isnan(candidate_pivot_value) or current_low < candidate_pivot_value:
@@ -1142,7 +1142,6 @@ def zigzag(
                 add_pivot(
                     candidate_pivot_pos, candidate_pivot_value, TrendDirection.DOWN
                 )
-                reset_candidate_pivot()
                 state = TrendDirection.UP
 
     return pivots_indices, pivots_values, pivots_directions

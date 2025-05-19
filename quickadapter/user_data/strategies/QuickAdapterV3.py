@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.41"
+        return "3.3.42"
 
     timeframe = "5m"
 
@@ -487,7 +487,7 @@ class QuickAdapterV3(IStrategy):
         self, df: DataFrame, trade: Trade, current_rate: float
     ) -> Optional[float]:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
-        if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
+        if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
         current_natr = df["natr_label_period_candles"].iloc[-1]
         if isna(current_natr) or current_natr < 0:
@@ -501,7 +501,7 @@ class QuickAdapterV3(IStrategy):
 
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
-        if QuickAdapterV3.is_trade_duration_valid(trade_duration_candles) is False:
+        if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
         entry_natr = self.get_trade_entry_natr(df, trade)
         if isna(entry_natr) or entry_natr < 0:
@@ -511,28 +511,29 @@ class QuickAdapterV3(IStrategy):
             return None
         entry_natr_weight = 0.5
         current_natr_weight = 0.5
-        natr_pct_change = abs(current_natr - entry_natr) / entry_natr
-        natr_pct_change_thresholds = [
-            (1.0, 0.5),  # (threshold, adjustment)
-            (0.8, 0.4),
-            (0.6, 0.3),
-            (0.4, 0.2),
-            (0.2, 0.1),
-        ]
-        weight_adjustment = 0.0
-        for threshold, adjustment in natr_pct_change_thresholds:
-            if natr_pct_change > threshold:
-                weight_adjustment = adjustment
-                break
-        if weight_adjustment > 0:
-            if current_natr > entry_natr:
-                entry_natr_weight -= weight_adjustment
-                current_natr_weight += weight_adjustment
-            else:
-                entry_natr_weight += weight_adjustment
-                current_natr_weight -= weight_adjustment
-        entry_natr_weight = np.clip(entry_natr_weight, 0.0, 1.0)
-        current_natr_weight = np.clip(current_natr_weight, 0.0, 1.0)
+        if not np.isclose(entry_natr, 0):
+            natr_pct_change = abs(current_natr - entry_natr) / entry_natr
+            natr_pct_change_thresholds = [
+                (1.0, 0.5),  # (threshold, adjustment)
+                (0.8, 0.4),
+                (0.6, 0.3),
+                (0.4, 0.2),
+                (0.2, 0.1),
+            ]
+            weight_adjustment = 0.0
+            for threshold, adjustment in natr_pct_change_thresholds:
+                if natr_pct_change > threshold:
+                    weight_adjustment = adjustment
+                    break
+            if weight_adjustment > 0:
+                if current_natr > entry_natr:
+                    entry_natr_weight -= weight_adjustment
+                    current_natr_weight += weight_adjustment
+                else:
+                    entry_natr_weight += weight_adjustment
+                    current_natr_weight -= weight_adjustment
+            entry_natr_weight = np.clip(entry_natr_weight, 0.0, 1.0)
+            current_natr_weight = np.clip(current_natr_weight, 0.0, 1.0)
         take_profit_natr = (
             entry_natr_weight * entry_natr + current_natr_weight * current_natr
         )
