@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.48"
+    version = "3.7.49"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -886,7 +886,7 @@ def zigzag(
 
     def calculate_quantile(values: np.ndarray, pos: int, start: int, end: int) -> float:
         if start >= end:
-            return 0.5
+            return np.nan
         if np.all(np.isclose(values[start:end], values[start])):
             return 0.5
         return np.sum(values[start:end] <= values[pos]) / len(values[start:end])

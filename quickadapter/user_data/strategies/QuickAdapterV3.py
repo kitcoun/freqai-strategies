@@ -58,7 +58,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.46"
+        return "3.3.47"
 
     timeframe = "5m"
 
@@ -443,41 +443,42 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    def get_trade_entry_candle(
-        self, df: DataFrame, trade: Trade
-    ) -> Optional[DataFrame]:
-        entry_date = timeframe_to_prev_date(self.timeframe, trade.open_date_utc)
+    @staticmethod
+    def get_trade_entry_date(trade: Trade) -> datetime:
+        return timeframe_to_prev_date(QuickAdapterV3.timeframe, trade.open_date_utc)
+
+    @staticmethod
+    def get_trade_entry_candle(df: DataFrame, trade: Trade) -> Optional[DataFrame]:
+        entry_date = QuickAdapterV3.get_trade_entry_date(trade)
         entry_candle = df.loc[(df["date"] == entry_date)]
         if entry_candle.empty:
             return None
         return entry_candle
 
-    def get_trade_entry_natr(self, df: DataFrame, trade: Trade) -> Optional[float]:
-        entry_candle = self.get_trade_entry_candle(df, trade)
+    @staticmethod
+    def get_trade_entry_natr(df: DataFrame, trade: Trade) -> Optional[float]:
+        entry_candle = QuickAdapterV3.get_trade_entry_candle(df, trade)
         if entry_candle is None:
             return None
         entry_candle = entry_candle.squeeze()
         return entry_candle["natr_label_period_candles"]
 
-    def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> Optional[int]:
+    @staticmethod
+    def get_trade_duration_candles(df: DataFrame, trade: Trade) -> Optional[int]:
         """
         Get the number of candles since the trade entry.
         :param df: DataFrame with the current data
         :param trade: Trade object
         :return: Number of candles since the trade entry
         """
-        entry_candle = self.get_trade_entry_candle(df, trade)
-        if entry_candle is None:
+        entry_date = QuickAdapterV3.get_trade_entry_date(trade)
+        current_date = df["date"].iloc[-1]
+        if isna(current_date):
             return None
-        entry_candle = entry_candle.squeeze()
-        entry_candle_date = entry_candle["date"]
-        current_candle_date = df["date"].iloc[-1]
-        if isna(current_candle_date):
-            return None
-        trade_duration_minutes = (
-            current_candle_date - entry_candle_date
-        ).total_seconds() / 60.0
-        return int(trade_duration_minutes / timeframe_to_minutes(self.timeframe))
+        trade_duration_minutes = (current_date - entry_date).total_seconds() / 60.0
+        return int(
+            trade_duration_minutes / timeframe_to_minutes(QuickAdapterV3.timeframe)
+        )
 
     @staticmethod
     def is_trade_duration_valid(trade_duration: float) -> bool:
@@ -486,7 +487,7 @@ class QuickAdapterV3(IStrategy):
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
     ) -> Optional[float]:
-        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+        trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
         current_natr = df["natr_label_period_candles"].iloc[-1]
@@ -499,41 +500,42 @@ class QuickAdapterV3(IStrategy):
             * (1 / math.log10(3.75 + 0.25 * trade_duration_candles))
         )
 
+    @staticmethod
+    def calculate_quantile(values: np.ndarray, value: float) -> float:
+        if values.size == 0:
+            return np.nan
+
+        if np.all(np.isclose(values, values[0])):
+            if np.isclose(value, values[0]):
+                return 0.5
+            elif value < values[0]:
+                return 0.0
+            else:
+                return 1.0
+
+        return np.sum(values <= value) / values.size
+
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
-        trade_duration_candles = self.get_trade_duration_candles(df, trade)
+        trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        entry_natr = self.get_trade_entry_natr(df, trade)
+        entry_natr = QuickAdapterV3.get_trade_entry_natr(df, trade)
         if isna(entry_natr) or entry_natr < 0:
             return None
         current_natr = df["natr_label_period_candles"].iloc[-1]
         if isna(current_natr) or current_natr < 0:
             return None
-        entry_natr_weight = 0.5
-        current_natr_weight = 0.5
-        if not np.isclose(entry_natr, 0):
-            natr_pct_change = abs(current_natr - entry_natr) / entry_natr
-            natr_pct_change_thresholds = [
-                (1.0, 0.5),  # (threshold, adjustment)
-                (0.8, 0.4),
-                (0.6, 0.3),
-                (0.4, 0.2),
-                (0.2, 0.1),
-            ]
-            weight_adjustment = 0.0
-            for threshold, adjustment in natr_pct_change_thresholds:
-                if natr_pct_change > threshold:
-                    weight_adjustment = adjustment
-                    break
-            if weight_adjustment > 0:
-                if current_natr > entry_natr:
-                    entry_natr_weight -= weight_adjustment
-                    current_natr_weight += weight_adjustment
-                else:
-                    entry_natr_weight += weight_adjustment
-                    current_natr_weight -= weight_adjustment
-            entry_natr_weight = np.clip(entry_natr_weight, 0.0, 1.0)
-            current_natr_weight = np.clip(current_natr_weight, 0.0, 1.0)
+        entry_date = QuickAdapterV3.get_trade_entry_date(trade)
+        trade_natr_values = df.loc[
+            df["date"] >= entry_date, "natr_label_period_candles"
+        ].values
+        current_natr_quantile = QuickAdapterV3.calculate_quantile(
+            trade_natr_values, current_natr
+        )
+        if isna(current_natr_quantile):
+            return None
+        entry_natr_weight = 1.0 - current_natr_quantile
+        current_natr_weight = current_natr_quantile
         take_profit_natr = (
             entry_natr_weight * entry_natr + current_natr_weight * current_natr
         )

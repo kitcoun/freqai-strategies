@@ -383,7 +383,7 @@ def zigzag(
 
     def calculate_quantile(values: np.ndarray, pos: int, start: int, end: int) -> float:
         if start >= end:
-            return 0.5
+            return np.nan
         if np.all(np.isclose(values[start:end], values[start])):
             return 0.5
         return np.sum(values[start:end] <= values[pos]) / len(values[start:end])
