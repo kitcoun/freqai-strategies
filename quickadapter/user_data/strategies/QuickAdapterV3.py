@@ -18,6 +18,7 @@ import pandas_ta as pta
 from Utils import (
     alligator,
     bottom_change_percent,
+    calculate_quantile,
     zigzag,
     ewo,
     non_zero_diff,
@@ -58,7 +59,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.47"
+        return "3.3.48"
 
     timeframe = "5m"
 
@@ -500,21 +501,6 @@ class QuickAdapterV3(IStrategy):
             * (1 / math.log10(3.75 + 0.25 * trade_duration_candles))
         )
 
-    @staticmethod
-    def calculate_quantile(values: np.ndarray, value: float) -> float:
-        if values.size == 0:
-            return np.nan
-
-        if np.all(np.isclose(values, values[0])):
-            if np.isclose(value, values[0]):
-                return 0.5
-            elif value < values[0]:
-                return 0.0
-            else:
-                return 1.0
-
-        return np.sum(values <= value) / values.size
-
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
         trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
@@ -529,9 +515,7 @@ class QuickAdapterV3(IStrategy):
         trade_natr_values = df.loc[
             df["date"] >= entry_date, "natr_label_period_candles"
         ].values
-        current_natr_quantile = QuickAdapterV3.calculate_quantile(
-            trade_natr_values, current_natr
-        )
+        current_natr_quantile = calculate_quantile(trade_natr_values, current_natr)
         if isna(current_natr_quantile):
             return None
         entry_natr_weight = 1.0 - current_natr_quantile

@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.49"
+    version = "3.7.50"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -842,6 +842,21 @@ def hp_objective(
     return error
 
 
+def calculate_quantile(values: np.ndarray, value: float) -> float:
+    if values.size == 0:
+        return np.nan
+
+    first_value = values[0]
+    if np.all(np.isclose(values, first_value)):
+        return (
+            0.5
+            if np.isclose(value, first_value)
+            else (0.0 if value < first_value else 1.0)
+        )
+
+    return np.sum(values <= value) / values.size
+
+
 class TrendDirection(IntEnum):
     NEUTRAL = 0
     UP = 1
@@ -884,13 +899,6 @@ def zigzag(
     candidate_pivot_value = np.nan
     candidate_pivot_direction: TrendDirection = TrendDirection.NEUTRAL
 
-    def calculate_quantile(values: np.ndarray, pos: int, start: int, end: int) -> float:
-        if start >= end:
-            return np.nan
-        if np.all(np.isclose(values[start:end], values[start])):
-            return 0.5
-        return np.sum(values[start:end] <= values[pos]) / len(values[start:end])
-
     def calculate_depth_factor(
         pos: int,
         min_factor: float = 0.5,
@@ -901,7 +909,9 @@ def zigzag(
         if start >= end:
             return (min_factor + max_factor) / 2
 
-        quantile = calculate_quantile(get_natr_values(natr_period), pos, start, end)
+        natr_values = get_natr_values(natr_period)
+        lookback_natr_values = natr_values[start:end]
+        quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
 
         return max_factor - (max_factor - min_factor) * quantile
 
@@ -931,7 +941,9 @@ def zigzag(
         if start >= end:
             return min_strength
 
-        quantile = calculate_quantile(get_natr_values(natr_period), pos, start, end)
+        natr_values = get_natr_values(natr_period)
+        lookback_natr_values = natr_values[start:end]
+        quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
 
         return min_strength + (max_strength - min_strength) * quantile
 
