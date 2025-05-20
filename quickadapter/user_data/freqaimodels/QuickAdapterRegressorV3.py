@@ -912,6 +912,8 @@ def zigzag(
         natr_values = get_natr_values(natr_period)
         lookback_natr_values = natr_values[start:end]
         quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
+        if np.isnan(quantile):
+            return (min_factor + max_factor) / 2
 
         return max_factor - (max_factor - min_factor) * quantile
 
@@ -944,6 +946,8 @@ def zigzag(
         natr_values = get_natr_values(natr_period)
         lookback_natr_values = natr_values[start:end]
         quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
+        if np.isnan(quantile):
+            return min_strength
 
         return min_strength + (max_strength - min_strength) * quantile
 
@@ -1149,7 +1153,7 @@ def label_objective(
     candles_step: int,
 ) -> tuple[float, int]:
     min_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 20, 20), candles_step
+        max(fit_live_predictions_candles // 20, candles_step), candles_step
     )
     max_label_period_candles: int = round_to_nearest_int(
         max(fit_live_predictions_candles // 2, min_label_period_candles),
@@ -1161,7 +1165,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 0.06, 0.3)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 0.06, 0.3, step=0.005)
 
     df = df.iloc[
         -(
@@ -1171,7 +1175,7 @@ def label_objective(
     ]
 
     if df.empty:
-        return -float("inf"), -float("inf")
+        return -np.inf, -np.inf
 
     _, pivots_values, _ = zigzag(
         df,
@@ -1181,7 +1185,7 @@ def label_objective(
 
     n = len(pivots_values)
     if n < 2:
-        return -float("inf"), -float("inf")
+        return -np.inf, -np.inf
 
     scaled_natr_label_period_candles = (
         ta.NATR(df, timeperiod=label_period_candles) * label_natr_ratio

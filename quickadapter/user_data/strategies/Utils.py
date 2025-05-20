@@ -409,6 +409,8 @@ def zigzag(
         natr_values = get_natr_values(natr_period)
         lookback_natr_values = natr_values[start:end]
         quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
+        if np.isnan(quantile):
+            return (min_factor + max_factor) / 2
 
         return max_factor - (max_factor - min_factor) * quantile
 
@@ -441,6 +443,8 @@ def zigzag(
         natr_values = get_natr_values(natr_period)
         lookback_natr_values = natr_values[start:end]
         quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
+        if np.isnan(quantile):
+            return min_strength
 
         return min_strength + (max_strength - min_strength) * quantile
 
