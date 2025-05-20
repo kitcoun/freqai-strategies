@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.51"
+    version = "3.7.52"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -58,6 +58,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "storage": "file",
             "continuous": True,
             "warm_start": True,
+            "n_startup_trials": 15,
             "n_trials": 36,
             "timeout": 7200,
             "candles_step": 10,
@@ -568,9 +569,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return optuna.create_study(
                 study_name=study_name,
                 sampler=optuna.samplers.TPESampler(
-                    multivariate=True, group=True, seed=self._optuna_config.get("seed")
+                    n_startup_trials=self._optuna_config.get("n_startup_trials"),
+                    multivariate=True,
+                    group=True,
+                    seed=self._optuna_config.get("seed"),
                 ),
-                pruner=optuna.pruners.HyperbandPruner(),
+                pruner=optuna.pruners.HyperbandPruner(min_resource=3),
                 direction=direction,
                 directions=directions,
                 storage=storage,
