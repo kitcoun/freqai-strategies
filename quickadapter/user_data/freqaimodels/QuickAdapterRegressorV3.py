@@ -1165,7 +1165,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 0.06, 0.3, step=0.005)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 0.06, 0.3, step=0.0025)
 
     df = df.iloc[
         -(
