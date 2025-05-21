@@ -363,7 +363,7 @@ class TrendDirection(IntEnum):
 def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
-    natr_ratio: float = 0.12125,
+    natr_ratio: float = 12.0,
     confirmation_window: int = 3,
     initial_depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
@@ -376,8 +376,8 @@ def zigzag(
     def get_natr_values(period: int) -> np.ndarray:
         if period not in natr_values_cache:
             natr_values_cache[period] = (
-                ta.NATR(df, timeperiod=period).fillna(method="bfill").values
-            )
+                ta.NATR(df, timeperiod=period).fillna(method="bfill") / 100
+            ).values
         return natr_values_cache[period]
 
     indices = df.index.tolist()

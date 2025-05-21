@@ -115,7 +115,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     "label_period_candles": self.ft_params.get(
                         "label_period_candles", 50
                     ),
-                    "label_natr_ratio": self.ft_params.get("label_natr_ratio", 0.12125),
+                    "label_natr_ratio": self.ft_params.get("label_natr_ratio", 12.0),
                 }
             )
         logger.info(
@@ -872,7 +872,7 @@ class TrendDirection(IntEnum):
 def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
-    natr_ratio: float = 0.12125,
+    natr_ratio: float = 12.0,
     confirmation_window: int = 3,
     initial_depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
@@ -885,8 +885,8 @@ def zigzag(
     def get_natr_values(period: int) -> np.ndarray:
         if period not in natr_values_cache:
             natr_values_cache[period] = (
-                ta.NATR(df, timeperiod=period).fillna(method="bfill").values
-            )
+                ta.NATR(df, timeperiod=period).fillna(method="bfill") / 100
+            ).values
         return natr_values_cache[period]
 
     indices = df.index.tolist()
@@ -1171,7 +1171,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 0.06, 0.3, step=0.0025)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 6.0, 30.0, step=0.25)
 
     df = df.iloc[
         -(
@@ -1194,8 +1194,8 @@ def label_objective(
         return -np.inf, -np.inf
 
     scaled_natr_label_period_candles = (
-        ta.NATR(df, timeperiod=label_period_candles) * label_natr_ratio
-    )
+        ta.NATR(df, timeperiod=label_period_candles).fillna(method="bfill") / 100
+    ) * label_natr_ratio
 
     return scaled_natr_label_period_candles.median(), n
 

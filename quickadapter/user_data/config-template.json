@@ -137,7 +137,7 @@
       "&s-minima_threshold": -2,
       "&s-maxima_threshold": 2,
       "label_period_candles": 100,
-      "label_natr_ratio": 0.12125,
+      "label_natr_ratio": 12,
       "hp_rmse": -1,
       "train_rmse": -1
     },

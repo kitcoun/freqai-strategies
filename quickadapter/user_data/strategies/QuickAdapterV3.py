@@ -172,7 +172,7 @@ class QuickAdapterV3(IStrategy):
                         "label_period_candles", 50
                     ),
                     "label_natr_ratio": self.freqai_info["feature_parameters"].get(
-                        "label_natr_ratio", 0.12125
+                        "label_natr_ratio", 12.0
                     ),
                 }
             )
@@ -360,7 +360,7 @@ class QuickAdapterV3(IStrategy):
         label_natr_ratio = self._label_params.get(pair, {}).get("label_natr_ratio")
         if label_natr_ratio:
             return label_natr_ratio
-        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 0.12125)
+        return self.freqai_info["feature_parameters"].get("label_natr_ratio", 12.0)
 
     def set_label_natr_ratio(self, pair: str, label_natr_ratio: float):
         if label_natr_ratio and isinstance(label_natr_ratio, float):
@@ -496,7 +496,7 @@ class QuickAdapterV3(IStrategy):
             return None
         return (
             current_rate
-            * current_natr
+            * (current_natr / 100)
             * self.get_stoploss_natr_ratio(trade.pair)
             * (1 / math.log10(3.75 + 0.25 * trade_duration_candles))
         )
@@ -525,7 +525,7 @@ class QuickAdapterV3(IStrategy):
         )
         return (
             trade.open_rate
-            * take_profit_natr
+            * (take_profit_natr / 100)
             * self.get_take_profit_natr_ratio(trade.pair)
             * math.log10(9.75 + 0.25 * trade_duration_candles)
         )
@@ -640,7 +640,7 @@ class QuickAdapterV3(IStrategy):
             return False
         lower_bound = 0
         upper_bound = 0
-        price_deviation = last_candle_natr * self.get_entry_natr_ratio(pair)
+        price_deviation = (last_candle_natr / 100) * self.get_entry_natr_ratio(pair)
         if side == "long":
             lower_bound = last_candle_low * (1 - price_deviation)
             upper_bound = last_candle_close * (1 + price_deviation)
