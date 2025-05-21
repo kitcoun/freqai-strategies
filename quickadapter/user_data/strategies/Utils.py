@@ -363,7 +363,7 @@ class TrendDirection(IntEnum):
 def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
-    natr_ratio: float = 12.0,
+    natr_ratio: float = 6.0,
     confirmation_window: int = 3,
     initial_depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:

@@ -115,7 +115,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     "label_period_candles": self.ft_params.get(
                         "label_period_candles", 50
                     ),
-                    "label_natr_ratio": self.ft_params.get("label_natr_ratio", 12.0),
+                    "label_natr_ratio": float(
+                        self.ft_params.get("label_natr_ratio", 6.0)
+                    ),
                 }
             )
         logger.info(
@@ -872,7 +874,7 @@ class TrendDirection(IntEnum):
 def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
-    natr_ratio: float = 12.0,
+    natr_ratio: float = 6.0,
     confirmation_window: int = 3,
     initial_depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
