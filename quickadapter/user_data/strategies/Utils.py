@@ -432,8 +432,8 @@ def zigzag(
 
     def calculate_min_slope_strength(
         pos: int,
-        min_strength: float = 1.0,
-        max_strength: float = 1.5,
+        min_strength: float = 1.2,
+        max_strength: float = 1.6,
     ) -> float:
         start = max(0, pos - natr_period)
         end = min(pos + 1, n)
