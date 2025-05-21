@@ -1159,7 +1159,7 @@ def label_objective(
     candles_step: int,
 ) -> tuple[float, int]:
     min_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 20, candles_step), candles_step
+        max(fit_live_predictions_candles // 16, candles_step), candles_step
     )
     max_label_period_candles: int = round_to_nearest_int(
         max(fit_live_predictions_candles // 2, min_label_period_candles),
