@@ -86,7 +86,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "enabled": false,                   // Enable optuna hyperopt
                 "per_pair: false,                   // Enable per pair hyperopt
                 "n_trials": 100,
-                "n_startup_trials": 10,
+                "n_startup_trials": 15,
                 "timeout_hours": 0,
             }
         }
@@ -129,7 +129,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.optuna_timeout_hours: float = self.rl_config_optuna.get("timeout_hours", 0)
         self.optuna_n_trials: int = self.rl_config_optuna.get("n_trials", 100)
         self.optuna_n_startup_trials: int = self.rl_config_optuna.get(
-            "n_startup_trials", 10
+            "n_startup_trials", 15
         )
         self.optuna_callback: Optional[MaskableTrialEvalCallback] = None
         self.unset_unsupported()
@@ -724,7 +724,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             model.env.close()
 
         if nan_encountered:
-            return float("nan")
+            return np.nan
 
         if self.optuna_callback.is_pruned:
             raise TrialPruned()
