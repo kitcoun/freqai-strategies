@@ -376,7 +376,7 @@ def zigzag(
     def get_natr_values(period: int) -> np.ndarray:
         if period not in natr_values_cache:
             natr_values_cache[period] = (
-                ta.NATR(df, timeperiod=period).fillna(method="bfill") / 100
+                ta.NATR(df, timeperiod=period).fillna(method="bfill") / 100.0
             ).values
         return natr_values_cache[period]
 

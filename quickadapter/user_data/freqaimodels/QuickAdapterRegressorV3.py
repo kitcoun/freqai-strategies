@@ -885,7 +885,7 @@ def zigzag(
     def get_natr_values(period: int) -> np.ndarray:
         if period not in natr_values_cache:
             natr_values_cache[period] = (
-                ta.NATR(df, timeperiod=period).fillna(method="bfill") / 100
+                ta.NATR(df, timeperiod=period).fillna(method="bfill") / 100.0
             ).values
         return natr_values_cache[period]
 
@@ -1194,7 +1194,7 @@ def label_objective(
         return -np.inf, -np.inf
 
     scaled_natr_label_period_candles = (
-        ta.NATR(df, timeperiod=label_period_candles).fillna(method="bfill") / 100
+        ta.NATR(df, timeperiod=label_period_candles).fillna(method="bfill") / 100.0
     ) * label_natr_ratio
 
     return scaled_natr_label_period_candles.median(), n

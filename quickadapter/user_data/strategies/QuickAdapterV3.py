@@ -496,7 +496,7 @@ class QuickAdapterV3(IStrategy):
             return None
         return (
             current_rate
-            * (current_natr / 100)
+            * (current_natr / 100.0)
             * self.get_stoploss_natr_ratio(trade.pair)
             * (1 / math.log10(3.75 + 0.25 * trade_duration_candles))
         )
@@ -525,7 +525,7 @@ class QuickAdapterV3(IStrategy):
         )
         return (
             trade.open_rate
-            * (take_profit_natr / 100)
+            * (take_profit_natr / 100.0)
             * self.get_take_profit_natr_ratio(trade.pair)
             * math.log10(9.75 + 0.25 * trade_duration_candles)
         )
@@ -640,7 +640,7 @@ class QuickAdapterV3(IStrategy):
             return False
         lower_bound = 0
         upper_bound = 0
-        price_deviation = (last_candle_natr / 100) * self.get_entry_natr_ratio(pair)
+        price_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(pair)
         if side == "long":
             lower_bound = last_candle_low * (1 - price_deviation)
             upper_bound = last_candle_close * (1 + price_deviation)
