@@ -18,7 +18,8 @@ import pandas_ta as pta
 from Utils import (
     alligator,
     bottom_change_percent,
-    calculate_quantile,
+    get_ma_fn,
+    zero_lag_series,
     zigzag,
     ewo,
     non_zero_diff,
@@ -59,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.50"
+        return "3.3.51"
 
     timeframe = "5m"
 
@@ -449,22 +450,6 @@ class QuickAdapterV3(IStrategy):
         return timeframe_to_prev_date(QuickAdapterV3.timeframe, trade.open_date_utc)
 
     @staticmethod
-    def get_trade_entry_candle(df: DataFrame, trade: Trade) -> Optional[DataFrame]:
-        entry_date = QuickAdapterV3.get_trade_entry_date(trade)
-        entry_candle = df.loc[(df["date"] == entry_date)]
-        if entry_candle.empty:
-            return None
-        return entry_candle
-
-    @staticmethod
-    def get_trade_entry_natr(df: DataFrame, trade: Trade) -> Optional[float]:
-        entry_candle = QuickAdapterV3.get_trade_entry_candle(df, trade)
-        if entry_candle is None:
-            return None
-        entry_candle = entry_candle.squeeze()
-        return entry_candle["natr_label_period_candles"]
-
-    @staticmethod
     def get_trade_duration_candles(df: DataFrame, trade: Trade) -> Optional[int]:
         """
         Get the number of candles since the trade entry.
@@ -505,24 +490,17 @@ class QuickAdapterV3(IStrategy):
         trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        entry_natr = QuickAdapterV3.get_trade_entry_natr(df, trade)
-        if isna(entry_natr) or entry_natr < 0:
-            return None
-        current_natr = df["natr_label_period_candles"].iloc[-1]
-        if isna(current_natr) or current_natr < 0:
-            return None
         entry_date = QuickAdapterV3.get_trade_entry_date(trade)
-        trade_natr_values = df.loc[
-            df["date"] >= entry_date, "natr_label_period_candles"
-        ].values
-        current_natr_quantile = calculate_quantile(trade_natr_values, current_natr)
-        if isna(current_natr_quantile):
+        kama = get_ma_fn("kama")
+        take_profit_natr = kama(
+            zero_lag_series(
+                df.loc[df["date"] >= entry_date, "natr_label_period_candles"],
+                period=trade_duration_candles,
+            ),
+            timeperiod=trade_duration_candles,
+        ).iloc[-1]
+        if isna(take_profit_natr) or take_profit_natr < 0:
             return None
-        entry_natr_weight = 1.0 - current_natr_quantile
-        current_natr_weight = current_natr_quantile
-        take_profit_natr = (
-            entry_natr_weight * entry_natr + current_natr_weight * current_natr
-        )
         return (
             trade.open_rate
             * (take_profit_natr / 100.0)
