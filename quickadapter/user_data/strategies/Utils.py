@@ -277,7 +277,7 @@ def ewo(
     ma2 = ma_fn(price_series_ma2, timeperiod=ma2_length)
     madiff = ma1 - ma2
     if normalize:
-        madiff = (madiff / price_series) * 100
+        madiff = (madiff / price_series) * 100.0
     return madiff
 
 
