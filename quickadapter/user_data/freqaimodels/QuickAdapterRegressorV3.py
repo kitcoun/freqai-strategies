@@ -1162,7 +1162,7 @@ def label_objective(
         max(fit_live_predictions_candles // 16, candles_step), candles_step
     )
     max_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 2, min_label_period_candles),
+        max(fit_live_predictions_candles // 4, min_label_period_candles),
         candles_step,
     )
     label_period_candles = trial.suggest_int(
@@ -1171,7 +1171,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 6.0, 30.0, step=0.25)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 4.0, 16.0, step=0.01)
 
     df = df.iloc[
         -(
