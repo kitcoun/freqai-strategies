@@ -743,7 +743,7 @@ def train_objective(
     candles_step: int,
     model_training_parameters: dict,
 ) -> float:
-    min_train_window: int = fit_live_predictions_candles * int((1 / test_size - 1))
+    min_train_window: int = fit_live_predictions_candles * int(1 / test_size - 1)
     max_train_window: int = len(X)
     if max_train_window < min_train_window:
         min_train_window = max_train_window
