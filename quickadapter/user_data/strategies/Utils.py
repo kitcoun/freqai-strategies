@@ -365,7 +365,6 @@ def zigzag(
     natr_period: int = 14,
     natr_ratio: float = 6.0,
     confirmation_window: int = 3,
-    initial_depth: int = 12,
 ) -> tuple[list[int], list[float], list[int]]:
     n = len(df)
     if df.empty or n < max(natr_period, 2 * confirmation_window + 1):
@@ -387,9 +386,9 @@ def zigzag(
     lows = df["low"].values
 
     state: TrendDirection = TrendDirection.NEUTRAL
-    depth = initial_depth
+    depth = -1
 
-    last_pivot_pos = -depth - 1
+    last_pivot_pos = -1
     pivots_indices, pivots_values, pivots_directions = [], [], []
 
     candidate_pivot_pos = -1
@@ -403,15 +402,14 @@ def zigzag(
     ) -> float:
         start = max(0, pos - natr_period)
         end = min(pos + 1, n)
-        median_factor = np.median([min_factor, max_factor])
         if start >= end:
-            return median_factor
+            return np.median([min_factor, max_factor])
 
         natr_values = get_natr_values(natr_period)
         lookback_natr_values = natr_values[start:end]
         quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
         if np.isnan(quantile):
-            return median_factor
+            return np.median([min_factor, max_factor])
 
         return max_factor - (max_factor - min_factor) * quantile
 
@@ -421,7 +419,7 @@ def zigzag(
         max_depth: int = 36,
     ) -> int:
         if len(pivots_indices) < 2:
-            return depth
+            return min_depth
 
         previous_periods = np.diff(pivots_indices[-3:])
         weights = np.linspace(0.5, 1.5, len(previous_periods))
@@ -439,13 +437,13 @@ def zigzag(
         start = max(0, pos - natr_period)
         end = min(pos + 1, n)
         if start >= end:
-            return min_strength
+            return np.median([min_strength, max_strength])
 
         natr_values = get_natr_values(natr_period)
         lookback_natr_values = natr_values[start:end]
         quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
         if np.isnan(quantile):
-            return min_strength
+            return np.median([min_strength, max_strength])
 
         return min_strength + (max_strength - min_strength) * quantile
 
