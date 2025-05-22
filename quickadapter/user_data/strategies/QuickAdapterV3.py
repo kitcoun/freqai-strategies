@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.53"
+        return "3.3.54"
 
     timeframe = "5m"
 
@@ -494,10 +494,8 @@ class QuickAdapterV3(IStrategy):
         trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        entry_date = QuickAdapterV3.get_trade_entry_date(trade)
         trade_zl_natr = zero_lag_series(
-            df.loc[df["date"] >= entry_date, "natr_label_period_candles"],
-            period=trade_duration_candles,
+            df["natr_label_period_candles"], period=trade_duration_candles
         )
         if trade_zl_natr.empty or trade_zl_natr.isna().all():
             return None
