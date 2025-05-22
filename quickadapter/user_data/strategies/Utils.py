@@ -403,14 +403,15 @@ def zigzag(
     ) -> float:
         start = max(0, pos - natr_period)
         end = min(pos + 1, n)
+        median_factor = np.median([min_factor, max_factor])
         if start >= end:
-            return (min_factor + max_factor) / 2
+            return median_factor
 
         natr_values = get_natr_values(natr_period)
         lookback_natr_values = natr_values[start:end]
         quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
         if np.isnan(quantile):
-            return (min_factor + max_factor) / 2
+            return median_factor
 
         return max_factor - (max_factor - min_factor) * quantile
 
