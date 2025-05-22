@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.52"
+        return "3.3.53"
 
     timeframe = "5m"
 
@@ -495,14 +495,24 @@ class QuickAdapterV3(IStrategy):
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
         entry_date = QuickAdapterV3.get_trade_entry_date(trade)
+        trade_zl_natr = zero_lag_series(
+            df.loc[df["date"] >= entry_date, "natr_label_period_candles"],
+            period=trade_duration_candles,
+        )
+        if trade_zl_natr.empty or trade_zl_natr.isna().all():
+            return None
         kama = get_ma_fn("kama")
-        take_profit_natr = kama(
-            zero_lag_series(
-                df.loc[df["date"] >= entry_date, "natr_label_period_candles"],
-                period=trade_duration_candles,
-            ),
-            timeperiod=trade_duration_candles,
-        ).iloc[-1]
+        trade_kama_natr = kama(trade_zl_natr, timeperiod=trade_duration_candles)
+        if (
+            trade_kama_natr is None
+            or trade_kama_natr.empty
+            or trade_kama_natr.isna().all()
+        ):
+            take_profit_natr = (
+                trade_zl_natr.ewm(span=trade_duration_candles).mean().iloc[-1]
+            )
+        else:
+            take_profit_natr = trade_kama_natr.iloc[-1]
         if isna(take_profit_natr) or take_profit_natr < 0:
             return None
         return (
