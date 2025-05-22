@@ -504,7 +504,7 @@ class QuickAdapterV3(IStrategy):
         kama = get_ma_fn("kama")
         trade_kama_natr = kama(trade_zl_natr, timeperiod=trade_duration_candles)
         if (
-            trade_kama_natr is None
+            not isinstance(trade_kama_natr, Series)
             or trade_kama_natr.empty
             or trade_kama_natr.isna().all()
         ):
