@@ -20,7 +20,7 @@ from optuna.exceptions import ExperimentalWarning
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
 from optuna.study import Study, StudyDirection
-from optuna.storages import JournalStorage, BaseStorage
+from optuna.storages import BaseStorage, JournalStorage, RDBStorage
 from optuna.storages.journal import JournalFileBackend
 from pandas import DataFrame, concat, merge
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
@@ -494,7 +494,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         storage_filename = f"optuna-{pair.split('/')[0]}" if pair else "optuna"
         storage_backend = self.rl_config_optuna.get("storage", "sqlite")
         if storage_backend == "sqlite":
-            storage = f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
+            storage = RDBStorage(
+                url=f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
+            )
         elif storage_backend == "file":
             storage = JournalStorage(
                 JournalFileBackend(f"{storage_dir}/{storage_filename}.log")

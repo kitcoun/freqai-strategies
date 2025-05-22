@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.54"
+    version = "3.7.55"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -535,7 +535,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         storage_filename = f"optuna-{pair.split('/')[0]}"
         storage_backend = self._optuna_config.get("storage")
         if storage_backend == "sqlite":
-            storage = f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
+            storage = optuna.storages.RDBStorage(
+                url=f"sqlite:///{storage_dir}/{storage_filename}.sqlite",
+                heartbeat_interval=60,
+                failed_trial_callback=optuna.storages.RetryFailedTrialCallback(
+                    max_retry=3
+                ),
+            )
         elif storage_backend == "file":
             storage = optuna.storages.JournalStorage(
                 optuna.storages.journal.JournalFileBackend(
@@ -929,21 +935,22 @@ def zigzag(
         min_depth: int = 6,
         max_depth: int = 36,
     ) -> int:
-        if len(pivots_indices) < 2:
+        if not pivots_indices:
             return min_depth
+        depth_factor = calculate_depth_factor(pos)
+        if len(pivots_indices) < 2:
+            return np.clip(int(min_depth * depth_factor), min_depth, max_depth)
 
         previous_periods = np.diff(pivots_indices[-3:])
         weights = np.linspace(0.5, 1.5, len(previous_periods))
         average_period = np.average(previous_periods, weights=weights)
 
-        depth_factor = calculate_depth_factor(pos)
-
         return np.clip(int(average_period * depth_factor), min_depth, max_depth)
 
     def calculate_min_slope_strength(
         pos: int,
-        min_strength: float = 1.025,
-        max_strength: float = 1.525,
+        min_strength: float = 1.0 + np.finfo(float).eps,
+        max_strength: float = 1.5 + np.finfo(float).eps,
     ) -> float:
         start = max(0, pos - natr_period)
         end = min(pos + 1, n)

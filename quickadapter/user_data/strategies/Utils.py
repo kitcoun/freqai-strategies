@@ -418,21 +418,22 @@ def zigzag(
         min_depth: int = 6,
         max_depth: int = 36,
     ) -> int:
-        if len(pivots_indices) < 2:
+        if not pivots_indices:
             return min_depth
+        depth_factor = calculate_depth_factor(pos)
+        if len(pivots_indices) < 2:
+            return np.clip(int(min_depth * depth_factor), min_depth, max_depth)
 
         previous_periods = np.diff(pivots_indices[-3:])
         weights = np.linspace(0.5, 1.5, len(previous_periods))
         average_period = np.average(previous_periods, weights=weights)
 
-        depth_factor = calculate_depth_factor(pos)
-
         return np.clip(int(average_period * depth_factor), min_depth, max_depth)
 
     def calculate_min_slope_strength(
         pos: int,
-        min_strength: float = 1.025,
-        max_strength: float = 1.525,
+        min_strength: float = 1.0 + np.finfo(float).eps,
+        max_strength: float = 1.5 + np.finfo(float).eps,
     ) -> float:
         start = max(0, pos - natr_period)
         end = min(pos + 1, n)
