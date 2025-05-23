@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.57"
+    version = "3.7.58"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -934,9 +934,7 @@ def zigzag(
     ) -> int:
         quantile = volatility_quantile(pos)
         if np.isnan(quantile):
-            return np.clip(
-                round(np.median([min_window, max_window]), min_window, max_window)
-            ).astype(int)
+            return int(round(np.median([min_window, max_window])))
 
         return np.clip(
             round(max_window - (max_window - min_window) * quantile),
@@ -944,38 +942,19 @@ def zigzag(
             max_window,
         ).astype(int)
 
-    def calculate_depth_factor(
-        pos: int,
-        min_factor: float = 0.5,
-        max_factor: float = 1.5,
-    ) -> float:
-        quantile = volatility_quantile(pos)
-        if np.isnan(quantile):
-            return np.median([min_factor, max_factor])
-
-        return max_factor - (max_factor - min_factor) * quantile
-
     def calculate_depth(
         pos: int,
         min_depth: int = 6,
-        max_depth: int = 36,
+        max_depth: int = 24,
     ) -> int:
-        if not pivots_indices:
-            return min_depth
-        depth_factor = calculate_depth_factor(pos)
-        if len(pivots_indices) < 2:
-            return np.clip(
-                round(np.median([min_depth, max_depth]) * depth_factor),
-                min_depth,
-                max_depth,
-            ).astype(int)
-
-        previous_periods = np.diff(pivots_indices[-3:])
-        weights = np.linspace(0.5, 1.5, len(previous_periods))
-        average_period = np.average(previous_periods, weights=weights)
+        quantile = volatility_quantile(pos)
+        if np.isnan(quantile):
+            return int(round(np.median([min_depth, max_depth])))
 
         return np.clip(
-            round(average_period * depth_factor), min_depth, max_depth
+            round(max_depth - (max_depth - min_depth) * quantile),
+            min_depth,
+            max_depth,
         ).astype(int)
 
     def calculate_min_slope_strength(
