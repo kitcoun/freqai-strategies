@@ -749,7 +749,7 @@ def train_objective(
     candles_step: int,
     model_training_parameters: dict,
 ) -> float:
-    min_train_window: int = fit_live_predictions_candles * int(1 / test_size - 1)
+    min_train_window: int = fit_live_predictions_candles * int(round(1 / test_size - 1))
     max_train_window: int = len(X)
     if max_train_window < min_train_window:
         min_train_window = max_train_window
@@ -881,10 +881,11 @@ def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
     natr_ratio: float = 6.0,
-    confirmation_window: int = 3,
 ) -> tuple[list[int], list[float], list[int]]:
+    min_confirmation_window: int = 2
+    max_confirmation_window: int = 5
     n = len(df)
-    if df.empty or n < max(natr_period, 2 * confirmation_window + 1):
+    if df.empty or n < max(natr_period, 2 * max_confirmation_window + 1):
         return [], [], []
 
     natr_values_cache: dict[int, np.ndarray] = {}
@@ -912,19 +913,41 @@ def zigzag(
     candidate_pivot_value = np.nan
     candidate_pivot_direction: TrendDirection = TrendDirection.NEUTRAL
 
+    def volatility_quantile(pos: int) -> float:
+        start = max(0, pos + 1 - natr_period)
+        end = min(pos + 1, n)
+        if start >= end:
+            return np.nan
+
+        natr_values = get_natr_values(natr_period)
+        lookback_natr_values = natr_values[start:end]
+        quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
+        if np.isnan(quantile):
+            return np.nan
+
+        return quantile
+
+    def calculate_confirmation_window(
+        pos: int,
+        min_window: int = min_confirmation_window,
+        max_window: int = max_confirmation_window,
+    ) -> int:
+        quantile = volatility_quantile(pos)
+        if np.isnan(quantile):
+            return round(np.median([min_window, max_window]))
+
+        return np.clip(
+            round(max_window - (max_window - min_window) * quantile),
+            min_window,
+            max_window,
+        ).astype(int)
+
     def calculate_depth_factor(
         pos: int,
         min_factor: float = 0.5,
         max_factor: float = 1.5,
     ) -> float:
-        start = max(0, pos - natr_period)
-        end = min(pos + 1, n)
-        if start >= end:
-            return np.median([min_factor, max_factor])
-
-        natr_values = get_natr_values(natr_period)
-        lookback_natr_values = natr_values[start:end]
-        quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
+        quantile = volatility_quantile(pos)
         if np.isnan(quantile):
             return np.median([min_factor, max_factor])
 
@@ -939,27 +962,24 @@ def zigzag(
             return min_depth
         depth_factor = calculate_depth_factor(pos)
         if len(pivots_indices) < 2:
-            return np.clip(int(min_depth * depth_factor), min_depth, max_depth)
+            return np.clip(
+                round(min_depth * depth_factor), min_depth, max_depth
+            ).astype(int)
 
         previous_periods = np.diff(pivots_indices[-3:])
         weights = np.linspace(0.5, 1.5, len(previous_periods))
         average_period = np.average(previous_periods, weights=weights)
 
-        return np.clip(int(average_period * depth_factor), min_depth, max_depth)
+        return np.clip(
+            round(average_period * depth_factor), min_depth, max_depth
+        ).astype(int)
 
     def calculate_min_slope_strength(
         pos: int,
-        min_strength: float = 1.0 + np.finfo(float).eps,
-        max_strength: float = 1.5 + np.finfo(float).eps,
+        min_strength: float = 1.0,
+        max_strength: float = 1.5,
     ) -> float:
-        start = max(0, pos - natr_period)
-        end = min(pos + 1, n)
-        if start >= end:
-            return np.median([min_strength, max_strength])
-
-        natr_values = get_natr_values(natr_period)
-        lookback_natr_values = natr_values[start:end]
-        quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
+        quantile = volatility_quantile(pos)
         if np.isnan(quantile):
             return np.median([min_strength, max_strength])
 
@@ -996,6 +1016,7 @@ def zigzag(
         extrema_threshold: float = 0.85,
         move_away_ratio: float = 0.25,
     ) -> bool:
+        confirmation_window = calculate_confirmation_window(candidate_pivot_pos)
         next_start = confirmation_start_pos + 1
         next_end = min(next_start + confirmation_window, n)
         previous_start = max(candidate_pivot_pos - confirmation_window, 0)
