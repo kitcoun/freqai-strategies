@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.55"
+    version = "3.7.56"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -1064,9 +1064,10 @@ def zigzag(
             if np.isclose(log_next_closes_std, 0):
                 next_slope_strength = 0
             else:
-                weights = np.linspace(0.5, 1.5, len(log_next_closes))
+                log_next_closes_length = len(log_next_closes)
+                weights = np.linspace(0.5, 1.5, log_next_closes_length)
                 log_next_slope = np.polyfit(
-                    range(len(log_next_closes)), log_next_closes, 1, w=weights
+                    range(log_next_closes_length), log_next_closes, 1, w=weights
                 )[0]
                 next_slope_strength = log_next_slope / log_next_closes_std
             min_slope_strength = calculate_min_slope_strength(candidate_pivot_pos)

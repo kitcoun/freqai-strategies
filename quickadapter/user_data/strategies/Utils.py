@@ -318,8 +318,9 @@ def find_fractals(
 
     fractal_candidate_indices = np.arange(fractal_period, n - fractal_period)
 
-    is_fractal_high = np.ones(len(fractal_candidate_indices), dtype=bool)
-    is_fractal_low = np.ones(len(fractal_candidate_indices), dtype=bool)
+    fractal_candidate_indices_length = len(fractal_candidate_indices)
+    is_fractal_high = np.ones(fractal_candidate_indices_length, dtype=bool)
+    is_fractal_low = np.ones(fractal_candidate_indices_length, dtype=bool)
 
     for i in range(1, fractal_period + 1):
         is_fractal_high &= (
@@ -547,9 +548,10 @@ def zigzag(
             if np.isclose(log_next_closes_std, 0):
                 next_slope_strength = 0
             else:
-                weights = np.linspace(0.5, 1.5, len(log_next_closes))
+                log_next_closes_length = len(log_next_closes)
+                weights = np.linspace(0.5, 1.5, log_next_closes_length)
                 log_next_slope = np.polyfit(
-                    range(len(log_next_closes)), log_next_closes, 1, w=weights
+                    range(log_next_closes_length), log_next_closes, 1, w=weights
                 )[0]
                 next_slope_strength = log_next_slope / log_next_closes_std
             min_slope_strength = calculate_min_slope_strength(candidate_pivot_pos)
