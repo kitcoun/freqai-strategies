@@ -934,7 +934,9 @@ def zigzag(
     ) -> int:
         quantile = volatility_quantile(pos)
         if np.isnan(quantile):
-            return round(np.median([min_window, max_window]))
+            return np.clip(
+                round(np.median([min_window, max_window]), min_window, max_window)
+            ).astype(int)
 
         return np.clip(
             round(max_window - (max_window - min_window) * quantile),
