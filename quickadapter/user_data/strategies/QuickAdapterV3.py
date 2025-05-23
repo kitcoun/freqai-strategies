@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.59"
+        return "3.3.60"
 
     timeframe = "5m"
 
@@ -503,11 +503,14 @@ class QuickAdapterV3(IStrategy):
         if trade_duration_candles >= 2:
             kama = get_ma_fn("kama")
             try:
-                trade_kama_natr = kama(
+                trade_kama_natr_values = kama(
                     trade_zl_natr, timeperiod=trade_duration_candles
-                ).dropna()
-                if not trade_kama_natr.empty:
-                    take_profit_natr = trade_kama_natr.iloc[-1]
+                )
+                trade_kama_natr_values = trade_kama_natr_values[
+                    ~np.isnan(trade_kama_natr_values)
+                ]
+                if trade_kama_natr_values.size > 0:
+                    take_profit_natr = trade_kama_natr_values[-1]
             except Exception as e:
                 logger.error(
                     f"Failed to calculate KAMA at take profit price computation: {str(e)}",
