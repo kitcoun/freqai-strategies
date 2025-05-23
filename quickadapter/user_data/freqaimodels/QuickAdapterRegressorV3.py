@@ -796,7 +796,7 @@ def get_optuna_study_model_parameters(
     study_model_parameters = {
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
         "min_child_weight": trial.suggest_float(
-            "min_child_weight", 1e-8, 100, log=True
+            "min_child_weight", 1e-8, 100.0, log=True
         ),
         "subsample": trial.suggest_float("subsample", 0.5, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
