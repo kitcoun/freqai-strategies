@@ -508,8 +508,11 @@ class QuickAdapterV3(IStrategy):
                 ).dropna()
                 if not trade_kama_natr.empty:
                     take_profit_natr = trade_kama_natr.iloc[-1]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(
+                    f"Failed to calculate KAMA at take profit price computation: {str(e)}",
+                    exc_info=True,
+                )
         if isna(take_profit_natr):
             take_profit_natr = (
                 trade_zl_natr.ewm(span=trade_duration_candles).mean().iloc[-1]
