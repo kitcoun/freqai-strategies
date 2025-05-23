@@ -449,7 +449,9 @@ def zigzag(
         depth_factor = calculate_depth_factor(pos)
         if len(pivots_indices) < 2:
             return np.clip(
-                round(min_depth * depth_factor), min_depth, max_depth
+                round(np.median([min_depth, max_depth]) * depth_factor),
+                min_depth,
+                max_depth,
             ).astype(int)
 
         previous_periods = np.diff(pivots_indices[-3:])
