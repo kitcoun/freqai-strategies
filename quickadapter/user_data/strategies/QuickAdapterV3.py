@@ -19,7 +19,7 @@ from Utils import (
     alligator,
     bottom_change_percent,
     get_ma_fn,
-    zero_lag_series,
+    zero_lag,
     zigzag,
     ewo,
     non_zero_diff,
@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.60"
+        return "3.3.61"
 
     timeframe = "5m"
 
@@ -474,32 +474,16 @@ class QuickAdapterV3(IStrategy):
     def is_trade_duration_valid(trade_duration: float) -> bool:
         return not (isna(trade_duration) or trade_duration <= 0)
 
-    def get_stoploss_distance(
-        self, df: DataFrame, trade: Trade, current_rate: float
-    ) -> Optional[float]:
-        trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
+    @staticmethod
+    def get_trade_natr(df: DataFrame, trade_duration_candles: int) -> Optional[float]:
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        current_natr = df["natr_label_period_candles"].iloc[-1]
-        if isna(current_natr) or current_natr < 0:
-            return None
-        return (
-            current_rate
-            * (current_natr / 100.0)
-            * self.get_stoploss_natr_ratio(trade.pair)
-            * (1 / math.log10(3.75 + 0.25 * trade_duration_candles))
-        )
-
-    def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
-        trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
-        if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
-            return None
-        trade_zl_natr = zero_lag_series(
+        trade_zl_natr = zero_lag(
             df["natr_label_period_candles"], period=trade_duration_candles
         )
         if trade_zl_natr.empty:
             return None
-        take_profit_natr = np.nan
+        trade_natr = np.nan
         if trade_duration_candles >= 2:
             kama = get_ma_fn("kama")
             try:
@@ -510,21 +494,39 @@ class QuickAdapterV3(IStrategy):
                     ~np.isnan(trade_kama_natr_values)
                 ]
                 if trade_kama_natr_values.size > 0:
-                    take_profit_natr = trade_kama_natr_values[-1]
+                    trade_natr = trade_kama_natr_values[-1]
             except Exception as e:
-                logger.error(
-                    f"Failed to calculate KAMA at take profit price computation: {str(e)}",
-                    exc_info=True,
-                )
-        if isna(take_profit_natr):
-            take_profit_natr = (
-                trade_zl_natr.ewm(span=trade_duration_candles).mean().iloc[-1]
-            )
-        if isna(take_profit_natr) or take_profit_natr < 0:
+                logger.error(f"Failed to calculate KAMA: {str(e)}", exc_info=True)
+        if isna(trade_natr):
+            trade_natr = trade_zl_natr.ewm(span=trade_duration_candles).mean().iloc[-1]
+        return trade_natr
+
+    def get_stoploss_distance(
+        self, df: DataFrame, trade: Trade, current_rate: float
+    ) -> Optional[float]:
+        trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
+        if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
+            return None
+        trade_natr = QuickAdapterV3.get_trade_natr(df, trade_duration_candles)
+        if isna(trade_natr) or trade_natr < 0:
+            return None
+        return (
+            current_rate
+            * (trade_natr / 100.0)
+            * self.get_stoploss_natr_ratio(trade.pair)
+            * (1 / math.log10(3.75 + 0.25 * trade_duration_candles))
+        )
+
+    def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
+        trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
+        if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
+            return None
+        trade_natr = QuickAdapterV3.get_trade_natr(df, trade_duration_candles)
+        if isna(trade_natr) or trade_natr < 0:
             return None
         return (
             trade.open_rate
-            * (take_profit_natr / 100.0)
+            * (trade_natr / 100.0)
             * self.get_take_profit_natr_ratio(trade.pair)
             * math.log10(9.75 + 0.25 * trade_duration_candles)
         )

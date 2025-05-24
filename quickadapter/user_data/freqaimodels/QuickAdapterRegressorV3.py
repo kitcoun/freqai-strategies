@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.58"
+    version = "3.7.59"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -913,29 +913,33 @@ def zigzag(
     candidate_pivot_value = np.nan
     candidate_pivot_direction: TrendDirection = TrendDirection.NEUTRAL
 
-    def volatility_quantile(pos: int) -> float:
-        start = max(0, pos + 1 - natr_period)
-        end = min(pos + 1, n)
-        if start >= end:
-            return np.nan
+    volatility_quantile_cache: dict[int, float] = {}
 
-        natr_values = get_natr_values(natr_period)
-        lookback_natr_values = natr_values[start:end]
-        quantile = calculate_quantile(lookback_natr_values, natr_values[pos])
+    def calculate_volatility_quantile(pos: int) -> float:
+        if pos not in volatility_quantile_cache:
+            start = max(0, pos + 1 - natr_period)
+            end = min(pos + 1, n)
+            if start >= end:
+                volatility_quantile_cache[pos] = np.nan
+            else:
+                natr_values = get_natr_values(natr_period)
+                volatility_quantile_cache[pos] = calculate_quantile(
+                    natr_values[start:end], natr_values[pos]
+                )
 
-        return quantile
+        return volatility_quantile_cache[pos]
 
     def calculate_confirmation_window(
         pos: int,
         min_window: int = min_confirmation_window,
         max_window: int = max_confirmation_window,
     ) -> int:
-        quantile = volatility_quantile(pos)
-        if np.isnan(quantile):
+        volatility_quantile = calculate_volatility_quantile(pos)
+        if np.isnan(volatility_quantile):
             return int(round(np.median([min_window, max_window])))
 
         return np.clip(
-            round(max_window - (max_window - min_window) * quantile),
+            round(max_window - (max_window - min_window) * volatility_quantile),
             min_window,
             max_window,
         ).astype(int)
@@ -945,12 +949,12 @@ def zigzag(
         min_depth: int = 6,
         max_depth: int = 24,
     ) -> int:
-        quantile = volatility_quantile(pos)
-        if np.isnan(quantile):
+        volatility_quantile = calculate_volatility_quantile(pos)
+        if np.isnan(volatility_quantile):
             return int(round(np.median([min_depth, max_depth])))
 
         return np.clip(
-            round(max_depth - (max_depth - min_depth) * quantile),
+            round(max_depth - (max_depth - min_depth) * volatility_quantile),
             min_depth,
             max_depth,
         ).astype(int)
@@ -960,11 +964,11 @@ def zigzag(
         min_strength: float = 1.0,
         max_strength: float = 1.5,
     ) -> float:
-        quantile = volatility_quantile(pos)
-        if np.isnan(quantile):
+        volatility_quantile = calculate_volatility_quantile(pos)
+        if np.isnan(volatility_quantile):
             return np.median([min_strength, max_strength])
 
-        return min_strength + (max_strength - min_strength) * quantile
+        return min_strength + (max_strength - min_strength) * volatility_quantile
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
