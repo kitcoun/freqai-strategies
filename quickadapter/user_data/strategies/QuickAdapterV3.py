@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.63"
+        return "3.3.64"
 
     timeframe = "5m"
 
@@ -387,6 +387,13 @@ class QuickAdapterV3(IStrategy):
             natr_period=self.get_label_period_candles(pair),
             natr_ratio=self.get_label_natr_ratio(pair),
         )
+        if len(pivots_indices) == 0:
+            logger.warning(
+                f"No extrema to label for pair {pair} with label_period_candles "
+                f"{self.get_label_period_candles(pair)} and label_natr_ratio "
+                f"{self.get_label_natr_ratio(pair)}"
+            )
+            return dataframe
         dataframe[EXTREMA_COLUMN] = 0
         for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
             dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
@@ -475,7 +482,9 @@ class QuickAdapterV3(IStrategy):
         return not (isna(trade_duration) or trade_duration <= 0)
 
     @staticmethod
-    def get_trade_natr(df: DataFrame, trade_duration_candles: int) -> Optional[float]:
+    def get_trade_natr(
+        df: DataFrame, pair: str, trade_duration_candles: int
+    ) -> Optional[float]:
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
         trade_zl_natr = calculate_zero_lag(
@@ -496,7 +505,9 @@ class QuickAdapterV3(IStrategy):
                 if trade_kama_natr_values.size > 0:
                     trade_natr = trade_kama_natr_values[-1]
             except Exception as e:
-                logger.error(f"Failed to calculate KAMA: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Failed to calculate KAMA for pair {pair}: {str(e)}", exc_info=True
+                )
         if isna(trade_natr):
             trade_natr = trade_zl_natr.ewm(span=trade_duration_candles).mean().iloc[-1]
         return trade_natr
@@ -507,7 +518,9 @@ class QuickAdapterV3(IStrategy):
         trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        trade_natr = QuickAdapterV3.get_trade_natr(df, trade_duration_candles)
+        trade_natr = QuickAdapterV3.get_trade_natr(
+            df, trade.pair, trade_duration_candles
+        )
         if isna(trade_natr) or trade_natr < 0:
             return None
         return (
@@ -521,7 +534,9 @@ class QuickAdapterV3(IStrategy):
         trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        trade_natr = QuickAdapterV3.get_trade_natr(df, trade_duration_candles)
+        trade_natr = QuickAdapterV3.get_trade_natr(
+            df, trade.pair, trade_duration_candles
+        )
         if isna(trade_natr) or trade_natr < 0:
             return None
         return (
