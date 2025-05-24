@@ -387,16 +387,16 @@ class QuickAdapterV3(IStrategy):
             natr_period=self.get_label_period_candles(pair),
             natr_ratio=self.get_label_natr_ratio(pair),
         )
+        dataframe[EXTREMA_COLUMN] = 0
         if len(pivots_indices) == 0:
             logger.warning(
                 f"No extrema to label for pair {pair} with label_period_candles {self.get_label_period_candles(pair)} and label_natr_ratio {self.get_label_natr_ratio(pair)}"
             )
-            return dataframe
-        dataframe[EXTREMA_COLUMN] = 0
-        for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
-            dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
-        dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
-        dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
+        else:
+            for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
+                dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
+            dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
+            dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
         dataframe[EXTREMA_COLUMN] = self.smooth_extrema(
             dataframe[EXTREMA_COLUMN],
             self.freqai_info.get("extrema_smoothing_window", 5),
