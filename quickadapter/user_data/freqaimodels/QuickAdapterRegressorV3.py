@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.60"
+    version = "3.7.61"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -459,10 +459,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         direction: Optional[optuna.study.StudyDirection] = None,
         directions: Optional[list[optuna.study.StudyDirection]] = None,
     ) -> None:
-        identifier = self.freqai_info.get("identifier")
         study = self.optuna_create_study(
             pair=pair,
-            study_name=f"{identifier}-{pair}-{namespace}",
+            namespace=namespace,
             direction=direction,
             directions=directions,
         )
@@ -557,10 +556,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def optuna_create_study(
         self,
         pair: str,
-        study_name: str,
+        namespace: str,
         direction: Optional[optuna.study.StudyDirection] = None,
         directions: Optional[list[optuna.study.StudyDirection]] = None,
     ) -> Optional[optuna.study.Study]:
+        identifier = self.freqai_info.get("identifier")
+        study_name = f"{identifier}-{pair}-{namespace}"
         try:
             storage = self.optuna_storage(pair)
         except Exception as e:
@@ -570,7 +571,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
             return None
 
-        if self._optuna_config.get("continuous"):
+        continuous = self._optuna_config.get("continuous")
+        if continuous:
             QuickAdapterRegressorV3.optuna_study_delete(study_name, storage)
 
         try:
@@ -586,7 +588,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 direction=direction,
                 directions=directions,
                 storage=storage,
-                load_if_exists=not self._optuna_config.get("continuous"),
+                load_if_exists=not continuous,
             )
         except Exception as e:
             logger.error(
@@ -961,8 +963,8 @@ def zigzag(
 
     def calculate_min_slope_strength(
         pos: int,
-        min_strength: float = 1.0,
-        max_strength: float = 1.5,
+        min_strength: float = 0.9,
+        max_strength: float = 1.6,
     ) -> float:
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
