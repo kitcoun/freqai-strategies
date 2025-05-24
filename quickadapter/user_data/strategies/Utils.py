@@ -127,7 +127,7 @@ def vwapb(dataframe: pd.DataFrame, window=20, num_of_std=1) -> tuple:
     return vwap_low, vwap, vwap_high
 
 
-def zero_lag(series: pd.Series, period: int) -> pd.Series:
+def calculate_zero_lag(series: pd.Series, period: int) -> pd.Series:
     """Applies a zero lag filter to reduce MA lag."""
     lag = max(int(0.5 * (period - 1)), 0)
     if lag == 0:
@@ -190,9 +190,9 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
     closes = df["close"]
 
     if zero_lag:
-        highs = zero_lag(highs, period=period)
-        lows = zero_lag(lows, period=period)
-        closes = zero_lag(closes, period=period)
+        highs = calculate_zero_lag(highs, period=period)
+        lows = calculate_zero_lag(lows, period=period)
+        closes = calculate_zero_lag(closes, period=period)
 
     fd = pd.Series(np.nan, index=closes.index)
     for i in range(period, n):
@@ -227,7 +227,7 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
         return pd.Series(index=series.index, dtype=float)
 
     if zero_lag:
-        series = zero_lag(series, period=period)
+        series = calculate_zero_lag(series, period=period)
     smma = pd.Series(np.nan, index=series.index)
     smma.iloc[period - 1] = series.iloc[:period].mean()
 
@@ -266,8 +266,8 @@ def ewo(
     prices = get_price_fn(pricemode)(dataframe)
 
     if zero_lag:
-        prices_ma1 = zero_lag(prices, period=ma1_length)
-        prices_ma2 = zero_lag(prices, period=ma2_length)
+        prices_ma1 = calculate_zero_lag(prices, period=ma1_length)
+        prices_ma2 = calculate_zero_lag(prices, period=ma2_length)
     else:
         prices_ma1 = prices
         prices_ma2 = prices

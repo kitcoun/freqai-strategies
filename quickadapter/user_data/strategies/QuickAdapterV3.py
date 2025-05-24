@@ -18,8 +18,8 @@ import pandas_ta as pta
 from Utils import (
     alligator,
     bottom_change_percent,
+    calculate_zero_lag,
     get_ma_fn,
-    zero_lag,
     zigzag,
     ewo,
     non_zero_diff,
@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.61"
+        return "3.3.62"
 
     timeframe = "5m"
 
@@ -478,7 +478,7 @@ class QuickAdapterV3(IStrategy):
     def get_trade_natr(df: DataFrame, trade_duration_candles: int) -> Optional[float]:
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        trade_zl_natr = zero_lag(
+        trade_zl_natr = calculate_zero_lag(
             df["natr_label_period_candles"], period=trade_duration_candles
         )
         if trade_zl_natr.empty:
