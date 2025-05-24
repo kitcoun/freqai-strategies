@@ -389,9 +389,7 @@ class QuickAdapterV3(IStrategy):
         )
         if len(pivots_indices) == 0:
             logger.warning(
-                f"No extrema to label for pair {pair} with label_period_candles "
-                f"{self.get_label_period_candles(pair)} and label_natr_ratio "
-                f"{self.get_label_natr_ratio(pair)}"
+                f"No extrema to label for pair {pair} with label_period_candles {self.get_label_period_candles(pair)} and label_natr_ratio {self.get_label_natr_ratio(pair)}"
             )
             return dataframe
         dataframe[EXTREMA_COLUMN] = 0
