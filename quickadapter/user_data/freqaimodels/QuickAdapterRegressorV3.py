@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.66"
+    version = "3.7.67"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -409,51 +409,105 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 f"Expected 2 objectives for {namespace} namespace, but got {n_objectives}"
             )
 
-        best_trials = []
-        for trial in study.best_trials:
-            if trial.values is not None and len(trial.values) == n_objectives:
-                if all(
-                    isinstance(values, (int, float)) and np.isfinite(values)
-                    for values in trial.values
-                ):
-                    best_trials.append(trial)
+        label_trials_selection = self.ft_params.get(
+            "label_trials_selection", "quantile"
+        )
+        if label_trials_selection not in ["quantile", "chebyshev"]:
+            raise ValueError(
+                f"Unsupported label trials selection method: {label_trials_selection}. Supported methods are 'quantile' and 'chebyshev'."
+            )
+
+        best_trials = [
+            trial
+            for trial in study.best_trials
+            if trial.values is not None and len(trial.values) == n_objectives
+        ]
         if not best_trials:
             return None
 
-        objective_values = np.array([trial.values for trial in best_trials]).T
-        normalized_values_list = []
-        for values, direction in zip(objective_values, study.directions):
-            min_value, max_value = np.min(values), np.max(values)
-            range_value = max_value - min_value
+        if label_trials_selection == "quantile":
+            if len(best_trials) == 1:
+                return best_trials[0]
 
-            if np.isclose(range_value, 0):
-                normalized_values = np.full_like(values, 0.5)
-            else:
-                if direction == optuna.study.StudyDirection.MAXIMIZE:
-                    normalized_values = (values - min_value) / range_value
-                else:
-                    normalized_values = (max_value - values) / range_value
+            pivots_sizes = [trial.values[1] for trial in best_trials]
+            quantile_pivots_size = np.quantile(
+                pivots_sizes, self.ft_params.get("label_quantile", 0.5)
+            )
 
-            normalized_values_list.append(normalized_values)
-
-        trial_chebyshev_distances = []
-        for i, trial in enumerate(best_trials):
-            try:
-                chebyshev_distance = np.max(
-                    [
-                        1.0 - normalized_values[i]
-                        for normalized_values in normalized_values_list
-                    ]
+            equal_quantile_pivots_size_trials = [
+                trial
+                for trial in best_trials
+                if np.isclose(trial.values[1], quantile_pivots_size)
+            ]
+            if equal_quantile_pivots_size_trials:
+                return max(
+                    equal_quantile_pivots_size_trials, key=lambda trial: trial.values[0]
                 )
-                trial_chebyshev_distances.append((trial, chebyshev_distance))
-            except (IndexError, TypeError, ValueError):
-                continue
+            nearest_above_quantile = (
+                np.inf,
+                -np.inf,
+                None,
+            )  # (trial_pivots_size, trial_scaled_natr, trial_index)
+            nearest_below_quantile = (
+                -np.inf,
+                -np.inf,
+                None,
+            )  # (trial_pivots_size, trial_scaled_natr, trial_index)
+            for idx, trial in enumerate(best_trials):
+                pivots_size = trial.values[1]
+                if pivots_size >= quantile_pivots_size:
+                    if pivots_size < nearest_above_quantile[0] or (
+                        pivots_size == nearest_above_quantile[0]
+                        and trial.values[0] > nearest_above_quantile[1]
+                    ):
+                        nearest_above_quantile = (pivots_size, trial.values[0], idx)
+                if pivots_size <= quantile_pivots_size:
+                    if pivots_size > nearest_below_quantile[0] or (
+                        pivots_size == nearest_below_quantile[0]
+                        and trial.values[0] > nearest_below_quantile[1]
+                    ):
+                        nearest_below_quantile = (pivots_size, trial.values[0], idx)
+            if nearest_above_quantile[2] is None or nearest_below_quantile[2] is None:
+                return None
+            above_quantile_trial = best_trials[nearest_above_quantile[2]]
+            below_quantile_trial = best_trials[nearest_below_quantile[2]]
+            if above_quantile_trial.values[0] >= below_quantile_trial.values[0]:
+                return above_quantile_trial
+        elif label_trials_selection == "chebyshev":
+            objective_values = np.array([trial.values for trial in best_trials]).T
+            normalized_values_list = []
+            for values, direction in zip(objective_values, study.directions):
+                min_value, max_value = np.min(values), np.max(values)
+                range_value = max_value - min_value
 
-        return (
-            min(trial_chebyshev_distances, key=lambda k: k[1])[0]
-            if trial_chebyshev_distances
-            else None
-        )
+                if np.isclose(range_value, 0):
+                    normalized_values = np.full_like(values, 0.5)
+                else:
+                    if direction == optuna.study.StudyDirection.MAXIMIZE:
+                        normalized_values = (values - min_value) / range_value
+                    else:
+                        normalized_values = (max_value - values) / range_value
+
+                normalized_values_list.append(normalized_values)
+
+            trial_chebyshev_distances = []
+            for i, trial in enumerate(best_trials):
+                try:
+                    chebyshev_distance = np.max(
+                        [
+                            1.0 - normalized_values[i]
+                            for normalized_values in normalized_values_list
+                        ]
+                    )
+                    trial_chebyshev_distances.append((trial, chebyshev_distance))
+                except (IndexError, TypeError, ValueError):
+                    continue
+
+            return (
+                min(trial_chebyshev_distances, key=lambda item: item[1])[0]
+                if trial_chebyshev_distances
+                else None
+            )
 
     def optuna_optimize(
         self,
@@ -1212,15 +1266,14 @@ def label_objective(
         natr_ratio=label_natr_ratio,
     )
 
-    n = len(pivots_values)
-    if n < 2:
+    if len(pivots_values) < 2:
         return -np.inf, -np.inf
 
     scaled_natr_label_period_candles = (
         ta.NATR(df, timeperiod=label_period_candles).fillna(method="bfill") / 100.0
     ) * label_natr_ratio
 
-    return scaled_natr_label_period_candles.median(), n
+    return scaled_natr_label_period_candles.median(), len(pivots_values)
 
 
 def smoothed_max(series: pd.Series, temperature=1.0) -> float:
