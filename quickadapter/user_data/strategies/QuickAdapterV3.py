@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.67"
+        return "3.3.68"
 
     timeframe = "5m"
 

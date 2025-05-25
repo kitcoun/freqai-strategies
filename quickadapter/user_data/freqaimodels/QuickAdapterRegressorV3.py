@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.65"
+    version = "3.7.66"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -90,7 +90,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
         self._optuna_hp_value: dict[str, float] = {}
         self._optuna_train_value: dict[str, float] = {}
-        self._optuna_label_values: dict[str, dict] = {}
+        self._optuna_label_values: dict[str, list] = {}
         self._optuna_hp_params: dict[str, dict] = {}
         self._optuna_train_params: dict[str, dict] = {}
         self._optuna_label_params: dict[str, dict] = {}
@@ -409,11 +409,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 f"Expected 2 objectives for {namespace} namespace, but got {n_objectives}"
             )
 
-        best_trials = [
-            trial
-            for trial in study.best_trials
-            if trial.values is not None and len(trial.values) == n_objectives
-        ]
+        best_trials = []
+        for trial in study.best_trials:
+            if trial.values is not None and len(trial.values) == n_objectives:
+                if all(
+                    isinstance(values, (int, float)) and np.isfinite(values)
+                    for values in trial.values
+                ):
+                    best_trials.append(trial)
         if not best_trials:
             return None
 
