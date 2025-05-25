@@ -390,7 +390,7 @@ class QuickAdapterV3(IStrategy):
         dataframe[EXTREMA_COLUMN] = 0
         if len(pivots_indices) == 0:
             logger.warning(
-                f"No extrema to label for pair {pair} with label_period_candles {self.get_label_period_candles(pair)} and label_natr_ratio {self.get_label_natr_ratio(pair)}"
+                f"No extrema to label for pair {pair} with label_period_candles {self.get_label_period_candles(pair)} and label_natr_ratio {self.get_label_natr_ratio(pair):.2f}"
             )
         else:
             for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
