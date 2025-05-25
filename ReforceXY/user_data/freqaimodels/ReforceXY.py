@@ -503,7 +503,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
         else:
             raise ValueError(
-                f"Unsupported storage backend: {storage_backend}. Supported backends are: 'sqlite' and 'file'."
+                f"Unsupported storage backend: {storage_backend}. Supported backends are: 'sqlite' and 'file'"
             )
         return storage
 

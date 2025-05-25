@@ -398,7 +398,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self, namespace: str, study: optuna.study.Study
     ) -> Optional[optuna.trial.FrozenTrial]:
         if namespace != "label":
-            raise ValueError(f"Unsupported namespace: {namespace}")
+            raise ValueError(f"Invalid namespace: {namespace}")
 
         if not QuickAdapterRegressorV3.optuna_study_has_best_trials(study):
             return None
@@ -414,7 +414,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
         if label_trials_selection not in ["quantile", "chebyshev"]:
             raise ValueError(
-                f"Unsupported label trials selection method: {label_trials_selection}. Supported methods are 'quantile' and 'chebyshev'."
+                f"Unsupported label trials selection method: {label_trials_selection}. Supported methods are 'quantile' and 'chebyshev'"
             )
 
         best_trials = [
@@ -611,7 +611,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         else:
             raise ValueError(
-                f"Unsupported optuna storage backend: {storage_backend}. Supported backends are 'sqlite' and 'file'."
+                f"Unsupported optuna storage backend: {storage_backend}. Supported backends are 'sqlite' and 'file'"
             )
         return storage
 
@@ -1283,7 +1283,7 @@ def smoothed_max(series: pd.Series, temperature=1.0) -> float:
     if data_array.size == 0:
         return np.nan
     if temperature < 0:
-        raise ValueError("temperature must be non-negative.")
+        raise ValueError("temperature must be non-negative")
     if np.isclose(temperature, 0):
         return data_array.max()
     return sp.special.logsumexp(temperature * data_array) / temperature
@@ -1294,7 +1294,7 @@ def smoothed_min(series: pd.Series, temperature=1.0) -> float:
     if data_array.size == 0:
         return np.nan
     if temperature < 0:
-        raise ValueError("temperature must be non-negative.")
+        raise ValueError("temperature must be non-negative")
     if np.isclose(temperature, 0):
         return data_array.min()
     return -sp.special.logsumexp(-temperature * data_array) / temperature
