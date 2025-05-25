@@ -404,17 +404,17 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return None
 
         n_objectives = len(study.directions)
-        if n_objectives != 2:
-            raise ValueError(
-                f"Expected 2 objectives for {namespace} namespace, but got {n_objectives}"
-            )
 
         label_trials_selection = self.ft_params.get(
             "label_trials_selection", "quantile"
         )
-        if label_trials_selection not in ["quantile", "chebyshev"]:
+        if label_trials_selection not in ["quantile", "chebyshev", "euclidean"]:
             raise ValueError(
-                f"Unsupported label trials selection method: {label_trials_selection}. Supported methods are 'quantile' and 'chebyshev'"
+                f"Unsupported label trials selection method: {label_trials_selection}. Supported methods are 'quantile', 'chebyshev', and 'euclidean'"
+            )
+        if label_trials_selection in ["quantile"] and n_objectives != 2:
+            raise ValueError(
+                f"{label_trials_selection} requires exactly 2 objectives, got {n_objectives}"
             )
 
         best_trials = [
@@ -564,41 +564,45 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 return final_selection(
                     nearest_above_quantile, nearest_below_quantile, direction0
                 )
-        elif label_trials_selection == "chebyshev":
-            objective_values = np.array([trial.values for trial in best_trials]).T
-            normalized_values_list = []
-            for values, direction in zip(objective_values, study.directions):
-                min_value, max_value = np.min(values), np.max(values)
-                range_value = max_value - min_value
+        elif label_trials_selection in ["chebyshev", "euclidean"]:
 
-                if np.isclose(range_value, 0):
-                    normalized_values = np.full_like(values, 0.5)
+            def calculate_distances(normalized: np.ndarray, metric: str) -> np.ndarray:
+                ideal_point = np.full(normalized.shape[1], 1.0)
+
+                if metric == "chebyshev":
+                    return np.max(np.abs(normalized - ideal_point), axis=1)
+                elif metric == "euclidean":
+                    return np.linalg.norm(normalized - ideal_point, axis=1)
+                # elif metric == "manhattan":
+                #     return np.sum(np.abs(normalized - ideal_point), axis=1)
                 else:
-                    if direction == optuna.study.StudyDirection.MAXIMIZE:
-                        normalized_values = (values - min_value) / range_value
+                    raise ValueError(f"Unsupported distance metric: {metric}")
+
+            objective_values_matrix = np.array([trial.values for trial in best_trials])
+
+            normalized_matrix = np.zeros_like(objective_values_matrix, dtype=float)
+
+            for i in range(objective_values_matrix.shape[1]):
+                col = objective_values_matrix[:, i]
+                min_val = np.min(col)
+                max_val = np.max(col)
+                range_val = max_val - min_val
+
+                if np.isclose(range_val, 0):
+                    normalized_matrix[:, i] = 0.5
+                else:
+                    if study.directions[i] == optuna.study.StudyDirection.MAXIMIZE:
+                        normalized_matrix[:, i] = (col - min_val) / range_val
                     else:
-                        normalized_values = (max_value - values) / range_value
+                        normalized_matrix[:, i] = (max_val - col) / range_val
 
-                normalized_values_list.append(normalized_values)
-
-            trial_chebyshev_distances = []
-            for i, trial in enumerate(best_trials):
-                try:
-                    chebyshev_distance = np.max(
-                        [
-                            1.0 - normalized_values[i]
-                            for normalized_values in normalized_values_list
-                        ]
-                    )
-                    trial_chebyshev_distances.append((trial, chebyshev_distance))
-                except (IndexError, TypeError, ValueError):
-                    continue
-
-            return (
-                min(trial_chebyshev_distances, key=lambda item: item[1])[0]
-                if trial_chebyshev_distances
-                else None
+            trial_distances = calculate_distances(
+                normalized_matrix, label_trials_selection
             )
+            if trial_distances.size == 0:
+                return None
+
+            return best_trials[np.argmin(trial_distances)]
 
     def optuna_optimize(
         self,
