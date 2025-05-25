@@ -405,7 +405,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         if namespace == "label":
             pivots_sizes = [trial.values[1] for trial in best_trials]
             quantile_pivots_size = np.quantile(
-                pivots_sizes, self.ft_params.get("label_quantile", 0.75)
+                pivots_sizes, self.ft_params.get("label_quantile", 0.5)
             )
             equal_quantile_pivots_size_trials = [
                 trial
