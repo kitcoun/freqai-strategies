@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.62"
+    version = "3.7.63"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -963,7 +963,7 @@ def zigzag(
 
     def calculate_min_slope_strength(
         pos: int,
-        min_strength: float = 0.9,
+        min_strength: float = 0.8,
         max_strength: float = 1.6,
     ) -> float:
         volatility_quantile = calculate_volatility_quantile(pos)
