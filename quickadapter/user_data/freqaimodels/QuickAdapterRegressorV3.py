@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.68"
+    version = "3.7.69"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -429,10 +429,59 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             if len(best_trials) == 1:
                 return best_trials[0]
 
+            def compare_primary_objective(
+                trial_a: optuna.trial.FrozenTrial,
+                trial_b: optuna.trial.FrozenTrial,
+                direction: optuna.study.StudyDirection,
+            ) -> bool:
+                if direction == optuna.study.StudyDirection.MAXIMIZE:
+                    return trial_a.values[0] > trial_b.values[0]
+                return trial_a.values[0] < trial_b.values[0]
+
+            def is_better_above_candidate(
+                candidate_trial: optuna.trial.FrozenTrial,
+                previous_trial: Optional[optuna.trial.FrozenTrial],
+                direction: optuna.study.StudyDirection,
+                target_pivot_size: float,
+            ) -> bool:
+                if not previous_trial:
+                    return True
+
+                candidate_distance = candidate_trial.values[1] - target_pivot_size
+                previous_distance = previous_trial.values[1] - target_pivot_size
+
+                if not np.isclose(candidate_distance, previous_distance):
+                    return candidate_distance < previous_distance
+
+                return compare_primary_objective(
+                    candidate_trial, previous_trial, direction
+                )
+
+            def is_better_below_candidate(
+                candidate_trial: optuna.trial.FrozenTrial,
+                previous_trial: Optional[optuna.trial.FrozenTrial],
+                direction: optuna.study.StudyDirection,
+                target_pivot_size: float,
+            ) -> bool:
+                if not previous_trial:
+                    return True
+
+                candidate_distance = target_pivot_size - candidate_trial.values[1]
+                previous_distance = target_pivot_size - previous_trial.values[1]
+
+                if not np.isclose(candidate_distance, previous_distance):
+                    return candidate_distance < previous_distance
+
+                return compare_primary_objective(
+                    candidate_trial, previous_trial, direction
+                )
+
             pivots_sizes = [trial.values[1] for trial in best_trials]
             quantile_pivots_size = np.quantile(
                 pivots_sizes, self.ft_params.get("label_quantile", 0.5)
             )
+
+            direction0 = study.directions[0]
 
             equal_quantile_pivots_size_trials = [
                 trial
@@ -440,41 +489,109 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 if np.isclose(trial.values[1], quantile_pivots_size)
             ]
             if equal_quantile_pivots_size_trials:
-                return max(
-                    equal_quantile_pivots_size_trials, key=lambda trial: trial.values[0]
-                )
-            nearest_above_quantile = (
-                np.inf,
-                -np.inf,
-                None,
-            )  # (trial_pivots_size, trial_scaled_natr, trial_index)
-            nearest_below_quantile = (
-                -np.inf,
-                -np.inf,
-                None,
-            )  # (trial_pivots_size, trial_scaled_natr, trial_index)
-            for idx, trial in enumerate(best_trials):
+                if direction0 == optuna.study.StudyDirection.MAXIMIZE:
+                    return max(
+                        equal_quantile_pivots_size_trials,
+                        key=lambda trial: trial.values[0],
+                    )
+                else:
+                    return min(
+                        equal_quantile_pivots_size_trials,
+                        key=lambda trial: trial.values[0],
+                    )
+
+            nearest_above_quantile = None
+            nearest_below_quantile = None
+            for trial in best_trials:
                 pivots_size = trial.values[1]
+
                 if pivots_size >= quantile_pivots_size:
-                    if pivots_size < nearest_above_quantile[0] or (
-                        pivots_size == nearest_above_quantile[0]
-                        and trial.values[0] > nearest_above_quantile[1]
+                    if is_better_above_candidate(
+                        trial, nearest_above_quantile, direction0, quantile_pivots_size
                     ):
-                        nearest_above_quantile = (pivots_size, trial.values[0], idx)
+                        nearest_above_quantile = trial
+
                 if pivots_size <= quantile_pivots_size:
-                    if pivots_size > nearest_below_quantile[0] or (
-                        pivots_size == nearest_below_quantile[0]
-                        and trial.values[0] > nearest_below_quantile[1]
+                    if is_better_below_candidate(
+                        trial, nearest_below_quantile, direction0, quantile_pivots_size
                     ):
-                        nearest_below_quantile = (pivots_size, trial.values[0], idx)
-            if nearest_above_quantile[2] is None or nearest_below_quantile[2] is None:
+                        nearest_below_quantile = trial
+
+            if not nearest_above_quantile and not nearest_below_quantile:
                 return None
-            above_quantile_trial = best_trials[nearest_above_quantile[2]]
-            below_quantile_trial = best_trials[nearest_below_quantile[2]]
-            if above_quantile_trial.values[0] >= below_quantile_trial.values[0]:
-                return above_quantile_trial
+            if not nearest_above_quantile:
+                return nearest_below_quantile
+            if not nearest_below_quantile:
+                return nearest_above_quantile
+
+            if direction0 == optuna.study.StudyDirection.MAXIMIZE:
+                if np.isclose(
+                    nearest_above_quantile.values[0], nearest_below_quantile.values[0]
+                ):
+                    above_quantile_distance = (
+                        nearest_above_quantile.values[1] - quantile_pivots_size
+                    )
+                    below_quantile_distance = (
+                        quantile_pivots_size - nearest_below_quantile.values[1]
+                    )
+
+                    if abs(above_quantile_distance) < abs(below_quantile_distance):
+                        return nearest_above_quantile
+                    elif abs(above_quantile_distance) > abs(below_quantile_distance):
+                        return nearest_below_quantile
+                    else:
+                        direction1 = study.directions[1]
+                        if direction1 == optuna.study.StudyDirection.MAXIMIZE:
+                            return max(
+                                [nearest_above_quantile, nearest_below_quantile],
+                                key=lambda trial: trial.values[1],
+                            )
+                        else:
+                            return min(
+                                [nearest_above_quantile, nearest_below_quantile],
+                                key=lambda trial: trial.values[1],
+                            )
+                else:
+                    return (
+                        nearest_above_quantile
+                        if nearest_above_quantile.values[0]
+                        > nearest_below_quantile.values[0]
+                        else nearest_below_quantile
+                    )
             else:
-                return below_quantile_trial
+                if np.isclose(
+                    nearest_above_quantile.values[0], nearest_below_quantile.values[0]
+                ):
+                    above_quantile_distance = (
+                        nearest_above_quantile.values[1] - quantile_pivots_size
+                    )
+                    below_quantile_distance = (
+                        quantile_pivots_size - nearest_below_quantile.values[1]
+                    )
+
+                    if abs(above_quantile_distance) < abs(below_quantile_distance):
+                        return nearest_above_quantile
+                    elif abs(above_quantile_distance) > abs(below_quantile_distance):
+                        return nearest_below_quantile
+                    else:
+                        direction1 = study.directions[1]
+                        if direction1 == optuna.study.StudyDirection.MAXIMIZE:
+                            return max(
+                                [nearest_above_quantile, nearest_below_quantile],
+                                key=lambda trial: trial.values[1],
+                            )
+                        else:
+                            return min(
+                                [nearest_above_quantile, nearest_below_quantile],
+                                key=lambda trial: trial.values[1],
+                            )
+                else:
+                    return (
+                        nearest_above_quantile
+                        if nearest_above_quantile.values[0]
+                        < nearest_below_quantile.values[0]
+                        else nearest_below_quantile
+                    )
         elif label_trials_selection == "chebyshev":
             objective_values = np.array([trial.values for trial in best_trials]).T
             normalized_values_list = []
