@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.67"
+    version = "3.7.68"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -473,6 +473,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             below_quantile_trial = best_trials[nearest_below_quantile[2]]
             if above_quantile_trial.values[0] >= below_quantile_trial.values[0]:
                 return above_quantile_trial
+            else:
+                return below_quantile_trial
         elif label_trials_selection == "chebyshev":
             objective_values = np.array([trial.values for trial in best_trials]).T
             normalized_values_list = []
