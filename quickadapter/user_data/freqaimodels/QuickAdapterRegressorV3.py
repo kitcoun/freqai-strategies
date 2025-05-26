@@ -406,7 +406,16 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         n_objectives = len(study.directions)
 
         label_metric = self.ft_params.get("label_metric", "euclidean")
-        metrics = {"euclidean", "chebyshev", "manhattan", "minkowski"}
+        metrics = {
+            "euclidean",
+            "chebyshev",
+            "manhattan",
+            "minkowski",
+            "canberra",
+            "braycurtis",
+            "hellinger",
+            "geometric_mean",
+        }
         if label_metric not in metrics:
             raise ValueError(
                 f"Unsupported label metric: {label_metric}. Supported metrics are {', '.join(metrics)}"
@@ -450,6 +459,31 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         axis=1,
                     ),
                     1.0 / p_order,
+                )
+            elif metric == "canberra":
+                return np.sum(
+                    np.abs(normalized_matrix - ideal_point)
+                    / (np.abs(normalized_matrix) + np.abs(ideal_point)),
+                    axis=1,
+                )
+            elif metric == "braycurtis":
+                return np.divide(
+                    np.sum(np.abs(normalized_matrix - ideal_point), axis=1),
+                    np.sum(normalized_matrix + ideal_point, axis=1),
+                    out=np.zeros(normalized_matrix.shape[0], dtype=float),
+                    where=(np.sum(normalized_matrix + ideal_point, axis=1) != 0),
+                )
+            elif metric == "hellinger":
+                return np.sqrt(np.sum((np.sqrt(normalized_matrix) - 1.0) ** 2, axis=1))
+            elif metric == "geometric_mean":
+                return (
+                    np.array([])
+                    if normalized_matrix.shape[1] == 0
+                    else 1.0
+                    - (
+                        np.prod(normalized_matrix, axis=1)
+                        ** (1.0 / normalized_matrix.shape[1])
+                    )
                 )
             else:
                 raise ValueError(f"Unsupported distance metric: {metric}")
