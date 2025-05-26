@@ -405,13 +405,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         n_objectives = len(study.directions)
 
-        label_trials_selection = self.ft_params.get(
-            "label_trials_selection", "euclidean"
-        )
+        label_metric = self.ft_params.get("label_metric", "euclidean")
         metrics = {"euclidean", "chebyshev", "manhattan", "minkowski"}
-        if label_trials_selection not in metrics:
+        if label_metric not in metrics:
             raise ValueError(
-                f"Unsupported label trials selection method: {label_trials_selection}. Supported methods are {', '.join(metrics)}"
+                f"Unsupported label metric: {label_metric}. Supported metrics are {', '.join(metrics)}"
             )
 
         best_trials = []
@@ -431,23 +429,26 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return None
 
         def calculate_distances(
-            normalized: np.ndarray,
+            normalized_matrix: np.ndarray,
             metric: str,
             p_order: float = self.ft_params.get("label_p_order", 2.0),
         ) -> np.ndarray:
-            ideal_point = np.full(normalized.shape[1], 1.0)
+            ideal_point = np.full(normalized_matrix.shape[1], 1.0)
 
             if metric == "euclidean":
-                return np.linalg.norm(normalized - ideal_point, axis=1)
+                return np.linalg.norm(normalized_matrix - ideal_point, axis=1)
             elif metric == "chebyshev":
-                return np.max(np.abs(normalized - ideal_point), axis=1)
+                return np.max(np.abs(normalized_matrix - ideal_point), axis=1)
             elif metric == "manhattan":
-                return np.sum(np.abs(normalized - ideal_point), axis=1)
+                return np.sum(np.abs(normalized_matrix - ideal_point), axis=1)
             elif metric == "minkowski":
                 if p_order < 1:
                     raise ValueError("Minkowski p_order must be >= 1")
                 return np.power(
-                    np.sum(np.power(np.abs(normalized - ideal_point), p_order), axis=1),
+                    np.sum(
+                        np.power(np.abs(normalized_matrix - ideal_point), p_order),
+                        axis=1,
+                    ),
                     1.0 / p_order,
                 )
             else:
@@ -504,7 +505,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                             finite_max_val - finite_col
                         ) / finite_range_val
 
-        trial_distances = calculate_distances(normalized_matrix, label_trials_selection)
+        trial_distances = calculate_distances(normalized_matrix, label_metric)
 
         return best_trials[np.argmin(trial_distances)]
 
