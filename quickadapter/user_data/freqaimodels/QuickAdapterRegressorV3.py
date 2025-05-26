@@ -465,7 +465,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     normalized_matrix - ideal_point, ord=order, axis=1
                 )
             elif metric == "hellinger":
-                return np.sqrt(np.sum((np.sqrt(normalized_matrix) - 1.0) ** 2, axis=1))
+                return np.sqrt(
+                    np.sum(
+                        (np.sqrt(normalized_matrix) - np.sqrt(ideal_point)) ** 2, axis=1
+                    )
+                )
             elif metric == "geometric_mean":
                 return 1.0 - np.prod(normalized_matrix, axis=1) ** (
                     1.0 / normalized_matrix.shape[1]
@@ -480,7 +484,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     raise ValueError(
                         "label_weights length must match number of objectives"
                     )
-                return np.sum(np.array(weights) * (1.0 - normalized_matrix), axis=1)
+                return np.sum(
+                    np.array(weights) * (ideal_point - normalized_matrix), axis=1
+                )
             elif metric == "tchebichev":
                 weights = self.ft_params.get(
                     "label_weights", [1.0] * normalized_matrix.shape[1]
@@ -489,7 +495,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     raise ValueError(
                         "label_weights length must match number of objectives"
                     )
-                return np.max(np.array(weights) * (1.0 - normalized_matrix), axis=1)
+                return np.max(
+                    np.array(weights) * (ideal_point - normalized_matrix), axis=1
+                )
             elif metric == "mahalanobis":
                 if normalized_matrix.shape[0] < 2:
                     return np.linalg.norm(
