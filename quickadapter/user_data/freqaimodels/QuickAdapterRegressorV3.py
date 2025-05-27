@@ -469,10 +469,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     )
                 )
             elif metric == "geometric_mean":
-                # 1.0 = np.prod(ideal_point) ** (1.0 / ideal_point.shape[0])
-                return 1.0 - np.prod(normalized_matrix, axis=1) ** (
-                    1.0 / normalized_matrix.shape[1]
-                )
+                # 1.0 = sp.stats.gmean(ideal_point)
+                return 1.0 - sp.stats.gmean(normalized_matrix, axis=1)
             elif metric == "hypervolume":
                 # 1.0 = np.prod(ideal_point)
                 return 1.0 - np.prod(normalized_matrix, axis=1)
