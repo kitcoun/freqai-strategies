@@ -399,15 +399,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     ) -> Optional[optuna.trial.FrozenTrial]:
         if namespace != "label":
             raise ValueError(f"Invalid namespace: {namespace}")
-
-        if not QuickAdapterRegressorV3.optuna_study_has_best_trials(study):
-            return None
-
         n_objectives = len(study.directions)
         if n_objectives < 2:
             raise ValueError(
                 f"Multi-objective study must have at least 2 objectives, but got {n_objectives}"
             )
+        if not QuickAdapterRegressorV3.optuna_study_has_best_trials(study):
+            return None
 
         label_metric = self.ft_params.get("label_metric", "euclidean")
         metrics = {
@@ -598,6 +596,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         direction: Optional[optuna.study.StudyDirection] = None,
         directions: Optional[list[optuna.study.StudyDirection]] = None,
     ) -> None:
+        is_study_single_objective = direction is not None and directions is None
+        if not is_study_single_objective and len(directions) < 2:
+            raise ValueError(
+                "Multi-objective study must have at least 2 directions specified"
+            )
+
         study = self.optuna_create_study(
             pair=pair,
             namespace=namespace,
@@ -610,7 +614,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         if self._optuna_config.get("warm_start"):
             self.optuna_enqueue_previous_best_params(pair, namespace, study)
 
-        is_study_single_objective = direction is not None and directions is None
         if is_study_single_objective is True:
             objective_type = "single"
         else:
