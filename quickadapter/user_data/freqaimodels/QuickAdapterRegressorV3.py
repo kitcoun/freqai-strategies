@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.71"
+    version = "3.7.72"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -464,10 +464,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             metric: str,
             p_order: float,
         ) -> np.ndarray:
-            weights = self.ft_params.get(
-                "label_weights", [1.0] * normalized_matrix.shape[1]
+            np_weights = np.array(
+                self.ft_params.get("label_weights", [1.0] * normalized_matrix.shape[1])
             )
-            if len(weights) != normalized_matrix.shape[1]:
+            if np_weights.size != normalized_matrix.shape[1]:
                 raise ValueError("label_weights length must match number of objectives")
             ideal_point = np.ones(normalized_matrix.shape[1])
 
@@ -483,31 +483,37 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 "hamming",
                 "jaccard",
                 "jensenshannon",
-                "kulczynski1",
+                "kulczynski1",  # deprecated since version 1.15.0
                 "mahalanobis",
                 "matching",
                 "minkowski",
                 "rogerstanimoto",
                 "russellrao",
                 "seuclidean",
-                "sokalmichener",
+                "sokalmichener",  # deprecated since version 1.15.0
                 "sokalsneath",
                 "sqeuclidean",
                 "yule",
             }:
-                cdist_kwargs = {"w": weights}
+                cdist_kwargs = {"w": np_weights}
+                if metric in {
+                    "jensenshannon",
+                    "mahalanobis",
+                    "seuclidean",
+                }:
+                    del cdist_kwargs["w"]
                 if metric == "minkowski" and isinstance(p_order, float):
                     cdist_kwargs["p"] = p_order
                 return sp.spatial.distance.cdist(
                     normalized_matrix,
-                    ideal_point.reshape(1, -1),  # Reshape ideal_point to 2D
+                    ideal_point.reshape(1, -1),  # reshape ideal_point to 2D
                     metric=metric,
                     **cdist_kwargs,
                 ).flatten()
             elif metric == "hellinger":
                 return np.sqrt(
                     np.sum(
-                        np.array(weights)
+                        np_weights
                         * (np.sqrt(normalized_matrix) - np.sqrt(ideal_point)) ** 2,
                         axis=1,
                     )
@@ -519,12 +525,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     "power_mean": p_order,
                 }[metric]
                 return sp.stats.pmean(
-                    ideal_point, p=p, weights=weights
-                ) - sp.stats.pmean(normalized_matrix, p=p, weights=weights, axis=1)
+                    ideal_point, p=p, weights=np_weights
+                ) - sp.stats.pmean(normalized_matrix, p=p, weights=np_weights, axis=1)
             elif metric == "weighted_sum":
-                return np.sum(
-                    np.array(weights) * (ideal_point - normalized_matrix), axis=1
-                )
+                return np.sum(np_weights * (ideal_point - normalized_matrix), axis=1)
             elif metric == "d1":
                 if normalized_matrix.shape[0] < 2:
                     return np.full(normalized_matrix.shape[0], np.inf)
