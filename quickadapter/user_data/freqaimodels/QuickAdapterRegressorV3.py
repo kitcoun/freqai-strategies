@@ -671,6 +671,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 "value": self.get_optuna_value(pair, namespace),
                 **self.get_optuna_params(pair, namespace),
             }
+            metric_log_msg = ""
         else:
             best_trial = self.get_multi_objective_study_best_trial("label", study)
             if not best_trial:
@@ -684,8 +685,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 "values": self.get_optuna_values(pair, namespace),
                 **self.get_optuna_params(pair, namespace),
             }
+            metric_log_msg = (
+                f" using {self.ft_params.get('label_metric', 'euclidean')} metric"
+            )
         logger.info(
-            f"Optuna {pair} {namespace} {objective_type} objective done using {self.ft_params.get('label_metric', 'euclidean')} metric ({time_spent:.2f} secs)"
+            f"Optuna {pair} {namespace} {objective_type} objective done{metric_log_msg} ({time_spent:.2f} secs)"
         )
         for key, value in study_results.items():
             logger.info(
