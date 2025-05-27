@@ -447,7 +447,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         def calculate_distances(
             normalized_matrix: np.ndarray,
             metric: str,
-            p_order: float = self.ft_params.get("label_p_order", 2.0),
+            p_order: float,
         ) -> np.ndarray:
             ideal_point = np.ones(normalized_matrix.shape[1])
 
@@ -471,10 +471,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     )
                 )
             elif metric == "geometric_mean":
+                # 1.0 = np.prod(ideal_point) ** (1.0 / ideal_point.shape[0])
                 return 1.0 - np.prod(normalized_matrix, axis=1) ** (
                     1.0 / normalized_matrix.shape[1]
                 )
             elif metric == "hypervolume":
+                # 1.0 = np.prod(ideal_point)
                 return 1.0 - np.prod(normalized_matrix, axis=1)
             elif metric == "weighted_sum":
                 weights = self.ft_params.get(
@@ -580,7 +582,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                             finite_max_val - finite_col
                         ) / finite_range_val
 
-        trial_distances = calculate_distances(normalized_matrix, label_metric)
+        trial_distances = calculate_distances(
+            normalized_matrix,
+            metric=label_metric,
+            p_order=self.ft_params.get("label_p_order", 2.0),
+        )
 
         return best_trials[np.argmin(trial_distances)]
 
