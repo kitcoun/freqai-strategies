@@ -409,16 +409,33 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         label_metric = self.ft_params.get("label_metric", "euclidean")
         metrics = {
-            "euclidean",
+            "braycurtis",
+            "canberra",
             "chebyshev",
-            "manhattan",
+            "cityblock",
+            "correlation",
+            "cosine",
+            "dice",
+            "euclidean",
+            "hamming",
+            "jaccard",
+            "jensenshannon",
+            "kulczynski1",
+            "mahalanobis",
+            "matching",
             "minkowski",
+            "rogerstanimoto",
+            "russellrao",
+            "seuclidean",
+            "sokalmichener",
+            "sokalsneath",
+            "sqeuclidean",
+            "yule",
             "hellinger",
             "geometric_mean",
-            "hypervolume",
+            "harmonic_mean",
+            "power_mean",
             "weighted_sum",
-            "tchebichev",
-            "mahalanobis",
             "d1",
             "d2",
         }
@@ -447,64 +464,67 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             metric: str,
             p_order: float,
         ) -> np.ndarray:
+            weights = self.ft_params.get(
+                "label_weights", [1.0] * normalized_matrix.shape[1]
+            )
+            if len(weights) != normalized_matrix.shape[1]:
+                raise ValueError("label_weights length must match number of objectives")
             ideal_point = np.ones(normalized_matrix.shape[1])
 
-            if metric == "minkowski" and p_order < 1:
-                raise ValueError("p_order must be >= 1 for the 'minkowski' metric")
-
-            if metric in {"euclidean", "manhattan", "chebyshev", "minkowski"}:
-                order = {
-                    "euclidean": 2,
-                    "manhattan": 1,
-                    "chebyshev": np.inf,
-                    "minkowski": p_order,
-                }[metric]
-                return np.linalg.norm(
-                    normalized_matrix - ideal_point, ord=order, axis=1
-                )
+            if metric in {
+                "braycurtis",
+                "canberra",
+                "chebyshev",
+                "cityblock",
+                "correlation",
+                "cosine",
+                "dice",
+                "euclidean",
+                "hamming",
+                "jaccard",
+                "jensenshannon",
+                "kulczynski1",
+                "mahalanobis",
+                "matching",
+                "minkowski",
+                "rogerstanimoto",
+                "russellrao",
+                "seuclidean",
+                "sokalmichener",
+                "sokalsneath",
+                "sqeuclidean",
+                "yule",
+            }:
+                cdist_kwargs = {"w": weights}
+                if metric == "minkowski" and isinstance(p_order, float):
+                    cdist_kwargs["p"] = p_order
+                return sp.spatial.distance.cdist(
+                    normalized_matrix,
+                    ideal_point.reshape(1, -1),  # Reshape ideal_point to 2D
+                    metric=metric,
+                    **cdist_kwargs,
+                ).flatten()
             elif metric == "hellinger":
                 return np.sqrt(
                     np.sum(
-                        (np.sqrt(normalized_matrix) - np.sqrt(ideal_point)) ** 2, axis=1
+                        np.array(weights)
+                        * (np.sqrt(normalized_matrix) - np.sqrt(ideal_point)) ** 2,
+                        axis=1,
                     )
                 )
-            elif metric == "geometric_mean":
-                # 1.0 = sp.stats.gmean(ideal_point)
-                return 1.0 - sp.stats.gmean(normalized_matrix, axis=1)
-            elif metric == "hypervolume":
-                # 1.0 = np.prod(ideal_point)
-                return 1.0 - np.prod(normalized_matrix, axis=1)
+            elif metric in {"geometric_mean", "harmonic_mean", "power_mean"}:
+                p = {
+                    "geometric_mean": 0.0,
+                    "harmonic_mean": -1.0,
+                    "power_mean": p_order,
+                }[metric]
+                return sp.stats.pmean(
+                    ideal_point, p=p, weights=weights
+                ) - sp.stats.pmean(normalized_matrix, p=p, weights=weights, axis=1)
             elif metric == "weighted_sum":
-                weights = self.ft_params.get(
-                    "label_weights", [1.0] * normalized_matrix.shape[1]
-                )
-                if len(weights) != normalized_matrix.shape[1]:
-                    raise ValueError(
-                        "label_weights length must match number of objectives"
-                    )
                 return np.sum(
                     np.array(weights) * (ideal_point - normalized_matrix), axis=1
                 )
-            elif metric == "tchebichev":
-                weights = self.ft_params.get(
-                    "label_weights", [1.0] * normalized_matrix.shape[1]
-                )
-                if len(weights) != normalized_matrix.shape[1]:
-                    raise ValueError(
-                        "label_weights length must match number of objectives"
-                    )
-                return np.max(
-                    np.array(weights) * (ideal_point - normalized_matrix), axis=1
-                )
-            elif metric == "mahalanobis":
-                if normalized_matrix.shape[0] < 2:
-                    return np.linalg.norm(
-                        normalized_matrix - ideal_point, ord=2, axis=1
-                    )
-                cov_matrix = np.cov(normalized_matrix.T)
-                inv_cov = np.linalg.pinv(cov_matrix)
-                diff = normalized_matrix - ideal_point
-                return np.sqrt(np.einsum("ij,ji->i", diff @ inv_cov, diff.T))
             elif metric == "d1":
                 if normalized_matrix.shape[0] < 2:
                     return np.full(normalized_matrix.shape[0], np.inf)
@@ -512,8 +532,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     normalized_matrix
                 )
                 distances, _ = nbrs.kneighbors(normalized_matrix)
-                if distances.shape[1] < 2:
-                    return np.zeros(normalized_matrix.shape[0])
                 return distances[:, 1]
             elif metric == "d2":
                 if normalized_matrix.shape[0] < 2:
@@ -581,7 +599,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         trial_distances = calculate_distances(
             normalized_matrix,
             metric=label_metric,
-            p_order=self.ft_params.get("label_p_order", 2.0),
+            p_order=float(self.ft_params.get("label_p_order", 2.0)),
         )
 
         return best_trials[np.argmin(trial_distances)]
