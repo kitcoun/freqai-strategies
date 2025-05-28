@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.73"
+    version = "3.7.74"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -511,17 +511,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     metric=metric,
                     **cdist_kwargs,
                 ).flatten()
-            elif metric == "hellinger":
-                return np.sqrt(
-                    np.sum(
-                        np_weights
-                        * (np.sqrt(normalized_matrix) - np.sqrt(ideal_point)) ** 2,
-                        axis=1,
-                    )
-                ) / np.sqrt(2.0)
-            elif metric == "shellinger":
+            elif metric in {"hellinger", "shellinger"}:
                 np_sqrt_normalized_matrix = np.sqrt(normalized_matrix)
-                np_weights = 1 / np.var(np_sqrt_normalized_matrix, axis=0, ddof=1)
+                if metric == "shellinger":
+                    np_weights = 1 / np.var(np_sqrt_normalized_matrix, axis=0, ddof=1)
                 return np.sqrt(
                     np.sum(
                         np_weights
