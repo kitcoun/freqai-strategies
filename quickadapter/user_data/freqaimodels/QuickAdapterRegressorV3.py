@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.72"
+    version = "3.7.73"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -432,6 +432,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "sqeuclidean",
             "yule",
             "hellinger",
+            "shellinger",
             "geometric_mean",
             "harmonic_mean",
             "power_mean",
@@ -517,7 +518,17 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         * (np.sqrt(normalized_matrix) - np.sqrt(ideal_point)) ** 2,
                         axis=1,
                     )
-                )
+                ) / np.sqrt(2.0)
+            elif metric == "shellinger":
+                np_sqrt_normalized_matrix = np.sqrt(normalized_matrix)
+                np_weights = 1 / np.var(np_sqrt_normalized_matrix, axis=0, ddof=1)
+                return np.sqrt(
+                    np.sum(
+                        np_weights
+                        * (np_sqrt_normalized_matrix - np.sqrt(ideal_point)) ** 2,
+                        axis=1,
+                    )
+                ) / np.sqrt(2.0)
             elif metric in {"geometric_mean", "harmonic_mean", "power_mean"}:
                 p = {
                     "geometric_mean": 0.0,
