@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.74"
+        return "3.3.75"
 
     timeframe = "5m"
 
@@ -378,7 +378,7 @@ class QuickAdapterV3(IStrategy):
         return self.get_label_natr_ratio(pair) * 0.95
 
     def get_take_profit_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.85
+        return self.get_label_natr_ratio(pair) * 0.75
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
