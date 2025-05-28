@@ -712,7 +712,7 @@ class QuickAdapterV3(IStrategy):
                 center=True,
             ).mean(std=std),
             "zero_phase_gaussian": zero_phase_gaussian(
-                series=series, window=gaussian_window, std=std
+                series=series, window=window, std=std
             ),
             "boxcar": series.rolling(
                 window=odd_window, win_type="boxcar", center=True

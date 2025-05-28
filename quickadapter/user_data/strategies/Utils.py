@@ -1,10 +1,9 @@
 from enum import IntEnum
 import numpy as np
 import pandas as pd
+import scipy as sp
 import talib.abstract as ta
 from typing import Callable, Union
-from scipy.signal import convolve
-from scipy.signal.windows import gaussian
 from technical import qtpylib
 
 
@@ -44,18 +43,16 @@ def derive_gaussian_std_from_window(window: int) -> float:
 
 
 def zero_phase_gaussian(series: pd.Series, window: int, std: float) -> pd.Series:
-    kernel = gaussian(window, std=std)
-    kernel /= kernel.sum()
-
-    padding_length = window - 1
-    padded_series_values = np.pad(
-        series.values, (padding_length, padding_length), mode="edge"
-    )
-
-    forward = convolve(padded_series_values, kernel, mode="valid")
-    backward = convolve(forward[::-1], kernel, mode="valid")[::-1]
-
-    return pd.Series(backward, index=series.index)
+    if len(series) == 0:
+        return series
+    if len(series) < window:
+        raise ValueError("Series length must be greater than or equal to window size")
+    series_values = series.to_numpy()
+    gaussian_coeffs = sp.signal.windows.gaussian(M=window, std=std, sym=True)
+    b = gaussian_coeffs / np.sum(gaussian_coeffs)
+    a = 1.0
+    filtered_values = sp.signal.filtfilt(b, a, series_values)
+    return pd.Series(filtered_values, index=series.index)
 
 
 def top_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
