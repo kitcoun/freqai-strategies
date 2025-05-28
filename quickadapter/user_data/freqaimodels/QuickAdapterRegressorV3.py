@@ -407,7 +407,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         if not QuickAdapterRegressorV3.optuna_study_has_best_trials(study):
             return None
 
-        label_metric = self.ft_params.get("label_metric", "euclidean")
+        label_metric = self.ft_params.get("label_metric", "seuclidean")
         metrics = {
             "braycurtis",
             "canberra",
@@ -686,7 +686,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 **self.get_optuna_params(pair, namespace),
             }
             metric_log_msg = (
-                f" using {self.ft_params.get('label_metric', 'euclidean')} metric"
+                f" using {self.ft_params.get('label_metric', 'seuclidean')} metric"
             )
         logger.info(
             f"Optuna {pair} {namespace} {objective_type} objective done{metric_log_msg} ({time_spent:.2f} secs)"
