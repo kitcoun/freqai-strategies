@@ -463,10 +463,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return None
 
         def calculate_distances(
-            normalized_matrix: np.ndarray,
-            metric: str,
-            p_order: float,
+            normalized_matrix: np.ndarray, metric: str
         ) -> np.ndarray:
+            label_p_order = float(self.ft_params.get("label_p_order", 2.0))
             np_weights = np.array(
                 self.ft_params.get("label_weights", [1.0] * normalized_matrix.shape[1])
             )
@@ -474,8 +473,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 raise ValueError("label_weights length must match number of objectives")
             label_knn_metric = self.ft_params.get("label_knn_metric", "euclidean")
             knn_kwargs = {}
-            if label_knn_metric == "minkowski" and isinstance(p_order, float):
-                knn_kwargs["p"] = p_order
+            if label_knn_metric == "minkowski" and isinstance(label_p_order, float):
+                knn_kwargs["p"] = label_p_order
             ideal_point = np.ones(normalized_matrix.shape[1])
 
             if metric in {
@@ -509,8 +508,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     "seuclidean",
                 }:
                     del cdist_kwargs["w"]
-                if metric == "minkowski" and isinstance(p_order, float):
-                    cdist_kwargs["p"] = p_order
+                if metric == "minkowski" and isinstance(label_p_order, float):
+                    cdist_kwargs["p"] = label_p_order
                 return sp.spatial.distance.cdist(
                     normalized_matrix,
                     ideal_point.reshape(1, -1),  # reshape ideal_point to 2D
@@ -532,7 +531,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 p = {
                     "geometric_mean": 0.0,
                     "harmonic_mean": -1.0,
-                    "power_mean": p_order,
+                    "power_mean": label_p_order,
                 }[metric]
                 return sp.stats.pmean(
                     ideal_point, p=p, weights=np_weights
@@ -552,7 +551,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     return np.full(normalized_matrix.shape[0], np.inf)
                 n_neighbors = (
                     min(
-                        int(self.ft_params.get("label_knn_d2_min_n_neighbors", "4")),
+                        int(self.ft_params.get("label_knn_d2_n_neighbors", 4)),
                         normalized_matrix.shape[0] - 1,
                     )
                     + 1
@@ -621,11 +620,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                             finite_max_val - finite_col
                         ) / finite_range_val
 
-        trial_distances = calculate_distances(
-            normalized_matrix,
-            metric=label_metric,
-            p_order=float(self.ft_params.get("label_p_order", 2.0)),
-        )
+        trial_distances = calculate_distances(normalized_matrix, metric=label_metric)
 
         return best_trials[np.argmin(trial_distances)]
 
