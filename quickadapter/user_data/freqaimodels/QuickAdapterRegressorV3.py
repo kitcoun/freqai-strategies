@@ -407,7 +407,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         if not QuickAdapterRegressorV3.optuna_study_has_best_trials(study):
             return None
 
-        label_metric = self.ft_params.get("label_metric", "seuclidean")
         metrics = {
             "braycurtis",
             "canberra",
@@ -442,6 +441,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "knn-d2-median",
             "knn-d2-max",
         }
+        label_metric = self.ft_params.get("label_metric", "seuclidean")
         if label_metric not in metrics:
             raise ValueError(
                 f"Unsupported label metric: {label_metric}. Supported metrics are {', '.join(metrics)}"
