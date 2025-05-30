@@ -303,7 +303,7 @@ class QuickAdapterV3(IStrategy):
             dataframe["vwap_lowerband"],
             dataframe["vwap_middleband"],
             dataframe["vwap_upperband"],
-        ) = vwapb(dataframe, 20, 1)
+        ) = vwapb(dataframe, 20, 1.0)
         dataframe["%-vwap_width"] = (
             dataframe["vwap_upperband"] - dataframe["vwap_lowerband"]
         ) / dataframe["vwap_middleband"]
@@ -375,10 +375,10 @@ class QuickAdapterV3(IStrategy):
         return self.get_label_natr_ratio(pair) * 0.0125
 
     def get_stoploss_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.95
+        return self.get_label_natr_ratio(pair) * 0.9
 
     def get_take_profit_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.75
+        return self.get_label_natr_ratio(pair) * 0.7
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))

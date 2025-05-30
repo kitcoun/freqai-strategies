@@ -116,11 +116,11 @@ def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series
 
 
 # VWAP bands
-def vwapb(dataframe: pd.DataFrame, window=20, num_of_std=1) -> tuple:
+def vwapb(dataframe: pd.DataFrame, window: int = 20, std_factor: float = 1.0) -> tuple:
     vwap = qtpylib.rolling_vwap(dataframe, window=window)
     rolling_std = vwap.rolling(window=window, min_periods=window).std()
-    vwap_low = vwap - (rolling_std * num_of_std)
-    vwap_high = vwap + (rolling_std * num_of_std)
+    vwap_low = vwap - (rolling_std * std_factor)
+    vwap_high = vwap + (rolling_std * std_factor)
     return vwap_low, vwap, vwap_high
 
 
@@ -360,7 +360,7 @@ def zigzag(
     natr_ratio: float = 6.0,
 ) -> tuple[list[int], list[float], list[int]]:
     min_confirmation_window: int = 2
-    max_confirmation_window: int = 5
+    max_confirmation_window: int = 6
     n = len(df)
     if df.empty or n < max(natr_period, 2 * max_confirmation_window + 1):
         return [], [], []

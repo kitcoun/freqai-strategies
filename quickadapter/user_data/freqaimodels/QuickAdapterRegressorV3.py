@@ -471,10 +471,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
             if np_weights.size != normalized_matrix.shape[1]:
                 raise ValueError("label_weights length must match number of objectives")
-            label_knn_metric = self.ft_params.get("label_knn_metric", "euclidean")
             knn_kwargs = {}
+            label_knn_metric = self.ft_params.get("label_knn_metric", "euclidean")
             if label_knn_metric == "minkowski" and isinstance(label_p_order, float):
                 knn_kwargs["p"] = label_p_order
+
             ideal_point = np.ones(normalized_matrix.shape[1])
 
             if metric in {
@@ -587,22 +588,22 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
             is_finite_mask = np.isfinite(current_column)
 
-            if is_finite_mask.any():
+            if np.any(is_finite_mask):
                 finite_col = current_column[is_finite_mask]
                 finite_min_val = np.min(finite_col)
                 finite_max_val = np.max(finite_col)
                 finite_range_val = finite_max_val - finite_min_val
 
                 if np.isclose(finite_range_val, 0):
-                    if is_pos_inf_mask.any() and is_neg_inf_mask.any():
+                    if np.any(is_pos_inf_mask) and np.any(is_neg_inf_mask):
                         normalized_matrix[is_finite_mask, i] = 0.5
-                    elif is_pos_inf_mask.any():
+                    elif np.any(is_pos_inf_mask):
                         normalized_matrix[is_finite_mask, i] = (
                             0.0
                             if current_direction == optuna.study.StudyDirection.MAXIMIZE
                             else 1.0
                         )
-                    elif is_neg_inf_mask.any():
+                    elif np.any(is_neg_inf_mask):
                         normalized_matrix[is_finite_mask, i] = (
                             1.0
                             if current_direction == optuna.study.StudyDirection.MAXIMIZE
@@ -1069,7 +1070,7 @@ def zigzag(
     natr_ratio: float = 6.0,
 ) -> tuple[list[int], list[float], list[int]]:
     min_confirmation_window: int = 2
-    max_confirmation_window: int = 5
+    max_confirmation_window: int = 6
     n = len(df)
     if df.empty or n < max(natr_period, 2 * max_confirmation_window + 1):
         return [], [], []
@@ -1446,6 +1447,6 @@ def round_to_nearest_int(value: float, step: int) -> int:
     :return: The rounded value.
     :raises ValueError: If step is zero.
     """
-    if step == 0:
-        raise ValueError("step must be non-zero")
+    if not isinstance(step, int) or step <= 0:
+        raise ValueError("step must be a positive integer")
     return int(round(value / step) * step)
