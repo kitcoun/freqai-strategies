@@ -476,7 +476,9 @@ class QuickAdapterV3(IStrategy):
 
     @staticmethod
     def get_trade_entry_date(trade: Trade) -> datetime:
-        return timeframe_to_prev_date(QuickAdapterV3.timeframe, trade.open_date_utc)
+        return timeframe_to_prev_date(
+            QuickAdapterV3.config.get("timeframe"), trade.open_date_utc
+        )
 
     @staticmethod
     def get_trade_duration_candles(df: DataFrame, trade: Trade) -> Optional[int]:
@@ -495,7 +497,8 @@ class QuickAdapterV3(IStrategy):
             return None
         trade_duration_minutes = (current_date - entry_date).total_seconds() / 60.0
         return int(
-            trade_duration_minutes / timeframe_to_minutes(QuickAdapterV3.timeframe)
+            trade_duration_minutes
+            / timeframe_to_minutes(QuickAdapterV3.config.get("timeframe"))
         )
 
     @staticmethod
@@ -574,7 +577,9 @@ class QuickAdapterV3(IStrategy):
         current_profit: float,
         **kwargs,
     ) -> Optional[float]:
-        df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
+        df, _ = self.dp.get_analyzed_dataframe(
+            pair=pair, timeframe=self.config.get("timeframe")
+        )
 
         if df.empty:
             return None
@@ -599,7 +604,9 @@ class QuickAdapterV3(IStrategy):
         current_profit: float,
         **kwargs,
     ) -> Optional[str]:
-        df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
+        df, _ = self.dp.get_analyzed_dataframe(
+            pair=pair, timeframe=self.config.get("timeframe")
+        )
 
         if df.empty:
             return None
@@ -663,7 +670,9 @@ class QuickAdapterV3(IStrategy):
             if trades_per_side >= max_open_trades_per_side:
                 return False
 
-        df, _ = self.dp.get_analyzed_dataframe(pair=pair, timeframe=self.timeframe)
+        df, _ = self.dp.get_analyzed_dataframe(
+            pair=pair, timeframe=self.config.get("timeframe")
+        )
         if df.empty:
             return False
         last_candle = df.iloc[-1]
