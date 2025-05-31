@@ -1083,14 +1083,14 @@ def zigzag(
         if period not in natr_values_cache:
             natr_values_cache[period] = (
                 ta.NATR(df, timeperiod=period).fillna(method="bfill") / 100.0
-            ).values
+            ).to_numpy()
         return natr_values_cache[period]
 
     indices = df.index.tolist()
     thresholds = get_natr_values(natr_period) * natr_ratio
-    closes = df.get("close").values
-    highs = df.get("high").values
-    lows = df.get("low").values
+    closes = df.get("close").to_numpy()
+    highs = df.get("high").to_numpy()
+    lows = df.get("low").to_numpy()
 
     state: TrendDirection = TrendDirection.NEUTRAL
     depth = -1
