@@ -322,12 +322,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         dk.data["labels_mean"], dk.data["labels_std"] = {}, {}
         for label in dk.label_list + dk.unique_class_list:
-            if pred_df_full[label].dtype == object:
+            pred_df_full_label = pred_df_full.get(label)
+            if pred_df_full_label is None or pred_df_full_label.dtype == object:
                 continue
             if not warmed_up:
                 f = [0, 0]
             else:
-                f = sp.stats.norm.fit(pred_df_full[label])
+                f = sp.stats.norm.fit(pred_df_full_label)
             dk.data["labels_mean"][label], dk.data["labels_std"][label] = f[0], f[1]
 
         # fit the DI_threshold
@@ -335,15 +336,16 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             f = [0, 0, 0]
             cutoff = 2
         else:
-            di_values = pd.to_numeric(pred_df_full["DI_values"], errors="coerce")
+            di_values = pd.to_numeric(pred_df_full.get("DI_values"), errors="coerce")
             di_values = di_values.dropna()
             f = sp.stats.weibull_min.fit(di_values)
             cutoff = sp.stats.weibull_min.ppf(
                 self.freqai_info.get("outlier_threshold", 0.999), *f
             )
 
-        dk.data["DI_value_mean"] = pred_df_full["DI_values"].mean()
-        dk.data["DI_value_std"] = pred_df_full["DI_values"].std()
+        di_values_series = pred_df_full.get("DI_values")
+        dk.data["DI_value_mean"] = di_values_series.mean()
+        dk.data["DI_value_std"] = di_values_series.std()
         dk.data["extra_returns_per_train"]["DI_value_param1"] = f[0]
         dk.data["extra_returns_per_train"]["DI_value_param2"] = f[1]
         dk.data["extra_returns_per_train"]["DI_value_param3"] = f[2]
@@ -384,7 +386,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         temperature = float(
             self.freqai_info.get("prediction_thresholds_temperature", 250.0)
         )
-        extrema = pred_df[EXTREMA_COLUMN].iloc[
+        extrema = pred_df.get(EXTREMA_COLUMN).iloc[
             -(
                 max(2, int(fit_live_predictions_candles / label_period_candles))
                 * label_period_candles
@@ -1086,9 +1088,9 @@ def zigzag(
 
     indices = df.index.tolist()
     thresholds = get_natr_values(natr_period) * natr_ratio
-    closes = df["close"].values
-    highs = df["high"].values
-    lows = df["low"].values
+    closes = df.get("close").values
+    highs = df.get("high").values
+    lows = df.get("low").values
 
     state: TrendDirection = TrendDirection.NEUTRAL
     depth = -1
@@ -1390,9 +1392,6 @@ def label_objective(
         natr_period=label_period_candles,
         natr_ratio=label_natr_ratio,
     )
-
-    if len(pivots_values) < 2:
-        return -np.inf, -np.inf
 
     scaled_natr_label_period_candles = (
         ta.NATR(df, timeperiod=label_period_candles).fillna(method="bfill") / 100.0

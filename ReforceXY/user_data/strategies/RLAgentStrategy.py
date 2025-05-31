@@ -71,21 +71,21 @@ class RLAgentStrategy(IStrategy):
     def feature_engineering_expand_basic(
         self, dataframe: DataFrame, metadata: dict, **kwargs
     ):
-        dataframe["%-close_pct_change"] = dataframe["close"].pct_change()
-        dataframe["%-raw_volume"] = dataframe["volume"]
+        dataframe["%-close_pct_change"] = dataframe.get("close").pct_change()
+        dataframe["%-raw_volume"] = dataframe.get("volume")
 
         return dataframe
 
     def feature_engineering_standard(
         self, dataframe: DataFrame, metadata: dict, **kwargs
     ):
-        dataframe["%-day_of_week"] = (dataframe["date"].dt.dayofweek + 1) / 7
-        dataframe["%-hour_of_day"] = (dataframe["date"].dt.hour + 1) / 25
+        dataframe["%-day_of_week"] = (dataframe.get("date").dt.dayofweek + 1) / 7
+        dataframe["%-hour_of_day"] = (dataframe.get("date").dt.hour + 1) / 25
 
-        dataframe["%-raw_close"] = dataframe["close"]
-        dataframe["%-raw_open"] = dataframe["open"]
-        dataframe["%-raw_high"] = dataframe["high"]
-        dataframe["%-raw_low"] = dataframe["low"]
+        dataframe["%-raw_close"] = dataframe.get("close")
+        dataframe["%-raw_open"] = dataframe.get("open")
+        dataframe["%-raw_high"] = dataframe.get("high")
+        dataframe["%-raw_low"] = dataframe.get("low")
 
         return dataframe
 
@@ -100,14 +100,14 @@ class RLAgentStrategy(IStrategy):
         return dataframe
 
     def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
-        enter_long_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 1]
+        enter_long_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 1]
 
         df.loc[
             reduce(lambda x, y: x & y, enter_long_conditions),
             ["enter_long", "enter_tag"],
         ] = (1, "long")
 
-        enter_short_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 3]
+        enter_short_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 3]
 
         df.loc[
             reduce(lambda x, y: x & y, enter_short_conditions),
@@ -117,10 +117,10 @@ class RLAgentStrategy(IStrategy):
         return df
 
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
-        exit_long_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 2]
+        exit_long_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 2]
         df.loc[reduce(lambda x, y: x & y, exit_long_conditions), "exit_long"] = 1
 
-        exit_short_conditions = [df["do_predict"] == 1, df[ACTION_COLUMN] == 4]
+        exit_short_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 4]
         df.loc[reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"] = 1
 
         return df

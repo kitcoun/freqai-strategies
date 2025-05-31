@@ -67,10 +67,10 @@ def top_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
         raise ValueError("period must be greater than or equal to 1")
 
     previous_close_top = (
-        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
+        dataframe.get("close").rolling(period, min_periods=period).max().shift(1)
     )
 
-    return (dataframe["close"] - previous_close_top) / previous_close_top
+    return (dataframe.get("close") - previous_close_top) / previous_close_top
 
 
 def bottom_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
@@ -85,10 +85,10 @@ def bottom_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
         raise ValueError("period must be greater than or equal to 1")
 
     previous_close_bottom = (
-        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
+        dataframe.get("close").rolling(period, min_periods=period).min().shift(1)
     )
 
-    return (dataframe["close"] - previous_close_bottom) / previous_close_bottom
+    return (dataframe.get("close") - previous_close_bottom) / previous_close_bottom
 
 
 def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
@@ -104,13 +104,13 @@ def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series
         raise ValueError("period must be greater than or equal to 1")
 
     previous_close_low = (
-        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
+        dataframe.get("close").rolling(period, min_periods=period).min().shift(1)
     )
     previous_close_high = (
-        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
+        dataframe.get("close").rolling(period, min_periods=period).max().shift(1)
     )
 
-    return (dataframe["close"] - previous_close_low) / (
+    return (dataframe.get("close") - previous_close_low) / (
         non_zero_diff(previous_close_high, previous_close_low)
     )
 
@@ -126,10 +126,10 @@ def vwapb(dataframe: pd.DataFrame, window: int = 20, std_factor: float = 1.0) ->
 
 def calculate_zero_lag(series: pd.Series, period: int) -> pd.Series:
     """Applies a zero lag filter to reduce MA lag."""
-    lag = max(int(0.5 * (period - 1)), 0)
+    lag = max((period - 1) / 2, 0)
     if lag == 0:
         return series
-    return 2 * series - series.shift(lag)
+    return 2 * series - series.shift(int(lag))
 
 
 def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
@@ -144,6 +144,21 @@ def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
         "t3": ta.T3,
     }
     return mamodes.get(mamode, mamodes["sma"])
+
+
+def get_zl_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
+    ma_fn = get_ma_fn(mamode)
+    return lambda series, timeperiod: ma_fn(
+        calculate_zero_lag(series, timeperiod), timeperiod=timeperiod
+    )
+
+
+def zlema(series: pd.Series, period: int) -> pd.Series:
+    """Ehlers' Zero Lag EMA."""
+    lag = max((period - 1) / 2, 0)
+    alpha = 2 / (period + 1)
+    zl_series = 2 * series - series.shift(int(lag))
+    return zl_series.ewm(alpha=alpha).mean()
 
 
 def _fractal_dimension(highs: np.ndarray, lows: np.ndarray, period: int) -> float:
@@ -182,9 +197,9 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
 
     n = len(df)
 
-    highs = df["high"]
-    lows = df["low"]
-    closes = df["close"]
+    highs = df.get("high")
+    lows = df.get("low")
+    closes = df.get("close")
 
     if zero_lag:
         highs = calculate_zero_lag(highs, period=period)
@@ -243,7 +258,7 @@ def get_price_fn(pricemode: str) -> Callable[[pd.DataFrame], pd.Series]:
         "median": ta.MEDPRICE,
         "typical": ta.TYPPRICE,
         "weighted-close": ta.WCLPRICE,
-        "close": lambda df: df["close"],
+        "close": lambda df: df.get("close"),
     }
     return pricemodes.get(pricemode, pricemodes["close"])
 
@@ -306,8 +321,8 @@ def find_fractals(df: pd.DataFrame, period: int = 2) -> tuple[list[int], list[in
     if n < 2 * period + 1:
         return [], []
 
-    highs = df["high"].values
-    lows = df["low"].values
+    highs = df.get("high").values
+    lows = df.get("low").values
 
     fractal_candidate_indices = np.arange(period, n - period)
 
@@ -376,9 +391,9 @@ def zigzag(
 
     indices = df.index.tolist()
     thresholds = get_natr_values(natr_period) * natr_ratio
-    closes = df["close"].values
-    highs = df["high"].values
-    lows = df["low"].values
+    closes = df.get("close").values
+    highs = df.get("high").values
+    lows = df.get("low").values
 
     state: TrendDirection = TrendDirection.NEUTRAL
     depth = -1

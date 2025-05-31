@@ -158,8 +158,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         """
         self.close_envs()
 
-        train_df = data_dictionary["train_features"]
-        test_df = data_dictionary["test_features"]
+        train_df = data_dictionary.get("train_features")
+        test_df = data_dictionary.get("test_features")
         env_dict = self.pack_env_dict(dk.pair)
         seed = self.model_training_parameters.get("seed", 42)
 
@@ -234,7 +234,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         if not model_params.get("policy_kwargs"):
             model_params["policy_kwargs"] = {}
 
-        net_arch = model_params["policy_kwargs"].get("net_arch", [128, 128])
+        net_arch = model_params.get("policy_kwargs", {}).get("net_arch", [128, 128])
         if "PPO" in self.model_type:
             model_params["policy_kwargs"]["net_arch"] = {
                 "pi": net_arch,
@@ -244,11 +244,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             model_params["policy_kwargs"]["net_arch"] = net_arch
 
         model_params["policy_kwargs"]["activation_fn"] = get_activation_fn(
-            model_params["policy_kwargs"].get("activation_fn", "relu")
+            model_params.get("policy_kwargs", {}).get("activation_fn", "relu")
         )
 
         model_params["policy_kwargs"]["optimizer_class"] = get_optimizer_class(
-            model_params["policy_kwargs"].get("optimizer_class", "adam")
+            model_params.get("policy_kwargs", {}).get("optimizer_class", "adam")
         )
 
         return model_params
@@ -320,13 +320,14 @@ class ReforceXY(BaseReinforcementLearningModel):
         :return:
         model Any = trained model to be used for inference in dry/live/backtesting
         """
-        train_df = data_dictionary["train_features"]
+        train_df = data_dictionary.get("train_features")
         train_timesteps = len(train_df)
-        test_timesteps = len(data_dictionary["test_features"])
+        test_df = data_dictionary.get("test_features")
+        test_timesteps = len(test_df)
         train_cycles = max(1, int(self.rl_config.get("train_cycles", 25)))
         total_timesteps = train_timesteps * train_cycles * self.n_envs
-        train_days = steps_to_days(train_timesteps, self.config["timeframe"])
-        total_days = steps_to_days(total_timesteps, self.config["timeframe"])
+        train_days = steps_to_days(train_timesteps, self.config.get("timeframe"))
+        total_days = steps_to_days(total_timesteps, self.config.get("timeframe"))
 
         logger.info("Action masking: %s", self.is_maskable)
         logger.info(
@@ -341,7 +342,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         logger.info(
             "Test: %s steps (%s days)",
             test_timesteps,
-            steps_to_days(test_timesteps, self.config["timeframe"]),
+            steps_to_days(test_timesteps, self.config.get("timeframe")),
         )
         logger.info("Hyperopt: %s", self.hyperopt)
 
@@ -376,7 +377,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             logger.info(
                 "Continual training activated - starting training from previously trained agent."
             )
-            model = self.dd.model_dictionary[dk.pair]
+            model = self.dd.model_dictionary.get(dk.pair)
             model.set_env(self.train_env)
 
         callbacks = self.get_callbacks(
@@ -388,7 +389,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             if self.progressbar_callback:
                 self.progressbar_callback.on_training_end()
             self.close_envs()
-            model.env.close()
+            if hasattr(model, "env") and model.env is not None:
+                model.env.close()
         time_spent = time.time() - start
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
 
@@ -723,7 +725,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             if self.progressbar_callback:
                 self.progressbar_callback.on_training_end()
             self.close_envs()
-            model.env.close()
+            if hasattr(model, "env") and model.env is not None:
+                model.env.close()
 
         if nan_encountered:
             return np.nan
@@ -751,10 +754,10 @@ class ReforceXY(BaseReinforcementLearningModel):
             super().__init__(**kwargs)
             self.force_actions: bool = self.rl_config.get("force_actions", False)
             self._force_action: Optional[ForceActions] = None
-            self.take_profit: float = self.config["minimal_roi"]["0"]
-            self.stop_loss: float = self.config["stoploss"]
+            self.take_profit: float = self.config.get("minimal_roi", {}).get("0", 0.03)
+            self.stop_loss: float = self.config.get("stoploss", -0.02)
             self.timeout: int = self.rl_config.get("max_trade_duration_candles", 128)
-            self._last_closed_position: Positions = None
+            self._last_closed_position: Optional[Positions] = None
             self._last_closed_trade_tick: int = 0
             if self.force_actions:
                 logger.info(
@@ -763,7 +766,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                     self.take_profit,
                     self.stop_loss,
                     self.timeout,
-                    steps_to_days(self.timeout, self.config["timeframe"]),
+                    steps_to_days(self.timeout, self.config.get("timeframe")),
                     self.observation_space,
                 )
 
@@ -797,7 +800,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             """
             observation, history = super().reset(seed, **kwargs)
             self._force_action: Optional[ForceActions] = None
-            self._last_closed_position: Positions = None
+            self._last_closed_position: Optional[Positions] = None
             self._last_closed_trade_tick: int = 0
             return observation, history
 
@@ -869,7 +872,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             #     name="%-rsi",
             #     period=8,
             #     pair=self.pair,
-            #     timeframe=self.config["timeframe"],
+            #     timeframe=self.config.get("timeframe"),
             #     raw=True,
             # )
 
@@ -988,6 +991,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 return ForceActions.Take_profit
             if pnl <= self.stop_loss:
                 return ForceActions.Stop_loss
+            return None
 
         def _get_new_position(self, action: int) -> Positions:
             return {
@@ -1140,8 +1144,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             return self._current_tick - self._last_closed_trade_tick
 
         def get_most_recent_max_pnl(self) -> float:
+            pnl_history = self.history.get("pnl")
             return (
-                np.max(self.history.get("pnl")) if self.history.get("pnl") else -np.inf
+                np.max(pnl_history) if pnl_history and len(pnl_history) > 0 else -np.inf
             )
 
         def get_most_recent_return(self) -> float:
@@ -1154,8 +1159,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             if self._current_tick <= 0:
                 return 0.0
             if self._position == Positions.Long:
-                current_price = self.prices.iloc[self._current_tick].open
-                previous_price = self.prices.iloc[self._current_tick - 1].open
+                current_price = self.prices.iloc[self._current_tick].get("open")
+                previous_price = self.prices.iloc[self._current_tick - 1].get("open")
                 if (
                     self._position_history[self._current_tick - 1] == Positions.Short
                     or self._position_history[self._current_tick - 1]
@@ -1164,8 +1169,8 @@ class ReforceXY(BaseReinforcementLearningModel):
                     previous_price = self.add_entry_fee(previous_price)
                 return np.log(current_price) - np.log(previous_price)
             if self._position == Positions.Short:
-                current_price = self.prices.iloc[self._current_tick].open
-                previous_price = self.prices.iloc[self._current_tick - 1].open
+                current_price = self.prices.iloc[self._current_tick].get("open")
+                previous_price = self.prices.iloc[self._current_tick - 1].get("open")
                 if (
                     self._position_history[self._current_tick - 1] == Positions.Long
                     or self._position_history[self._current_tick - 1]
@@ -1190,21 +1195,19 @@ class ReforceXY(BaseReinforcementLearningModel):
             return 0.0
 
         def previous_price(self) -> float:
-            return self.prices.iloc[self._current_tick - 1].open
+            return self.prices.iloc[self._current_tick - 1].get("open")
 
         def get_env_history(self) -> DataFrame:
             """
             Get environment data from the first to the last trade
             """
-            # Check if history or trade_history is empty
             if not self.history or not self.trade_history:
                 logger.warning("History or trade history is empty.")
-                return DataFrame()  # Return an empty DataFrame
+                return DataFrame()
 
             _history_df = DataFrame.from_dict(self.history)
             _trade_history_df = DataFrame.from_dict(self.trade_history)
 
-            # Check if 'tick' column exists in both DataFrames
             if (
                 "tick" not in _history_df.columns
                 or "tick" not in _trade_history_df.columns
@@ -1212,10 +1215,10 @@ class ReforceXY(BaseReinforcementLearningModel):
                 logger.warning(
                     "'tick' column is missing from history or trade history."
                 )
-                return DataFrame()  # Return an empty DataFrame
+                return DataFrame()
 
-            _rollout_history = _history_df.merge(
-                _trade_history_df, on="tick", how="left"
+            _rollout_history = merge(
+                _history_df, _trade_history_df, on="tick", how="left"
             ).fillna(method="ffill")
             _price_history = (
                 self.prices.iloc[_rollout_history.tick].copy().reset_index()
@@ -1253,20 +1256,32 @@ class ReforceXY(BaseReinforcementLearningModel):
                 sharex=True,
             )
 
-            # Return empty fig if no trades
             if len(self.trade_history) == 0:
                 return fig
 
             history = self.get_env_history()
+            if len(history) == 0:
+                return fig
 
-            enter_long_prices = history.loc[history["type"] == "long_enter"]["price"]
-            enter_short_prices = history.loc[history["type"] == "short_enter"]["price"]
-            exit_long_prices = history.loc[history["type"] == "long_exit"]["price"]
-            exit_short_prices = history.loc[history["type"] == "short_exit"]["price"]
-            take_profit_prices = history.loc[history["type"] == "take_profit"]["price"]
-            stop_loss_prices = history.loc[history["type"] == "stop_loss"]["price"]
-            timeout_prices = history.loc[history["type"] == "timeout"]["price"]
-            axs[0].plot(history["open"], linewidth=1, color="orchid")
+            history_price = history.get("price")
+            if history_price is None or len(history_price) == 0:
+                return fig
+            history_type = history.get("type")
+            if history_type is None or len(history_type) == 0:
+                return fig
+            history_open = history["open"]
+            if history_open is None or len(history_open) == 0:
+                return fig
+
+            enter_long_prices = history.loc[history_type == "long_enter", "price"]
+            enter_short_prices = history.loc[history_type == "short_enter", "price"]
+            exit_long_prices = history.loc[history_type == "long_exit", "price"]
+            exit_short_prices = history.loc[history_type == "short_exit", "price"]
+            take_profit_prices = history.loc[history_type == "take_profit"]
+            stop_loss_prices = history.loc[history_type == "stop_loss", "price"]
+            timeout_prices = history.loc[history_type == "timeout", "price"]
+
+            axs[0].plot(history_open, linewidth=1, color="orchid")
 
             plot_markers(axs[0], enter_long_prices, "^", "forestgreen", 5, -0.1)
             plot_markers(axs[0], enter_short_prices, "v", "firebrick", 5, 0.1)
@@ -1274,24 +1289,24 @@ class ReforceXY(BaseReinforcementLearningModel):
             plot_markers(axs[0], exit_short_prices, ".", "thistle", 4, -0.1)
             plot_markers(axs[0], take_profit_prices, "*", "lime", 8, 0.1)
             plot_markers(axs[0], stop_loss_prices, "x", "red", 8, -0.1)
-            plot_markers(axs[0], timeout_prices, "1", "yellow", 8, 0)
+            plot_markers(axs[0], timeout_prices, "1", "yellow", 8, 0.0)
 
             axs[1].set_ylabel("pnl")
-            axs[1].plot(history["pnl"], linewidth=1, color="gray")
+            axs[1].plot(history.get("pnl"), linewidth=1, color="gray")
             axs[1].axhline(y=0, label="0", alpha=0.33, color="gray")
             axs[1].axhline(y=self.take_profit, label="tp", alpha=0.33, color="green")
             axs[1].axhline(y=self.stop_loss, label="sl", alpha=0.33, color="red")
 
             axs[2].set_ylabel("reward")
-            axs[2].plot(history["reward"], linewidth=1, color="gray")
+            axs[2].plot(history.get("reward"), linewidth=1, color="gray")
             axs[2].axhline(y=0, label="0", alpha=0.33)
 
             axs[3].set_ylabel("total_profit")
-            axs[3].plot(history["total_profit"], linewidth=1, color="gray")
+            axs[3].plot(history.get("total_profit"), linewidth=1, color="gray")
             axs[3].axhline(y=1, label="0", alpha=0.33)
 
             axs[4].set_ylabel("total_reward")
-            axs[4].plot(history["total_reward"], linewidth=1, color="gray")
+            axs[4].plot(history.get("total_reward"), linewidth=1, color="gray")
             axs[4].axhline(y=0, label="0", alpha=0.33)
             axs[4].set_xlabel("tick")
 
@@ -1311,7 +1326,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         def close(self) -> None:
             plt.close()
             gc.collect()
-            th.cuda.empty_cache()
+            if th.cuda.is_available():
+                th.cuda.empty_cache()
 
 
 class InfoMetricsCallback(TensorboardCallback):
@@ -1322,7 +1338,7 @@ class InfoMetricsCallback(TensorboardCallback):
     def _on_training_start(self) -> None:
         _lr = self.model.learning_rate
         _lr = _lr if isinstance(_lr, float) else "lr_schedule"
-        hparam_dict: Dict = {
+        hparam_dict: Dict[str, Any] = {
             "algorithm": self.model.__class__.__name__,
             "learning_rate": _lr,
             "gamma": self.model.gamma,
@@ -1356,8 +1372,8 @@ class InfoMetricsCallback(TensorboardCallback):
         if "QRDQN" in self.model.__class__.__name__:
             hparam_dict.update({"n_quantiles": self.model.n_quantiles})
         metric_dict = {
-            "info/total_reward": 0,
-            "info/total_profit": 1,
+            "info/total_reward": 0.0,
+            "info/total_profit": 1.0,
             "info/trade_count": 0,
             "info/trade_duration": 0,
         }
@@ -1368,17 +1384,18 @@ class InfoMetricsCallback(TensorboardCallback):
         )
 
     def _on_step(self) -> bool:
-        local_info = self.locals["infos"][0]
+        local_info = self.locals.get("infos", [{}])[0]
         if self.training_env is None:
             return True
         tensorboard_metrics = self.training_env.get_attr("tensorboard_metrics")[0]
         for metric in local_info:
             if metric not in ["episode", "terminal_observation", "TimeLimit.truncated"]:
-                self.logger.record(f"info/{metric}", local_info[metric])
+                self.logger.record(f"info/{metric}", local_info.get(metric))
         for category in tensorboard_metrics:
-            for metric in tensorboard_metrics[category]:
+            for metric in tensorboard_metrics.get(category, {}):
                 self.logger.record(
-                    f"{category}/{metric}", tensorboard_metrics[category][metric]
+                    f"{category}/{metric}",
+                    tensorboard_metrics.get(category, {}).get(metric),
                 )
         return True
 
@@ -1434,10 +1451,11 @@ class MaskableTrialEvalCallback(MaskableEvalCallback):
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
             super()._on_step()
             self.eval_idx += 1
-            self.trial.report(self.last_mean_reward, self.eval_idx)
+            if hasattr(self.trial, "report"):
+                self.trial.report(self.last_mean_reward, self.eval_idx)
 
-            # Prune trial if need
-            if self.trial.should_prune():
+            # Prune trial if needed
+            if hasattr(self.trial, "should_prune") and self.trial.should_prune():
                 self.is_pruned = True
                 return False
 
@@ -1481,7 +1499,7 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
     return func
 
 
-def hours_to_seconds(hours):
+def hours_to_seconds(hours: float) -> float:
     """
     Converts hours to seconds
     """
