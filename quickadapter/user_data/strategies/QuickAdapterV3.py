@@ -348,24 +348,24 @@ class QuickAdapterV3(IStrategy):
         label_period_candles = self._label_params.get(pair, {}).get(
             "label_period_candles"
         )
-        if isinstance(label_period_candles, int):
+        if label_period_candles and isinstance(label_period_candles, int):
             return label_period_candles
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
 
     def set_label_period_candles(self, pair: str, label_period_candles: int):
-        if isinstance(label_period_candles, int):
+        if isinstance(label_period_candles, int) and not np.isnan(label_period_candles):
             self._label_params[pair]["label_period_candles"] = label_period_candles
 
     def get_label_natr_ratio(self, pair: str) -> float:
         label_natr_ratio = self._label_params.get(pair, {}).get("label_natr_ratio")
-        if isinstance(label_natr_ratio, float):
+        if label_natr_ratio and isinstance(label_natr_ratio, float):
             return label_natr_ratio
         return float(
             self.freqai_info["feature_parameters"].get("label_natr_ratio", 6.0)
         )
 
     def set_label_natr_ratio(self, pair: str, label_natr_ratio: float):
-        if isinstance(label_natr_ratio, float):
+        if isinstance(label_natr_ratio, float) and not np.isnan(label_natr_ratio):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
     def get_entry_natr_ratio(self, pair: str) -> float:
@@ -484,7 +484,9 @@ class QuickAdapterV3(IStrategy):
 
     @staticmethod
     def is_trade_duration_valid(trade_duration: float) -> bool:
-        return not (isna(trade_duration) or trade_duration <= 0)
+        return isinstance(trade_duration, (int, float)) and not (
+            isna(trade_duration) or trade_duration <= 0
+        )
 
     @staticmethod
     def get_trade_natr(
