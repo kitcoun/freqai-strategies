@@ -183,13 +183,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         :param dk: the FreqaiDataKitchen object
         """
 
-        X = data_dictionary["train_features"]
-        y = data_dictionary["train_labels"]
-        train_weights = data_dictionary["train_weights"]
+        X = data_dictionary.get("train_features")
+        y = data_dictionary.get("train_labels")
+        train_weights = data_dictionary.get("train_weights")
 
-        X_test = data_dictionary["test_features"]
-        y_test = data_dictionary["test_labels"]
-        test_weights = data_dictionary["test_weights"]
+        X_test = data_dictionary.get("test_features")
+        y_test = data_dictionary.get("test_labels")
+        test_weights = data_dictionary.get("test_weights")
 
         model_training_parameters = self.model_training_parameters
 
@@ -331,21 +331,22 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 f = sp.stats.norm.fit(pred_df_full_label)
             dk.data["labels_mean"][label], dk.data["labels_std"][label] = f[0], f[1]
 
+        di_values = pred_df_full.get("DI_values")
+
         # fit the DI_threshold
         if not warmed_up:
             f = [0, 0, 0]
             cutoff = 2
         else:
-            di_values = pd.to_numeric(pred_df_full.get("DI_values"), errors="coerce")
-            di_values = di_values.dropna()
-            f = sp.stats.weibull_min.fit(di_values)
+            f = sp.stats.weibull_min.fit(
+                pd.to_numeric(di_values, errors="coerce").dropna()
+            )
             cutoff = sp.stats.weibull_min.ppf(
                 self.freqai_info.get("outlier_threshold", 0.999), *f
             )
 
-        di_values_series = pred_df_full.get("DI_values")
-        dk.data["DI_value_mean"] = di_values_series.mean()
-        dk.data["DI_value_std"] = di_values_series.std()
+        dk.data["DI_value_mean"] = di_values.mean()
+        dk.data["DI_value_std"] = di_values.std()
         dk.data["extra_returns_per_train"]["DI_value_param1"] = f[0]
         dk.data["extra_returns_per_train"]["DI_value_param2"] = f[1]
         dk.data["extra_returns_per_train"]["DI_value_param3"] = f[2]
@@ -1082,7 +1083,7 @@ def zigzag(
     def get_natr_values(period: int) -> np.ndarray:
         if period not in natr_values_cache:
             natr_values_cache[period] = (
-                ta.NATR(df, timeperiod=period).fillna(method="bfill") / 100.0
+                ta.NATR(df, timeperiod=period).bfill() / 100.0
             ).to_numpy()
         return natr_values_cache[period]
 
@@ -1394,7 +1395,7 @@ def label_objective(
     )
 
     scaled_natr_label_period_candles = (
-        ta.NATR(df, timeperiod=label_period_candles).fillna(method="bfill") / 100.0
+        ta.NATR(df, timeperiod=label_period_candles).bfill() / 100.0
     ) * label_natr_ratio
 
     return scaled_natr_label_period_candles.median(), len(pivots_values)

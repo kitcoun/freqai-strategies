@@ -377,7 +377,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             logger.info(
                 "Continual training activated - starting training from previously trained agent."
             )
-            model = self.dd.model_dictionary.get(dk.pair)
+            model = self.dd.model_dictionary[dk.pair]
             model.set_env(self.train_env)
 
         callbacks = self.get_callbacks(
@@ -1219,7 +1219,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
             _rollout_history = merge(
                 _history_df, _trade_history_df, on="tick", how="left"
-            ).fillna(method="ffill")
+            ).ffill()
             _price_history = (
                 self.prices.iloc[_rollout_history.tick].copy().reset_index()
             )
@@ -1269,7 +1269,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             history_type = history.get("type")
             if history_type is None or len(history_type) == 0:
                 return fig
-            history_open = history["open"]
+            history_open = history.get("open")
             if history_open is None or len(history_open) == 0:
                 return fig
 

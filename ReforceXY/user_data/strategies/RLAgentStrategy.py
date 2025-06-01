@@ -79,8 +79,9 @@ class RLAgentStrategy(IStrategy):
     def feature_engineering_standard(
         self, dataframe: DataFrame, metadata: dict, **kwargs
     ):
-        dataframe["%-day_of_week"] = (dataframe.get("date").dt.dayofweek + 1) / 7
-        dataframe["%-hour_of_day"] = (dataframe.get("date").dt.hour + 1) / 25
+        dates = dataframe.get("date")
+        dataframe["%-day_of_week"] = (dates.dt.dayofweek + 1) / 7
+        dataframe["%-hour_of_day"] = (dates.dt.hour + 1) / 25
 
         dataframe["%-raw_close"] = dataframe.get("close")
         dataframe["%-raw_open"] = dataframe.get("open")

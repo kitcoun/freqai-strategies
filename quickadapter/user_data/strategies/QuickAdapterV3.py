@@ -159,7 +159,7 @@ class QuickAdapterV3(IStrategy):
                 "FreqAI strategy requires 'identifier' defined in the freqai section configuration"
             )
         self.models_full_path = Path(
-            self.config["user_data_dir"]
+            self.config.get("user_data_dir")
             / "models"
             / f"{self.freqai_info.get('identifier')}"
         )
@@ -183,29 +183,34 @@ class QuickAdapterV3(IStrategy):
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
     ):
+        highs = dataframe.get("high")
+        lows = dataframe.get("low")
+        closes = dataframe.get("close")
+        volumes = dataframe.get("volume")
+
         dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
         dataframe["%-aroonosc-period"] = ta.AROONOSC(dataframe, timeperiod=period)
         dataframe["%-mfi-period"] = ta.MFI(dataframe, timeperiod=period)
         dataframe["%-adx-period"] = ta.ADX(dataframe, timeperiod=period)
         dataframe["%-cci-period"] = ta.CCI(dataframe, timeperiod=period)
-        dataframe["%-er-period"] = pta.er(dataframe.get("close"), length=period)
+        dataframe["%-er-period"] = pta.er(closes, length=period)
         dataframe["%-rocr-period"] = ta.ROCR(dataframe, timeperiod=period)
         dataframe["%-trix-period"] = ta.TRIX(dataframe, timeperiod=period)
         dataframe["%-cmf-period"] = pta.cmf(
-            dataframe.get("high"),
-            dataframe.get("low"),
-            dataframe.get("close"),
-            dataframe.get("volume"),
+            highs,
+            lows,
+            closes,
+            volumes,
             length=period,
         )
         dataframe["%-tcp-period"] = top_change_percent(dataframe, period=period)
         dataframe["%-bcp-period"] = bottom_change_percent(dataframe, period=period)
         dataframe["%-prp-period"] = price_retracement_percent(dataframe, period=period)
-        dataframe["%-cti-period"] = pta.cti(dataframe.get("close"), length=period)
+        dataframe["%-cti-period"] = pta.cti(closes, length=period)
         dataframe["%-chop-period"] = pta.chop(
-            dataframe.get("high"),
-            dataframe.get("low"),
-            dataframe.get("close"),
+            highs,
+            lows,
+            closes,
             length=period,
         )
         dataframe["%-linearreg_angle-period"] = ta.LINEARREG_ANGLE(
@@ -218,8 +223,14 @@ class QuickAdapterV3(IStrategy):
     def feature_engineering_expand_basic(
         self, dataframe: DataFrame, metadata: dict, **kwargs
     ):
-        dataframe["%-close_pct_change"] = dataframe.get("close").pct_change()
-        dataframe["%-raw_volume"] = dataframe.get("volume")
+        highs = dataframe.get("high")
+        lows = dataframe.get("low")
+        opens = dataframe.get("open")
+        closes = dataframe.get("close")
+        volumes = dataframe.get("volume")
+
+        dataframe["%-close_pct_change"] = closes.pct_change()
+        dataframe["%-raw_volume"] = volumes
         dataframe["%-obv"] = ta.OBV(dataframe)
         label_period_candles = self.get_label_period_candles(str(metadata.get("pair")))
         dataframe["%-atr_label_period_candles"] = ta.ATR(
@@ -236,20 +247,20 @@ class QuickAdapterV3(IStrategy):
             normalize=True,
         )
         psar = ta.SAR(dataframe, acceleration=0.02, maximum=0.2)
-        dataframe["%-diff_to_psar"] = dataframe.get("close") - psar
+        dataframe["%-diff_to_psar"] = closes - psar
         kc = pta.kc(
-            dataframe.get("high"),
-            dataframe.get("low"),
-            dataframe.get("close"),
+            highs,
+            lows,
+            closes,
             length=14,
             scalar=2,
         )
-        dataframe["kc_lowerband"] = kc.get("KCLe_14_2.0")
-        dataframe["kc_middleband"] = kc.get("KCBe_14_2.0")
-        dataframe["kc_upperband"] = kc.get("KCUe_14_2.0")
+        dataframe["kc_lowerband"] = kc["KCLe_14_2.0"]
+        dataframe["kc_middleband"] = kc["KCBe_14_2.0"]
+        dataframe["kc_upperband"] = kc["KCUe_14_2.0"]
         dataframe["%-kc_width"] = (
-            dataframe.get("kc_upperband") - dataframe.get("kc_lowerband")
-        ) / dataframe.get("kc_middleband")
+            dataframe["kc_upperband"] - dataframe["kc_lowerband"]
+        ) / dataframe["kc_middleband"]
         (
             dataframe["bb_upperband"],
             dataframe["bb_middleband"],
@@ -261,47 +272,31 @@ class QuickAdapterV3(IStrategy):
             nbdevdn=2.2,
         )
         dataframe["%-bb_width"] = (
-            dataframe.get("bb_upperband") - dataframe.get("bb_lowerband")
-        ) / dataframe.get("bb_middleband")
-        dataframe["%-ibs"] = (dataframe.get("close") - dataframe.get("low")) / (
-            non_zero_diff(dataframe.get("high"), dataframe.get("low"))
-        )
+            dataframe["bb_upperband"] - dataframe["bb_lowerband"]
+        ) / dataframe["bb_middleband"]
+        dataframe["%-ibs"] = (closes - lows) / non_zero_diff(highs, lows)
         dataframe["jaw"], dataframe["teeth"], dataframe["lips"] = alligator(
             dataframe, pricemode="median", zero_lag=True
         )
-        dataframe["%-dist_to_jaw"] = get_distance(
-            dataframe.get("close"), dataframe.get("jaw")
-        )
-        dataframe["%-dist_to_teeth"] = get_distance(
-            dataframe.get("close"), dataframe.get("teeth")
-        )
-        dataframe["%-dist_to_lips"] = get_distance(
-            dataframe.get("close"), dataframe.get("lips")
-        )
-        dataframe["%-spread_jaw_teeth"] = dataframe.get("jaw") - dataframe.get("teeth")
-        dataframe["%-spread_teeth_lips"] = dataframe.get("teeth") - dataframe.get(
-            "lips"
-        )
-        dataframe["zlema_50"] = zlema(dataframe.get("close"), period=50)
-        dataframe["zlema_12"] = zlema(dataframe.get("close"), period=12)
-        dataframe["zlema_26"] = zlema(dataframe.get("close"), period=26)
-        dataframe["%-distzlema50"] = get_distance(
-            dataframe.get("close"), dataframe.get("zlema_50")
-        )
-        dataframe["%-distzlema12"] = get_distance(
-            dataframe.get("close"), dataframe.get("zlema_12")
-        )
-        dataframe["%-distzlema26"] = get_distance(
-            dataframe.get("close"), dataframe.get("zlema_26")
-        )
+        dataframe["%-dist_to_jaw"] = get_distance(closes, dataframe["jaw"])
+        dataframe["%-dist_to_teeth"] = get_distance(closes, dataframe["teeth"])
+        dataframe["%-dist_to_lips"] = get_distance(closes, dataframe["lips"])
+        dataframe["%-spread_jaw_teeth"] = dataframe["jaw"] - dataframe["teeth"]
+        dataframe["%-spread_teeth_lips"] = dataframe["teeth"] - dataframe["lips"]
+        dataframe["zlema_50"] = zlema(closes, period=50)
+        dataframe["zlema_12"] = zlema(closes, period=12)
+        dataframe["zlema_26"] = zlema(closes, period=26)
+        dataframe["%-distzlema50"] = get_distance(closes, dataframe["zlema_50"])
+        dataframe["%-distzlema12"] = get_distance(closes, dataframe["zlema_12"])
+        dataframe["%-distzlema26"] = get_distance(closes, dataframe["zlema_26"])
         macd = ta.MACD(dataframe)
-        dataframe["%-macd"] = macd.get("macd")
-        dataframe["%-macdsignal"] = macd.get("macdsignal")
-        dataframe["%-macdhist"] = macd.get("macdhist")
+        dataframe["%-macd"] = macd["macd"]
+        dataframe["%-macdsignal"] = macd["macdsignal"]
+        dataframe["%-macdhist"] = macd["macdhist"]
         dataframe["%-dist_to_macdsignal"] = get_distance(
-            dataframe.get("%-macd"), dataframe.get("%-macdsignal")
+            dataframe["%-macd"], dataframe["%-macdsignal"]
         )
-        dataframe["%-dist_to_zerohist"] = get_distance(0, dataframe.get("%-macdhist"))
+        dataframe["%-dist_to_zerohist"] = get_distance(0, dataframe["%-macdhist"])
         # VWAP bands
         (
             dataframe["vwap_lowerband"],
@@ -309,60 +304,44 @@ class QuickAdapterV3(IStrategy):
             dataframe["vwap_upperband"],
         ) = vwapb(dataframe, 20, 1.0)
         dataframe["%-vwap_width"] = (
-            dataframe.get("vwap_upperband") - dataframe.get("vwap_lowerband")
-        ) / dataframe.get("vwap_middleband")
+            dataframe["vwap_upperband"] - dataframe["vwap_lowerband"]
+        ) / dataframe["vwap_middleband"]
         dataframe["%-dist_to_vwap_upperband"] = get_distance(
-            dataframe.get("close"), dataframe.get("vwap_upperband")
+            closes, dataframe["vwap_upperband"]
         )
         dataframe["%-dist_to_vwap_middleband"] = get_distance(
-            dataframe.get("close"), dataframe.get("vwap_middleband")
+            closes, dataframe["vwap_middleband"]
         )
         dataframe["%-dist_to_vwap_lowerband"] = get_distance(
-            dataframe.get("close"), dataframe.get("vwap_lowerband")
+            closes, dataframe["vwap_lowerband"]
         )
-        dataframe["%-body"] = dataframe.get("close") - dataframe.get("open")
-        dataframe["%-tail"] = (
-            np.minimum(dataframe.get("open"), dataframe.get("close"))
-            - dataframe.get("low")
-        ).clip(lower=0)
-        dataframe["%-wick"] = (
-            dataframe.get("high")
-            - np.maximum(dataframe.get("open"), dataframe.get("close"))
-        ).clip(lower=0)
+        dataframe["%-body"] = closes - opens
+        dataframe["%-tail"] = (np.minimum(opens, closes) - lows).clip(lower=0)
+        dataframe["%-wick"] = (highs - np.maximum(opens, closes)).clip(lower=0)
         pp = pivots_points(dataframe)
-        dataframe["r1"] = pp.get("r1")
-        dataframe["s1"] = pp.get("s1")
-        dataframe["r2"] = pp.get("r2")
-        dataframe["s2"] = pp.get("s2")
-        dataframe["r3"] = pp.get("r3")
-        dataframe["s3"] = pp.get("s3")
-        dataframe["%-dist_to_r1"] = get_distance(
-            dataframe.get("close"), dataframe.get("r1")
-        )
-        dataframe["%-dist_to_r2"] = get_distance(
-            dataframe.get("close"), dataframe.get("r2")
-        )
-        dataframe["%-dist_to_r3"] = get_distance(
-            dataframe.get("close"), dataframe.get("r3")
-        )
-        dataframe["%-dist_to_s1"] = get_distance(
-            dataframe.get("close"), dataframe.get("s1")
-        )
-        dataframe["%-dist_to_s2"] = get_distance(
-            dataframe.get("close"), dataframe.get("s2")
-        )
-        dataframe["%-dist_to_s3"] = get_distance(
-            dataframe.get("close"), dataframe.get("s3")
-        )
-        dataframe["%-raw_close"] = dataframe.get("close")
-        dataframe["%-raw_open"] = dataframe.get("open")
-        dataframe["%-raw_low"] = dataframe.get("low")
-        dataframe["%-raw_high"] = dataframe.get("high")
+        dataframe["r1"] = pp["r1"]
+        dataframe["s1"] = pp["s1"]
+        dataframe["r2"] = pp["r2"]
+        dataframe["s2"] = pp["s2"]
+        dataframe["r3"] = pp["r3"]
+        dataframe["s3"] = pp["s3"]
+        dataframe["%-dist_to_r1"] = get_distance(closes, dataframe["r1"])
+        dataframe["%-dist_to_r2"] = get_distance(closes, dataframe["r2"])
+        dataframe["%-dist_to_r3"] = get_distance(closes, dataframe["r3"])
+        dataframe["%-dist_to_s1"] = get_distance(closes, dataframe["s1"])
+        dataframe["%-dist_to_s2"] = get_distance(closes, dataframe["s2"])
+        dataframe["%-dist_to_s3"] = get_distance(closes, dataframe["s3"])
+        dataframe["%-raw_close"] = closes
+        dataframe["%-raw_open"] = opens
+        dataframe["%-raw_low"] = lows
+        dataframe["%-raw_high"] = highs
         return dataframe
 
     def feature_engineering_standard(self, dataframe: DataFrame, **kwargs):
-        dataframe["%-day_of_week"] = (dataframe.get("date").dt.dayofweek + 1) / 7
-        dataframe["%-hour_of_day"] = (dataframe.get("date").dt.hour + 1) / 25
+        dates = dataframe.get("date")
+
+        dataframe["%-day_of_week"] = (dates.dt.dayofweek + 1) / 7
+        dataframe["%-hour_of_day"] = (dates.dt.hour + 1) / 25
         return dataframe
 
     def get_label_period_candles(self, pair: str) -> int:
@@ -413,10 +392,10 @@ class QuickAdapterV3(IStrategy):
         else:
             for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
                 dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
-            dataframe["minima"] = np.where(dataframe.get(EXTREMA_COLUMN) == -1, -1, 0)
-            dataframe["maxima"] = np.where(dataframe.get(EXTREMA_COLUMN) == 1, 1, 0)
+            dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
+            dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
         dataframe[EXTREMA_COLUMN] = self.smooth_extrema(
-            dataframe.get(EXTREMA_COLUMN),
+            dataframe[EXTREMA_COLUMN],
             self.freqai_info.get("extrema_smoothing_window", 5),
         )
         return dataframe
@@ -489,10 +468,10 @@ class QuickAdapterV3(IStrategy):
         :return: Number of candles since the trade entry
         """
         entry_date = QuickAdapterV3.get_trade_entry_date(trade)
-        date_series = df.get("date")
-        if date_series is None or date_series.empty:
+        dates = df.get("date")
+        if dates is None or dates.empty:
             return None
-        current_date = date_series.iloc[-1]
+        current_date = dates.iloc[-1]
         if isna(current_date):
             return None
         trade_duration_minutes = (current_date - entry_date).total_seconds() / 60.0
