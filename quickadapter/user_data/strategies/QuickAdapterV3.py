@@ -348,7 +348,7 @@ class QuickAdapterV3(IStrategy):
         label_period_candles = self._label_params.get(pair, {}).get(
             "label_period_candles"
         )
-        if label_period_candles:
+        if isinstance(label_period_candles, int):
             return label_period_candles
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
 
@@ -358,7 +358,7 @@ class QuickAdapterV3(IStrategy):
 
     def get_label_natr_ratio(self, pair: str) -> float:
         label_natr_ratio = self._label_params.get(pair, {}).get("label_natr_ratio")
-        if label_natr_ratio:
+        if isinstance(label_natr_ratio, float):
             return label_natr_ratio
         return float(
             self.freqai_info["feature_parameters"].get("label_natr_ratio", 6.0)
@@ -379,15 +379,17 @@ class QuickAdapterV3(IStrategy):
 
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
+        label_period_candles = self.get_label_period_candles(pair)
+        label_natr_ratio = self.get_label_natr_ratio(pair)
         pivots_indices, _, pivots_directions = zigzag(
             dataframe,
-            natr_period=self.get_label_period_candles(pair),
-            natr_ratio=self.get_label_natr_ratio(pair),
+            natr_period=label_period_candles,
+            natr_ratio=label_natr_ratio,
         )
         dataframe[EXTREMA_COLUMN] = 0
         if len(pivots_indices) == 0:
             logger.warning(
-                f"No extrema to label for pair {pair} with label_period_candles {self.get_label_period_candles(pair)} and label_natr_ratio {self.get_label_natr_ratio(pair):.2f}"
+                f"No extrema to label for pair {pair} with label_period_candles {label_period_candles} and label_natr_ratio {label_natr_ratio:.2f}"
             )
         else:
             for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
