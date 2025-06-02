@@ -60,7 +60,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.78"
+        return "3.3.79"
 
     timeframe = "5m"
 
@@ -455,21 +455,17 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    @staticmethod
-    def get_trade_entry_date(trade: Trade) -> datetime:
-        return timeframe_to_prev_date(
-            QuickAdapterV3.config.get("timeframe"), trade.open_date_utc
-        )
+    def get_trade_entry_date(self, trade: Trade) -> datetime:
+        return timeframe_to_prev_date(self.config.get("timeframe"), trade.open_date_utc)
 
-    @staticmethod
-    def get_trade_duration_candles(df: DataFrame, trade: Trade) -> Optional[int]:
+    def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> Optional[int]:
         """
         Get the number of candles since the trade entry.
         :param df: DataFrame with the current data
         :param trade: Trade object
         :return: Number of candles since the trade entry
         """
-        entry_date = QuickAdapterV3.get_trade_entry_date(trade)
+        entry_date = self.get_trade_entry_date(trade)
         dates = df.get("date")
         if dates is None or dates.empty:
             return None
@@ -478,8 +474,7 @@ class QuickAdapterV3(IStrategy):
             return None
         trade_duration_minutes = (current_date - entry_date).total_seconds() / 60.0
         return int(
-            trade_duration_minutes
-            / timeframe_to_minutes(QuickAdapterV3.config.get("timeframe"))
+            trade_duration_minutes / timeframe_to_minutes(self.config.get("timeframe"))
         )
 
     @staticmethod
@@ -488,9 +483,8 @@ class QuickAdapterV3(IStrategy):
             isna(trade_duration) or trade_duration <= 0
         )
 
-    @staticmethod
     def get_trade_natr(
-        df: DataFrame, pair: str, trade_duration_candles: int
+        self, df: DataFrame, pair: str, trade_duration_candles: int
     ) -> Optional[float]:
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
@@ -520,12 +514,10 @@ class QuickAdapterV3(IStrategy):
     def get_stoploss_distance(
         self, df: DataFrame, trade: Trade, current_rate: float
     ) -> Optional[float]:
-        trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
+        trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        trade_natr = QuickAdapterV3.get_trade_natr(
-            df, trade.pair, trade_duration_candles
-        )
+        trade_natr = self.get_trade_natr(df, trade.pair, trade_duration_candles)
         if isna(trade_natr) or trade_natr < 0:
             return None
         return (
@@ -536,12 +528,10 @@ class QuickAdapterV3(IStrategy):
         )
 
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
-        trade_duration_candles = QuickAdapterV3.get_trade_duration_candles(df, trade)
+        trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
-        trade_natr = QuickAdapterV3.get_trade_natr(
-            df, trade.pair, trade_duration_candles
-        )
+        trade_natr = self.get_trade_natr(df, trade.pair, trade_duration_candles)
         if isna(trade_natr) or trade_natr < 0:
             return None
         return (
