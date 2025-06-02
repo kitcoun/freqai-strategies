@@ -45,7 +45,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.74"
+    version = "3.7.75"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -200,7 +200,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 namespace="label",
                 objective=lambda trial: label_objective(
                     trial,
-                    self.data_provider.get_pair_dataframe(dk.pair),
+                    self.data_provider.get_pair_dataframe(
+                        pair=dk.pair, timeframe=self.config.get("timeframe")
+                    ),
                     self.freqai_info.get("fit_live_predictions_candles", 100),
                     self._optuna_config.get("candles_step"),
                 ),

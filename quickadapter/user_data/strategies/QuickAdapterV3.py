@@ -159,9 +159,9 @@ class QuickAdapterV3(IStrategy):
                 "FreqAI strategy requires 'identifier' defined in the freqai section configuration"
             )
         self.models_full_path = Path(
-            self.config.get("user_data_dir")
+            str(self.config.get("user_data_dir"))
             / "models"
-            / f"{self.freqai_info.get('identifier')}"
+            / str(self.freqai_info.get("identifier"))
         )
         self._label_params: dict[str, dict] = {}
         for pair in self.pairs:
