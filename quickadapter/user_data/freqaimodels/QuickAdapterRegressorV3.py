@@ -441,10 +441,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "harmonic_mean",
             "power_mean",
             "weighted_sum",
-            "knn-d1",
-            "knn-d2-mean",
-            "knn-d2-median",
-            "knn-d2-max",
+            "knn_d1",
+            "knn_d2_mean",
+            "knn_d2_median",
+            "knn_d2_max",
         }
         label_metric = self.ft_params.get("label_metric", "seuclidean")
         if label_metric not in metrics:
@@ -544,7 +544,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 ) - sp.stats.pmean(normalized_matrix, p=p, weights=np_weights, axis=1)
             elif metric == "weighted_sum":
                 return np.sum(np_weights * (ideal_point - normalized_matrix), axis=1)
-            elif metric == "knn-d1":
+            elif metric == "knn_d1":
                 if normalized_matrix.shape[0] < 2:
                     return np.full(normalized_matrix.shape[0], np.inf)
                 nbrs = sklearn.neighbors.NearestNeighbors(
@@ -552,7 +552,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 ).fit(normalized_matrix)
                 distances, _ = nbrs.kneighbors(normalized_matrix)
                 return distances[:, 1]
-            elif metric in {"knn-d2-mean", "knn-d2-median", "knn-d2-max"}:
+            elif metric in {"knn_d2_mean", "knn_d2_median", "knn_d2_max"}:
                 if normalized_matrix.shape[0] < 2:
                     return np.full(normalized_matrix.shape[0], np.inf)
                 n_neighbors = (
@@ -566,11 +566,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     n_neighbors=n_neighbors, metric=label_knn_metric, **knn_kwargs
                 ).fit(normalized_matrix)
                 distances, _ = nbrs.kneighbors(normalized_matrix)
-                if metric == "knn-d2-mean":
+                if metric == "knn_d2_mean":
                     return np.mean(distances[:, 1:], axis=1)
-                elif metric == "knn-d2-median":
+                elif metric == "knn_d2_median":
                     return np.median(distances[:, 1:], axis=1)
-                elif metric == "knn-d2-max":
+                elif metric == "knn_d2_max":
                     return np.max(distances[:, 1:], axis=1)
             else:
                 raise ValueError(f"Unsupported distance metric: {metric}")
