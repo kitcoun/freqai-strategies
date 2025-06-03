@@ -1,5 +1,6 @@
 from enum import IntEnum
 from functools import lru_cache
+from statistics import median
 import numpy as np
 import pandas as pd
 import scipy as sp
@@ -379,8 +380,8 @@ def zigzag(
     natr_period: int = 14,
     natr_ratio: float = 6.0,
 ) -> tuple[list[int], list[float], list[int]]:
-    min_confirmation_window: int = 2
-    max_confirmation_window: int = 6
+    min_confirmation_window: int = 3
+    max_confirmation_window: int = 5
     n = len(df)
     if df.empty or n < max(natr_period, 2 * max_confirmation_window + 1):
         return [], [], []
@@ -433,7 +434,7 @@ def zigzag(
     ) -> int:
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
-            return int(round(np.median([min_window, max_window])))
+            return int(round(median([min_window, max_window])))
 
         return np.clip(
             round(max_window - (max_window - min_window) * volatility_quantile),
@@ -444,11 +445,11 @@ def zigzag(
     def calculate_depth(
         pos: int,
         min_depth: int = 6,
-        max_depth: int = 24,
+        max_depth: int = 26,
     ) -> int:
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
-            return int(round(np.median([min_depth, max_depth])))
+            return int(round(median([min_depth, max_depth])))
 
         return np.clip(
             round(max_depth - (max_depth - min_depth) * volatility_quantile),
@@ -460,12 +461,15 @@ def zigzag(
         pos: int,
         min_strength: float = 0.5,
         max_strength: float = 1.5,
+        volatility_exponent: float = 1.5,
     ) -> float:
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
-            return np.median([min_strength, max_strength])
+            return median([min_strength, max_strength])
 
-        return min_strength + (max_strength - min_strength) * volatility_quantile
+        return min_strength + (max_strength - min_strength) * (
+            volatility_quantile**volatility_exponent
+        )
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
