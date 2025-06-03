@@ -492,6 +492,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 knn_kwargs["p"] = label_p_order
 
             ideal_point = np.ones(n_objectives)
+            ideal_point_2d = ideal_point.reshape(1, -1)
 
             if metric in {
                 "braycurtis",
@@ -528,7 +529,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     cdist_kwargs["p"] = label_p_order
                 return sp.spatial.distance.cdist(
                     normalized_matrix,
-                    ideal_point.reshape(1, -1),  # reshape ideal_point to 2D
+                    ideal_point_2d,
                     metric=metric,
                     **cdist_kwargs,
                 ).flatten()
@@ -568,7 +569,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 if n_samples == 1:
                     return sp.spatial.distance.cdist(
                         normalized_matrix,
-                        ideal_point.reshape(1, -1),
+                        ideal_point_2d,
                         metric=label_kmeans_metric,
                         **cdist_kwargs,
                     ).flatten()
@@ -580,7 +581,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 cluster_centers = kmeans.cluster_centers_
                 cluster_distances_to_ideal = sp.spatial.distance.cdist(
                     cluster_centers,
-                    ideal_point.reshape(1, -1),
+                    ideal_point_2d,
                     metric=label_kmeans_metric,
                     **cdist_kwargs,
                 ).flatten()
