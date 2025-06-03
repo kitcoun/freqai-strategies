@@ -585,35 +585,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     metric=label_kmeans_metric,
                     **cdist_kwargs,
                 ).flatten()
-                best_cluster = np.argmin(cluster_distances_to_ideal)
-                best_center = cluster_centers[best_cluster].reshape(1, -1)
-                distances_to_best_cluster = sp.spatial.distance.cdist(
-                    normalized_matrix,
-                    best_center,
-                    metric=label_kmeans_metric,
-                    **cdist_kwargs,
-                ).flatten()
-                penalty_value = (
-                    np.clip(
-                        (
-                            np.mean(np.delete(cluster_distances_to_ideal, best_cluster))
-                            / cluster_distances_to_ideal[best_cluster]
-                            if cluster_distances_to_ideal[best_cluster] > 0
-                            else np.std(
-                                np.delete(cluster_distances_to_ideal, best_cluster)
-                            )
-                            if len(cluster_distances_to_ideal) > 1
-                            else 1.0
-                        )
-                        - 1.0,
-                        0.5,
-                        3.0,
-                    )
-                    if len(cluster_distances_to_ideal) > 1
-                    else 1.0
-                )
-                penalties = np.where(cluster_labels == best_cluster, 0.0, penalty_value)
-                return distances_to_best_cluster + penalties
+                return cluster_distances_to_ideal[cluster_labels]
             elif metric == "knn_d1":
                 if n_samples < 2:
                     return np.full(n_samples, np.inf)
