@@ -480,6 +480,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
             if np_weights.size != n_objectives:
                 raise ValueError("label_weights length must match number of objectives")
+            if np.any(np_weights < 0):
+                raise ValueError("label_weights values must be non-negative")
+            label_weights_sum = np.sum(np_weights)
+            if np.isclose(label_weights_sum, 0):
+                raise ValueError("label_weights sum cannot be zero")
+            np_weights = np_weights / label_weights_sum
             knn_kwargs = {}
             label_knn_metric = self.ft_params.get("label_knn_metric", "euclidean")
             if label_knn_metric == "minkowski" and isinstance(label_p_order, float):
