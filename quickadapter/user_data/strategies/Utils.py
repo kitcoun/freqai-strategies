@@ -333,6 +333,8 @@ def find_fractals(df: pd.DataFrame, period: int = 2) -> tuple[list[int], list[in
     highs = df.get("high").to_numpy()
     lows = df.get("low").to_numpy()
 
+    indices = df.index.tolist()
+
     fractal_highs = []
     fractal_lows = []
 
@@ -347,9 +349,9 @@ def find_fractals(df: pd.DataFrame, period: int = 2) -> tuple[list[int], list[in
         )
 
         if is_high_fractal:
-            fractal_highs.append(i)
+            fractal_highs.append(indices[i])
         if is_low_fractal:
-            fractal_lows.append(i)
+            fractal_lows.append(indices[i])
 
     return fractal_highs, fractal_lows
 
