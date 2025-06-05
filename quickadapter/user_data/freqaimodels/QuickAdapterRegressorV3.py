@@ -1195,8 +1195,8 @@ def zigzag(
 
     def calculate_min_slope_strength(
         pos: int,
-        min_strength: float = 0.5,
-        max_strength: float = 1.5,
+        min_strength: float = 0.4,
+        max_strength: float = 1.8,
         volatility_exponent: float = 1.5,
     ) -> float:
         volatility_quantile = calculate_volatility_quantile(pos)
