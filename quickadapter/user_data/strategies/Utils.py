@@ -606,29 +606,19 @@ def zigzag(
         )
         if is_initial_high_move_significant and is_initial_low_move_significant:
             if initial_move_from_high > initial_move_from_low:
-                if is_reversal_confirmed(
-                    initial_high_pos, initial_high_pos, TrendDirection.DOWN
-                ):
-                    add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
-                    state = TrendDirection.DOWN
-                    break
-            else:
-                if is_reversal_confirmed(
-                    initial_low_pos, initial_low_pos, TrendDirection.UP
-                ):
-                    add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
-                    state = TrendDirection.UP
-                    break
-        else:
-            if is_initial_high_move_significant and is_reversal_confirmed(
-                initial_high_pos, initial_high_pos, TrendDirection.DOWN
-            ):
                 add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
                 state = TrendDirection.DOWN
                 break
-            elif is_initial_low_move_significant and is_reversal_confirmed(
-                initial_low_pos, initial_low_pos, TrendDirection.UP
-            ):
+            else:
+                add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
+                state = TrendDirection.UP
+                break
+        else:
+            if is_initial_high_move_significant:
+                add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
+                state = TrendDirection.DOWN
+                break
+            elif is_initial_low_move_significant:
                 add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
                 state = TrendDirection.UP
                 break
