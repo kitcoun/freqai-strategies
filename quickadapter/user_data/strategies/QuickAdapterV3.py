@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
-from typing import Optional
+from typing import Callable, Optional
 from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
 from freqtrade.strategy.interface import IStrategy
 from freqtrade.strategy import stoploss_from_absolute
@@ -180,6 +180,13 @@ class QuickAdapterV3(IStrategy):
                     ),
                 }
             )
+        self._throttle_modulo = max(
+            1,
+            round(
+                (timeframe_to_minutes(self.config.get("timeframe")) * 60)
+                / self.config.get("internals", {}).get("process_throttle_secs", 5)
+            ),
+        )
 
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
@@ -584,6 +591,22 @@ class QuickAdapterV3(IStrategy):
             * math.log10(9.75 + 0.25 * trade_duration_candles)
         )
 
+    def throttle_callback(
+        self,
+        pair: str,
+        callback: Callable[[], None],
+        current_time: Optional[datetime] = None,
+    ) -> None:
+        if current_time is None:
+            current_time = datetime.now(datetime.timezone.utc)
+        if hash(pair + str(current_time)) % self._throttle_modulo == 0:
+            try:
+                callback()
+            except Exception as e:
+                logger.error(
+                    f"Error executing callback for {pair}: {str(e)}", exc_info=True
+                )
+
     def custom_stoploss(
         self,
         pair: str,
@@ -655,8 +678,12 @@ class QuickAdapterV3(IStrategy):
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
         )
         trade.set_custom_data(key="take_profit_price", value=take_profit_price)
-        logger.info(
-            f"Trade {trade.trade_direction} for {pair}: open price {trade.open_rate}, current price {current_rate}, TP price {take_profit_price}"
+        self.throttle_callback(
+            pair=pair,
+            callback=lambda: logger.info(
+                f"Trade {trade.trade_direction} for {pair}: open price {trade.open_rate}, current price {current_rate}, TP price {take_profit_price}"
+            ),
+            current_time=current_time,
         )
         if trade.is_short:
             if current_rate <= take_profit_price:
