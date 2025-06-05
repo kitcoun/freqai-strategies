@@ -503,8 +503,8 @@ class QuickAdapterV3(IStrategy):
         )
         if isna(trade_volatility_quantile):
             return None
-        return entry_natr * trade_volatility_quantile + current_natr * (
-            1.0 - trade_volatility_quantile
+        return np.interp(
+            trade_volatility_quantile, [0.0, 1.0], [current_natr, entry_natr]
         )
 
     def get_trade_moving_average_natr(
