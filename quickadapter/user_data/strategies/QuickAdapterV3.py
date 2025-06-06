@@ -61,7 +61,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.82"
+        return "3.3.83"
 
     timeframe = "5m"
 
@@ -394,16 +394,22 @@ class QuickAdapterV3(IStrategy):
             natr_period=label_period_candles,
             natr_ratio=label_natr_ratio,
         )
+        label_period = datetime.timedelta(
+            minutes=len(dataframe) * timeframe_to_minutes(self.config.get("timeframe"))
+        )
         dataframe[EXTREMA_COLUMN] = 0
         if len(pivots_indices) == 0:
             logger.warning(
-                f"No extrema to label for pair {pair} with label_period_candles {label_period_candles} and label_natr_ratio {label_natr_ratio:.2f}"
+                f"{pair}: no extrema to label (label_period='{str(label_period)}' / {label_period_candles=} / {label_natr_ratio=:.2f})"
             )
         else:
             for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
                 dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
             dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
             dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
+            logger.info(
+                f"{pair}: labeled {len(pivots_indices)} extrema (label_period='{str(label_period)}' / {label_period_candles=} / {label_natr_ratio=:.2f})"
+            )
         dataframe[EXTREMA_COLUMN] = self.smooth_extrema(
             dataframe[EXTREMA_COLUMN],
             self.freqai_info.get("extrema_smoothing_window", 5),
