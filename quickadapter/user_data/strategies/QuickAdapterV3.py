@@ -491,7 +491,9 @@ class QuickAdapterV3(IStrategy):
             isna(trade_duration) or trade_duration <= 0
         )
 
-    def get_trade_quantile_natr(self, df: DataFrame, trade: Trade) -> Optional[float]:
+    def get_trade_interpolation_natr(
+        self, df: DataFrame, trade: Trade
+    ) -> Optional[float]:
         label_natr = df.get("natr_label_period_candles")
         if label_natr is None or label_natr.empty:
             return None
@@ -550,15 +552,15 @@ class QuickAdapterV3(IStrategy):
         trade_price_target = self.config.get("exit_pricing", {}).get(
             "trade_price_target", "moving_average"
         )
-        if trade_price_target == "quantile":
-            return self.get_trade_quantile_natr(df, trade)
+        if trade_price_target == "interpolation":
+            return self.get_trade_interpolation_natr(df, trade)
         elif trade_price_target == "moving_average":
             return self.get_trade_moving_average_natr(
                 df, trade.pair, trade_duration_candles
             )
         else:
             raise ValueError(
-                f"Invalid trade_price_target: {trade_price_target}. Expected 'quantile' or 'moving_average'."
+                f"Invalid trade_price_target: {trade_price_target}. Expected 'interpolation' or 'moving_average'."
             )
 
     def get_stoploss_distance(
