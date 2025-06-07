@@ -529,16 +529,22 @@ class QuickAdapterV3(IStrategy):
         entry_natr = trade_label_natr.iloc[0]
         if isna(entry_natr) or entry_natr < 0:
             return None
+        if len(trade_label_natr) == 1:
+            return entry_natr
         current_natr = trade_label_natr.iloc[-1]
         if isna(current_natr) or current_natr < 0:
             return None
+        median_natr = trade_label_natr.median()
+        interpolation_values = [current_natr, median_natr, entry_natr]
         trade_volatility_quantile = calculate_quantile(
             trade_label_natr.to_numpy(), entry_natr
         )
         if isna(trade_volatility_quantile):
             return None
         return np.interp(
-            trade_volatility_quantile, [0.0, 1.0], [current_natr, entry_natr]
+            trade_volatility_quantile,
+            np.linspace(0.0, 1.0, len(interpolation_values)),
+            interpolation_values,
         )
 
     def get_trade_moving_average_natr(
