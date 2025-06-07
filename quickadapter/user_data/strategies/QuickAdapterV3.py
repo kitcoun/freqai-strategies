@@ -555,7 +555,6 @@ class QuickAdapterV3(IStrategy):
         label_natr = df.get("natr_label_period_candles")
         if label_natr is None or label_natr.empty:
             return None
-        trade_moving_average_natr = np.nan
         if trade_duration_candles >= 2:
             zl_kama = get_zl_ma_fn("kama")
             try:
@@ -566,16 +565,12 @@ class QuickAdapterV3(IStrategy):
                     ~np.isnan(trade_kama_natr_values)
                 ]
                 if trade_kama_natr_values.size > 0:
-                    trade_moving_average_natr = trade_kama_natr_values[-1]
+                    return trade_kama_natr_values[-1]
             except Exception as e:
                 logger.error(
                     f"Failed to calculate KAMA for pair {pair}: {str(e)}", exc_info=True
                 )
-        if isna(trade_moving_average_natr):
-            trade_moving_average_natr = zlema(
-                label_natr, period=trade_duration_candles
-            ).iloc[-1]
-        return trade_moving_average_natr
+        return zlema(label_natr, period=trade_duration_candles).iloc[-1]
 
     def get_trade_natr(
         self, df: DataFrame, trade: Trade, trade_duration_candles: int
