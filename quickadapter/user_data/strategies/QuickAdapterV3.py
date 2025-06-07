@@ -61,7 +61,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.83"
+        return "3.3.84"
 
     timeframe = "5m"
 
@@ -385,6 +385,22 @@ class QuickAdapterV3(IStrategy):
     def get_take_profit_natr_ratio(self, pair: str) -> float:
         return self.get_label_natr_ratio(pair) * 0.7
 
+    @staticmethod
+    def td_format(
+        delta: datetime.timedelta, pattern: str = "{sign}{d}:{h:02d}:{m:02d}:{s:02d}"
+    ) -> str:
+        negative_duration = delta.total_seconds() < 0
+        delta = abs(delta)
+        duration = {"d": delta.days}
+        duration["h"], remainder = divmod(delta.seconds, 3600)
+        duration["m"], duration["s"] = divmod(remainder, 60)
+        duration["ms"] = delta.microseconds // 1000
+        duration["sign"] = "-" if negative_duration else ""
+        try:
+            return pattern.format(**duration)
+        except (KeyError, ValueError) as e:
+            raise ValueError(f"Invalid pattern '{pattern}': {e}")
+
     def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
         pair = str(metadata.get("pair"))
         label_period_candles = self.get_label_period_candles(pair)
@@ -400,7 +416,7 @@ class QuickAdapterV3(IStrategy):
         dataframe[EXTREMA_COLUMN] = 0
         if len(pivots_indices) == 0:
             logger.warning(
-                f"{pair}: no extrema to label (label_period='{str(label_period)}' / {label_period_candles=} / {label_natr_ratio=:.2f})"
+                f"{pair}: no extrema to label (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / {label_natr_ratio=:.2f})"
             )
         else:
             for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
@@ -408,7 +424,7 @@ class QuickAdapterV3(IStrategy):
             dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
             dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
             logger.info(
-                f"{pair}: labeled {len(pivots_indices)} extrema (label_period='{str(label_period)}' / {label_period_candles=} / {label_natr_ratio=:.2f})"
+                f"{pair}: labeled {len(pivots_indices)} extrema (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / {label_natr_ratio=:.2f})"
             )
         dataframe[EXTREMA_COLUMN] = self.smooth_extrema(
             dataframe[EXTREMA_COLUMN],
@@ -503,18 +519,21 @@ class QuickAdapterV3(IStrategy):
         label_natr = df.get("natr_label_period_candles")
         if label_natr is None or label_natr.empty:
             return None
-        entry_date = self.get_trade_entry_date(trade)
-        entry_mask = df.get("date") == entry_date
-        if not entry_mask.any():
+        dates = df.get("date")
+        if dates is None or dates.empty:
             return None
-        entry_natr = label_natr[entry_mask].iloc[0]
+        entry_date = self.get_trade_entry_date(trade)
+        trade_label_natr = label_natr[dates >= entry_date]
+        if trade_label_natr.empty:
+            return None
+        entry_natr = trade_label_natr.iloc[0]
         if isna(entry_natr) or entry_natr < 0:
             return None
-        current_natr = label_natr.iloc[-1]
+        current_natr = trade_label_natr.iloc[-1]
         if isna(current_natr) or current_natr < 0:
             return None
         trade_volatility_quantile = calculate_quantile(
-            label_natr.to_numpy(), entry_natr
+            trade_label_natr.to_numpy(), entry_natr
         )
         if isna(trade_volatility_quantile):
             return None
