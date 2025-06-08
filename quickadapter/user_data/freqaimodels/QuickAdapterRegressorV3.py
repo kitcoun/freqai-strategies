@@ -1197,15 +1197,12 @@ def zigzag(
         pos: int,
         min_strength: float = 0.5,
         max_strength: float = 1.5,
-        volatility_exponent: float = 1.5,
     ) -> float:
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
             return median([min_strength, max_strength])
 
-        return min_strength + (max_strength - min_strength) * (
-            volatility_quantile**volatility_exponent
-        )
+        return min_strength + (max_strength - min_strength) * volatility_quantile
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
