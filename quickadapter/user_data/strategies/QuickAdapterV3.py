@@ -361,7 +361,7 @@ class QuickAdapterV3(IStrategy):
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
 
     def set_label_period_candles(self, pair: str, label_period_candles: int):
-        if isinstance(label_period_candles, int) and not np.isnan(label_period_candles):
+        if isinstance(label_period_candles, int):
             self._label_params[pair]["label_period_candles"] = label_period_candles
 
     def get_label_natr_ratio(self, pair: str) -> float:
