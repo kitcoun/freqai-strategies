@@ -1,3 +1,4 @@
+import datetime
 from enum import IntEnum
 import hashlib
 import logging
@@ -17,6 +18,7 @@ from typing import Any, Callable, Optional
 from pathlib import Path
 from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
+from freqtrade.exchange import timeframe_to_minutes
 
 
 TEST_SIZE = 0.1
@@ -47,7 +49,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.80"
+    version = "3.7.81"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -122,6 +124,15 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     ),
                 }
             )
+        self._label_throttle_modulo = max(
+            1,
+            int(
+                (
+                    self.ft_params.get("label_frequency_candles", 12)
+                    * (timeframe_to_minutes(self.config.get("timeframe")) * 60)
+                )
+            ),
+        )
         logger.info(
             f"Initialized {self.__class__.__name__} {self.freqai_info.get('regressor', 'xgboost')} regressor model version {self.version}"
         )
@@ -177,6 +188,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
 
+    def get_throttle_modulo(self, namespace: str) -> int:
+        if namespace != "label":
+            raise ValueError(f"Invalid namespace: {namespace}")
+        return self._label_throttle_modulo
+
     def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
         User sets up the training and test data to fit their desired model here
@@ -197,23 +213,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         start = time.time()
         if self._optuna_hyperopt:
-            self.optuna_optimize(
-                pair=dk.pair,
-                namespace="label",
-                objective=lambda trial: label_objective(
-                    trial,
-                    self.data_provider.get_pair_dataframe(
-                        pair=dk.pair, timeframe=self.config.get("timeframe")
-                    ),
-                    self.freqai_info.get("fit_live_predictions_candles", 100),
-                    self._optuna_config.get("candles_step"),
-                ),
-                directions=[
-                    optuna.study.StudyDirection.MAXIMIZE,
-                    optuna.study.StudyDirection.MAXIMIZE,
-                ],
-            )
-
             self.optuna_optimize(
                 pair=dk.pair,
                 namespace="hp",
@@ -287,12 +286,52 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         return model
 
+    def throttle_callback(
+        self,
+        pair: str,
+        namespace: str,
+        callback: Callable[[], None],
+        current_time: Optional[datetime.datetime] = None,
+    ) -> None:
+        if current_time is None:
+            current_time = datetime.datetime.now(datetime.timezone.utc)
+        if hash(pair + str(current_time)) % self.get_throttle_modulo(namespace) == 0:
+            try:
+                callback()
+            except Exception as e:
+                logger.error(
+                    f"Error executing {namespace} callback for {pair}: {str(e)}",
+                    exc_info=True,
+                )
+
     def fit_live_predictions(self, dk: FreqaiDataKitchen, pair: str) -> None:
         warmed_up = True
 
         fit_live_predictions_candles = self.freqai_info.get(
             "fit_live_predictions_candles", 100
         )
+
+        if self._optuna_hyperopt:
+            self.throttle_callback(
+                pair=pair,
+                namespace="label",
+                callback=lambda: self.optuna_optimize(
+                    pair=pair,
+                    namespace="label",
+                    objective=lambda trial: label_objective(
+                        trial,
+                        self.data_provider.get_pair_dataframe(
+                            pair=pair, timeframe=self.config.get("timeframe")
+                        ),
+                        fit_live_predictions_candles,
+                        self._optuna_config.get("candles_step"),
+                    ),
+                    directions=[
+                        optuna.study.StudyDirection.MAXIMIZE,
+                        optuna.study.StudyDirection.MAXIMIZE,
+                    ],
+                ),
+            )
 
         if self.live:
             if not hasattr(self, "exchange_candles"):

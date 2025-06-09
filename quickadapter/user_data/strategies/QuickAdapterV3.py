@@ -61,7 +61,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.84"
+        return "3.3.85"
 
     timeframe = "5m"
 
@@ -182,9 +182,11 @@ class QuickAdapterV3(IStrategy):
             )
         self._throttle_modulo = max(
             1,
-            round(
-                (timeframe_to_minutes(self.config.get("timeframe")) * 60)
-                / self.config.get("internals", {}).get("process_throttle_secs", 5)
+            int(
+                round(
+                    (timeframe_to_minutes(self.config.get("timeframe")) * 60)
+                    / self.config.get("internals", {}).get("process_throttle_secs", 5)
+                )
             ),
         )
 
@@ -485,7 +487,7 @@ class QuickAdapterV3(IStrategy):
     def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
         return df
 
-    def get_trade_entry_date(self, trade: Trade) -> datetime:
+    def get_trade_entry_date(self, trade: Trade) -> datetime.datetime:
         return timeframe_to_prev_date(self.config.get("timeframe"), trade.open_date_utc)
 
     def get_trade_duration_candles(self, df: DataFrame, trade: Trade) -> Optional[int]:
@@ -623,10 +625,10 @@ class QuickAdapterV3(IStrategy):
         self,
         pair: str,
         callback: Callable[[], None],
-        current_time: Optional[datetime] = None,
+        current_time: Optional[datetime.datetime] = None,
     ) -> None:
         if current_time is None:
-            current_time = datetime.now(datetime.timezone.utc)
+            current_time = datetime.datetime.now(datetime.timezone.utc)
         if hash(pair + str(current_time)) % self._throttle_modulo == 0:
             try:
                 callback()
@@ -639,7 +641,7 @@ class QuickAdapterV3(IStrategy):
         self,
         pair: str,
         trade: Trade,
-        current_time: datetime,
+        current_time: datetime.datetime,
         current_rate: float,
         current_profit: float,
         **kwargs,
@@ -666,7 +668,7 @@ class QuickAdapterV3(IStrategy):
         self,
         pair: str,
         trade: Trade,
-        current_time: datetime,
+        current_time: datetime.datetime,
         current_rate: float,
         current_profit: float,
         **kwargs,
@@ -727,7 +729,7 @@ class QuickAdapterV3(IStrategy):
         amount: float,
         rate: float,
         time_in_force: str,
-        current_time: datetime,
+        current_time: datetime.datetime,
         entry_tag: Optional[str],
         side: str,
         **kwargs,
