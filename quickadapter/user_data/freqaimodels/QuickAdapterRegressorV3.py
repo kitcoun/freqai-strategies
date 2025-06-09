@@ -1156,7 +1156,7 @@ def zigzag(
     natr_ratio: float = 6.0,
 ) -> tuple[list[int], list[float], list[int]]:
     min_confirmation_window: int = 3
-    max_confirmation_window: int = 5
+    max_confirmation_window: int = 6
     n = len(df)
     if df.empty or n < max(natr_period, 2 * max_confirmation_window + 1):
         return [], [], []
@@ -1211,8 +1211,8 @@ def zigzag(
 
     def calculate_depth(
         pos: int,
-        min_depth: int = 8,
-        max_depth: int = 28,
+        min_depth: int = 6,
+        max_depth: int = 24,
     ) -> int:
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
@@ -1441,7 +1441,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 2.0, 10.0, step=0.01)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 3.0, 10.0, step=0.01)
 
     df = df.iloc[
         -(
