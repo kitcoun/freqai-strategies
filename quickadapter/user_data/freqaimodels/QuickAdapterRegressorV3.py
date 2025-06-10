@@ -185,7 +185,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     def get_optuna_label_candle(self) -> int:
         label_frequency_candles = max(
-            2, self.ft_params.get("label_frequency_candles", 12)
+            2, int(self.ft_params.get("label_frequency_candles", 12))
         )
         random_offset = random.randint(
             -label_frequency_candles // 2, label_frequency_candles // 2
