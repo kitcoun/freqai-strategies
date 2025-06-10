@@ -347,7 +347,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
             if candles_diff < 0:
                 logger.warning(
-                    f"{pair}: fit live predictions not warmed up yet. Still {abs(candles_diff)} candles to go"
+                    f"{pair}: fit live predictions not warmed up yet, still {abs(candles_diff)} candles to go"
                 )
                 warmed_up = False
 
