@@ -61,7 +61,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.85"
+        return "3.3.86"
 
     timeframe = "5m"
 
@@ -624,11 +624,9 @@ class QuickAdapterV3(IStrategy):
     def throttle_callback(
         self,
         pair: str,
+        current_time: datetime.datetime,
         callback: Callable[[], None],
-        current_time: Optional[datetime.datetime] = None,
     ) -> None:
-        if current_time is None:
-            current_time = datetime.datetime.now(datetime.timezone.utc)
         if hash(pair + str(current_time)) % self._throttle_modulo == 0:
             try:
                 callback()
@@ -710,10 +708,10 @@ class QuickAdapterV3(IStrategy):
         trade.set_custom_data(key="take_profit_price", value=take_profit_price)
         self.throttle_callback(
             pair=pair,
+            current_time=current_time,
             callback=lambda: logger.info(
                 f"Trade {trade.trade_direction} for {pair}: open price {trade.open_rate}, current price {current_rate}, TP price {take_profit_price}"
             ),
-            current_time=current_time,
         )
         if trade.is_short:
             if current_rate <= take_profit_price:

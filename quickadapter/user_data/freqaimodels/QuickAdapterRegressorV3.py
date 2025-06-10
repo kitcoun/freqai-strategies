@@ -1,8 +1,8 @@
-import datetime
 from enum import IntEnum
 import hashlib
 import logging
 import json
+import random
 from statistics import median
 import time
 import numpy as np
@@ -18,7 +18,6 @@ from typing import Any, Callable, Optional
 from pathlib import Path
 from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
-from freqtrade.exchange import timeframe_to_minutes
 
 
 TEST_SIZE = 0.1
@@ -49,7 +48,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.81"
+    version = "3.7.82"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -98,6 +97,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self._optuna_hp_params: dict[str, dict] = {}
         self._optuna_train_params: dict[str, dict] = {}
         self._optuna_label_params: dict[str, dict] = {}
+        self._optuna_label_candles: dict[str, int] = {}
+        self._optuna_label_candle: dict[str, int] = {}
         for pair in self.pairs:
             self._optuna_hp_value[pair] = -1
             self._optuna_train_value[pair] = -1
@@ -124,15 +125,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     ),
                 }
             )
-        self._label_throttle_modulo = max(
-            1,
-            int(
-                (
-                    self.ft_params.get("label_frequency_candles", 12)
-                    * (timeframe_to_minutes(self.config.get("timeframe")) * 60)
-                )
-            ),
-        )
+            self._optuna_label_candles[pair] = 0
+            self._optuna_label_candle[pair] = self.get_optuna_label_candle()
+
         logger.info(
             f"Initialized {self.__class__.__name__} {self.freqai_info.get('regressor', 'xgboost')} regressor model version {self.version}"
         )
@@ -188,10 +183,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
 
-    def get_throttle_modulo(self, namespace: str) -> int:
-        if namespace != "label":
-            raise ValueError(f"Invalid namespace: {namespace}")
-        return self._label_throttle_modulo
+    def get_optuna_label_candle(self) -> int:
+        label_frequency_candles = max(
+            2, self.ft_params.get("label_frequency_candles", 12)
+        )
+        random_offset = random.randint(
+            -label_frequency_candles // 2, label_frequency_candles // 2
+        )
+        return max(1, label_frequency_candles + random_offset)
 
     def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
@@ -286,23 +285,30 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         return model
 
-    def throttle_callback(
+    def optuna_throttle_callback(
         self,
         pair: str,
         namespace: str,
         callback: Callable[[], None],
-        current_time: Optional[datetime.datetime] = None,
     ) -> None:
-        if current_time is None:
-            current_time = datetime.datetime.now(datetime.timezone.utc)
-        if hash(pair + str(current_time)) % self.get_throttle_modulo(namespace) == 0:
+        if namespace != "label":
+            raise ValueError(f"Invalid namespace: {namespace}")
+        self._optuna_label_candles[pair] += 1
+        if self._optuna_label_candles[pair] >= self._optuna_label_candle[pair]:
             try:
                 callback()
             except Exception as e:
                 logger.error(
-                    f"Error executing {namespace} callback for {pair}: {str(e)}",
+                    f"Error executing optuna {pair} {namespace} callback: {str(e)}",
                     exc_info=True,
                 )
+            finally:
+                self._optuna_label_candles[pair] = 0
+                self._optuna_label_candle[pair] = self.get_optuna_label_candle()
+        else:
+            logger.info(
+                f"Optuna {pair} {namespace} callback throttled, still {self._optuna_label_candle[pair] - self._optuna_label_candles[pair]} candles to go"
+            )
 
     def fit_live_predictions(self, dk: FreqaiDataKitchen, pair: str) -> None:
         warmed_up = True
@@ -312,7 +318,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
 
         if self._optuna_hyperopt:
-            self.throttle_callback(
+            self.optuna_throttle_callback(
                 pair=pair,
                 namespace="label",
                 callback=lambda: self.optuna_optimize(
@@ -341,7 +347,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
             if candles_diff < 0:
                 logger.warning(
-                    f"{pair}: fit live predictions not warmed up yet. Still {abs(candles_diff)} candles to go."
+                    f"{pair}: fit live predictions not warmed up yet. Still {abs(candles_diff)} candles to go"
                 )
                 warmed_up = False
 
