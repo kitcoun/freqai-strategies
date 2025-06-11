@@ -378,7 +378,7 @@ class TrendDirection(IntEnum):
     DOWN = -1
 
 
-zigzag_cache: dict[str, tuple[list[int], list[float], list[int]]] = {}
+zigzag_cache: dict[str, tuple[list[int], list[float], list[int]], list[float]] = {}
 
 
 def zigzag_cached(
@@ -386,7 +386,7 @@ def zigzag_cached(
     natr_period: int = 14,
     natr_ratio: float = 6.0,
     cache_size: int = 2048,
-) -> tuple[list[int], list[float], list[int]]:
+) -> tuple[list[int], list[float], list[int], list[float]]:
     def hash_df(df: pd.DataFrame) -> str:
         hasher = hashlib.sha256()
 
@@ -403,7 +403,7 @@ def zigzag_cached(
     if cache_key in zigzag_cache:
         return zigzag_cache[cache_key]
 
-    pivots_indices, pivots_values, pivots_directions = zigzag(
+    pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs = zigzag(
         df, natr_period=natr_period, natr_ratio=natr_ratio
     )
     if len(zigzag_cache) >= cache_size:
@@ -412,15 +412,16 @@ def zigzag_cached(
         pivots_indices,
         pivots_values,
         pivots_directions,
+        pivots_scaled_natrs,
     )
-    return pivots_indices, pivots_values, pivots_directions
+    return pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs
 
 
 def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
     natr_ratio: float = 6.0,
-) -> tuple[list[int], list[float], list[int]]:
+) -> tuple[list[int], list[float], list[int], list[float]]:
     min_confirmation_window: int = 3
     max_confirmation_window: int = 6
     n = len(df)
@@ -438,12 +439,18 @@ def zigzag(
     state: TrendDirection = TrendDirection.NEUTRAL
     depth = -1
 
+    pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs = (
+        [],
+        [],
+        [],
+        [],
+    )
     last_pivot_pos = -1
-    pivots_indices, pivots_values, pivots_directions = [], [], []
 
-    candidate_pivot_pos = -1
-    candidate_pivot_value = np.nan
+    candidate_pivot_pos: int = -1
+    candidate_pivot_value: float = np.nan
     candidate_pivot_direction: TrendDirection = TrendDirection.NEUTRAL
+    candidate_pivot_scaled_natr: float = np.nan
 
     volatility_quantile_cache: dict[int, float] = {}
 
@@ -502,17 +509,27 @@ def zigzag(
         return min_strength + (max_strength - min_strength) * volatility_quantile
 
     def update_candidate_pivot(pos: int, value: float, direction: TrendDirection):
-        nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
+        nonlocal \
+            candidate_pivot_pos, \
+            candidate_pivot_value, \
+            candidate_pivot_direction, \
+            candidate_pivot_scaled_natr
         if 0 <= pos < n:
             candidate_pivot_pos = pos
             candidate_pivot_value = value
             candidate_pivot_direction = direction
+            candidate_pivot_scaled_natr = thresholds[pos]
 
     def reset_candidate_pivot():
-        nonlocal candidate_pivot_pos, candidate_pivot_value, candidate_pivot_direction
+        nonlocal \
+            candidate_pivot_pos, \
+            candidate_pivot_value, \
+            candidate_pivot_direction, \
+            candidate_pivot_scaled_natr
         candidate_pivot_pos = -1
         candidate_pivot_value = np.nan
         candidate_pivot_direction = TrendDirection.NEUTRAL
+        candidate_pivot_scaled_natr = np.nan
 
     def add_pivot(pos: int, value: float, direction: TrendDirection):
         nonlocal last_pivot_pos, depth
@@ -521,6 +538,7 @@ def zigzag(
         pivots_indices.append(indices[pos])
         pivots_values.append(value)
         pivots_directions.append(direction)
+        pivots_scaled_natrs.append(thresholds[pos])
         last_pivot_pos = pos
         depth = calculate_depth(pos)
         reset_candidate_pivot()
@@ -651,10 +669,10 @@ def zigzag(
                 state = TrendDirection.UP
                 break
     else:
-        return [], [], []
+        return [], [], [], []
 
     if n - last_pivot_pos - 1 < depth:
-        return pivots_indices, pivots_values, pivots_directions
+        return pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs
 
     for i in range(last_pivot_pos + 1, n):
         current_high = highs[i]
@@ -685,4 +703,4 @@ def zigzag(
                 )
                 state = TrendDirection.UP
 
-    return pivots_indices, pivots_values, pivots_directions
+    return pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs

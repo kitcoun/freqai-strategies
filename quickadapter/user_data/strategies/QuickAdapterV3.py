@@ -407,7 +407,7 @@ class QuickAdapterV3(IStrategy):
         pair = str(metadata.get("pair"))
         label_period_candles = self.get_label_period_candles(pair)
         label_natr_ratio = self.get_label_natr_ratio(pair)
-        pivots_indices, _, pivots_directions = zigzag(
+        pivots_indices, _, pivots_directions, _ = zigzag(
             dataframe,
             natr_period=label_period_candles,
             natr_ratio=label_natr_ratio,
