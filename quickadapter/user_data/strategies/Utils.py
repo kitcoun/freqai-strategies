@@ -426,7 +426,7 @@ def zigzag(
     max_confirmation_window: int = 6
     n = len(df)
     if df.empty or n < max(natr_period, 2 * max_confirmation_window + 1):
-        return [], [], []
+        return [], [], [], []
 
     natr_values = (ta.NATR(df, timeperiod=natr_period).bfill() / 100.0).to_numpy()
 
