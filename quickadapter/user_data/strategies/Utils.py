@@ -423,7 +423,7 @@ def zigzag(
     natr_ratio: float = 6.0,
 ) -> tuple[list[int], list[float], list[int], list[float]]:
     min_confirmation_window: int = 3
-    max_confirmation_window: int = 6
+    max_confirmation_window: int = 5
     n = len(df)
     if df.empty or n < max(natr_period, 2 * max_confirmation_window + 1):
         return [], [], [], []

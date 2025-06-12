@@ -1,10 +1,10 @@
+import copy
 from enum import IntEnum
 import hashlib
 import logging
 import json
 import random
 from statistics import median
-import threading
 import time
 import numpy as np
 import pandas as pd
@@ -49,7 +49,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.84"
+    version = "3.7.85"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -92,10 +92,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             and self._optuna_config.get("enabled")
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
         )
-        self._optuna_locks = {
-            "label": threading.RLock(),
-            "throttle": threading.RLock(),
-        }
         self._optuna_hp_value: dict[str, float] = {}
         self._optuna_train_value: dict[str, float] = {}
         self._optuna_label_values: dict[str, list] = {}
@@ -192,7 +188,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def get_optuna_label_all_candles(self) -> list[int]:
         n_pairs = len(self.pairs)
         label_frequency_candles = max(
-            2, n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
+            2, 2 * n_pairs - 1, int(self.ft_params.get("label_frequency_candles", 12))
         )
         min_offset = -int(label_frequency_candles / 2)
         max_offset = int(label_frequency_candles / 2)
@@ -208,18 +204,31 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             raise RuntimeError("Failed to initialize optuna label candle pool")
 
     def set_optuna_label_candle(self, pair: str) -> None:
-        with self._optuna_locks.get("label"):
-            if len(self._optuna_label_candle_pool) == 0:
-                self.init_optuna_label_candle_pool()
-            self._optuna_label_candle[pair] = self._optuna_label_candle_pool.pop()
-            optuna_label_available_candles = (
-                set(self.get_optuna_label_all_candles())
-                - set(self._optuna_label_candle_pool)
-                - set(self._optuna_label_candle.values())
+        if len(self._optuna_label_candle_pool) == 0:
+            raise RuntimeError(
+                "Optuna label candle pool is empty, cannot set optuna label candle"
             )
-            if len(optuna_label_available_candles) > 0:
-                self._optuna_label_candle_pool.extend(optuna_label_available_candles)
-                random.shuffle(self._optuna_label_candle_pool)
+        optuna_label_candle_pool = copy.deepcopy(self._optuna_label_candle_pool)
+        for p in self.pairs:
+            if p == pair:
+                continue
+            optuna_label_candle = self._optuna_label_candle.get(p)
+            optuna_label_candles = self._optuna_label_candles.get(p)
+            if optuna_label_candle is not None and optuna_label_candles is not None:
+                remaining_candles = optuna_label_candle - optuna_label_candles
+                if remaining_candles in optuna_label_candle_pool:
+                    optuna_label_candle_pool.remove(remaining_candles)
+        optuna_label_candle = optuna_label_candle_pool.pop()
+        self._optuna_label_candle[pair] = optuna_label_candle
+        self._optuna_label_candle_pool.remove(optuna_label_candle)
+        optuna_label_available_candles = (
+            set(self.get_optuna_label_all_candles())
+            - set(self._optuna_label_candle_pool)
+            - set(self._optuna_label_candle.values())
+        )
+        if len(optuna_label_available_candles) > 0:
+            self._optuna_label_candle_pool.extend(optuna_label_available_candles)
+            random.shuffle(self._optuna_label_candle_pool)
 
     def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
         """
@@ -322,23 +331,25 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     ) -> None:
         if namespace != "label":
             raise ValueError(f"Invalid namespace: {namespace}")
-        with self._optuna_locks.get("throttle"):
-            self._optuna_label_candles[pair] += 1
-            if self._optuna_label_candles[pair] >= self._optuna_label_candle[pair]:
-                try:
-                    callback()
-                except Exception as e:
-                    logger.error(
-                        f"Error executing optuna {pair} {namespace} callback: {str(e)}",
-                        exc_info=True,
-                    )
-                finally:
-                    self._optuna_label_candles[pair] = 0
-                    self.set_optuna_label_candle(pair)
-            else:
-                logger.info(
-                    f"Optuna {pair} {namespace} callback throttled, still {self._optuna_label_candle[pair] - self._optuna_label_candles[pair]} candles to go"
+        self._optuna_label_candles[pair] += 1
+        optuna_label_remaining_candles = self._optuna_label_candle.get(
+            pair
+        ) - self._optuna_label_candles.get(pair)
+        if optuna_label_remaining_candles <= 0:
+            try:
+                callback()
+            except Exception as e:
+                logger.error(
+                    f"Error executing optuna {pair} {namespace} callback: {str(e)}",
+                    exc_info=True,
                 )
+            finally:
+                self._optuna_label_candles[pair] = 0
+                self.set_optuna_label_candle(pair)
+        else:
+            logger.info(
+                f"Optuna {pair} {namespace} callback throttled, still {optuna_label_remaining_candles} candles to go"
+            )
 
     def fit_live_predictions(self, dk: FreqaiDataKitchen, pair: str) -> None:
         warmed_up = True
@@ -1230,7 +1241,7 @@ def zigzag(
     natr_ratio: float = 6.0,
 ) -> tuple[list[int], list[float], list[int], list[float]]:
     min_confirmation_window: int = 3
-    max_confirmation_window: int = 6
+    max_confirmation_window: int = 5
     n = len(df)
     if df.empty or n < max(natr_period, 2 * max_confirmation_window + 1):
         return [], [], [], []
