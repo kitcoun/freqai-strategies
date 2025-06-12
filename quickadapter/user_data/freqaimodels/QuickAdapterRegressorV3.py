@@ -1523,7 +1523,7 @@ def label_objective(
         max(fit_live_predictions_candles // 16, candles_step), candles_step
     )
     max_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 4, min_label_period_candles),
+        max(fit_live_predictions_candles // 3, min_label_period_candles),
         candles_step,
     )
     label_period_candles = trial.suggest_int(
