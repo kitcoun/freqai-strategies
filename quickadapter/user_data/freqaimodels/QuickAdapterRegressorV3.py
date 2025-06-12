@@ -188,7 +188,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def get_optuna_label_all_candles(self) -> list[int]:
         n_pairs = len(self.pairs)
         label_frequency_candles = max(
-            2, 2 * n_pairs - 1, int(self.ft_params.get("label_frequency_candles", 12))
+            2, 2 * n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
         )
         min_offset = -int(label_frequency_candles / 2)
         max_offset = int(label_frequency_candles / 2)
