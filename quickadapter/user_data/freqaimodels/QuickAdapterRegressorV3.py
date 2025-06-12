@@ -1531,7 +1531,7 @@ def label_objective(
     candles_step: int,
 ) -> tuple[float, int]:
     min_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 16, candles_step), candles_step
+        max(fit_live_predictions_candles // 18, candles_step), candles_step
     )
     max_label_period_candles: int = round_to_nearest_int(
         max(fit_live_predictions_candles // 3, min_label_period_candles),
@@ -1543,7 +1543,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 3.0, 16.0, step=0.01)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 3.0, 18.0, step=0.01)
 
     df = df.iloc[
         -(
