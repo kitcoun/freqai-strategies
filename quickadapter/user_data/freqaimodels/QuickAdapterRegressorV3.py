@@ -1,6 +1,5 @@
 import copy
 from enum import IntEnum
-import hashlib
 import logging
 import json
 import random
@@ -49,7 +48,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.86"
+    version = "3.7.87"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -1206,45 +1205,6 @@ class TrendDirection(IntEnum):
     DOWN = -1
 
 
-zigzag_cache: dict[str, tuple[list[int], list[float], list[int]], list[float]] = {}
-
-
-def zigzag_cached(
-    df: pd.DataFrame,
-    natr_period: int = 14,
-    natr_ratio: float = 6.0,
-    cache_size: int = 2048,
-) -> tuple[list[int], list[float], list[int], list[float]]:
-    def hash_df(df: pd.DataFrame) -> str:
-        hasher = hashlib.sha256()
-
-        arr = df.to_numpy()
-
-        hasher.update(str(arr.shape).encode())
-        hasher.update(str(arr.dtype).encode())
-
-        hasher.update(arr.tobytes())
-
-        return hasher.hexdigest()
-
-    cache_key = f"{hash_df(df)}-{natr_period}-{natr_ratio}"
-    if cache_key in zigzag_cache:
-        return zigzag_cache[cache_key]
-
-    pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs = zigzag(
-        df, natr_period=natr_period, natr_ratio=natr_ratio
-    )
-    if len(zigzag_cache) >= cache_size:
-        del zigzag_cache[next(iter(zigzag_cache))]
-    zigzag_cache[cache_key] = (
-        pivots_indices,
-        pivots_values,
-        pivots_directions,
-        pivots_scaled_natrs,
-    )
-    return pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs
-
-
 def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
@@ -1565,7 +1525,7 @@ def label_objective(
     if df.empty:
         return -np.inf, -np.inf
 
-    _, pivots_values, _, pivots_scaled_natrs = zigzag_cached(
+    _, pivots_values, _, pivots_scaled_natrs = zigzag(
         df,
         natr_period=label_period_candles,
         natr_ratio=label_natr_ratio,
