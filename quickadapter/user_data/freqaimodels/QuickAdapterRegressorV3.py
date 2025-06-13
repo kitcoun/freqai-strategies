@@ -49,7 +49,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.85"
+    version = "3.7.86"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -99,8 +99,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self._optuna_train_params: dict[str, dict] = {}
         self._optuna_label_params: dict[str, dict] = {}
         self.init_optuna_label_candle_pool()
-        self._optuna_label_candles: dict[str, int] = {}
         self._optuna_label_candle: dict[str, int] = {}
+        self._optuna_label_candles: dict[str, int] = {}
+        self._optuna_label_incremented_pairs: list[str] = []
         for pair in self.pairs:
             self._optuna_hp_value[pair] = -1
             self._optuna_train_value[pair] = -1
@@ -127,8 +128,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     ),
                 }
             )
-            self._optuna_label_candles[pair] = 0
             self.set_optuna_label_candle(pair)
+            self._optuna_label_candles[pair] = 0
 
         logger.info(
             f"Initialized {self.__class__.__name__} {self.freqai_info.get('regressor', 'xgboost')} regressor model version {self.version}"
@@ -215,6 +216,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             optuna_label_candle = self._optuna_label_candle.get(p)
             optuna_label_candles = self._optuna_label_candles.get(p)
             if optuna_label_candle is not None and optuna_label_candles is not None:
+                if (
+                    self._optuna_label_incremented_pairs
+                    and p not in self._optuna_label_incremented_pairs
+                ):
+                    optuna_label_candles += 1
                 remaining_candles = optuna_label_candle - optuna_label_candles
                 if remaining_candles in optuna_label_candle_pool:
                     optuna_label_candle_pool.remove(remaining_candles)
@@ -332,6 +338,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         if namespace != "label":
             raise ValueError(f"Invalid namespace: {namespace}")
         self._optuna_label_candles[pair] += 1
+        if pair not in self._optuna_label_incremented_pairs:
+            self._optuna_label_incremented_pairs.append(pair)
         optuna_label_remaining_candles = self._optuna_label_candle.get(
             pair
         ) - self._optuna_label_candles.get(pair)
@@ -344,8 +352,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     exc_info=True,
                 )
             finally:
-                self._optuna_label_candles[pair] = 0
                 self.set_optuna_label_candle(pair)
+                self._optuna_label_candles[pair] = 0
+                if len(self._optuna_label_incremented_pairs) >= len(self.pairs):
+                    self._optuna_label_incremented_pairs = []
         else:
             logger.info(
                 f"Optuna {pair} {namespace} callback throttled, still {optuna_label_remaining_candles} candles to go"
