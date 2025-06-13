@@ -1394,15 +1394,12 @@ def zigzag(
             log_next_moving_closes = np.log(next_moving_closes)
             log_next_moving_closes_std = np.std(log_next_moving_closes)
             if np.isclose(log_next_moving_closes_std, 0):
-                next_moving_slope_strength = (
-                    np.sign(log_next_moving_closes[-1] - log_next_moving_closes[0])
-                    * 0.01
-                )
+                next_moving_slope_strength = 0
             else:
-                log_next_closes_moving_length = len(log_next_moving_closes)
-                weights = np.linspace(0.5, 1.5, log_next_closes_moving_length)
+                log_next_moving_closes_length = len(log_next_moving_closes)
+                weights = np.linspace(0.5, 1.5, log_next_moving_closes_length)
                 log_next_moving_slope = np.polyfit(
-                    range(log_next_closes_moving_length),
+                    range(log_next_moving_closes_length),
                     log_next_moving_closes,
                     1,
                     w=weights,
