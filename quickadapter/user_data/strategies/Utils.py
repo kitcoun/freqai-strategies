@@ -511,17 +511,27 @@ def zigzag(
         move_away_ratio: float = 0.25,
     ) -> bool:
         confirmation_window = calculate_confirmation_window(candidate_pivot_pos)
-        next_start = confirmation_start_pos + 1
+
+        next_start = candidate_pivot_pos + 1
         next_end = min(next_start + confirmation_window, n)
+        next_moving_start = confirmation_start_pos + 1
+        next_moving_end = min(next_moving_start + confirmation_window, n)
         previous_start = max(candidate_pivot_pos - confirmation_window, 0)
         previous_end = candidate_pivot_pos
-        if next_start >= next_end or previous_start >= previous_end:
+        if (
+            next_start >= next_end
+            or next_moving_start >= next_moving_end
+            or previous_start >= previous_end
+        ):
             return False
 
         next_slice = slice(next_start, next_end)
-        next_closes = closes[next_slice]
         next_highs = highs[next_slice]
         next_lows = lows[next_slice]
+        next_moving_slice = slice(next_moving_start, next_moving_end)
+        next_moving_closes = closes[next_moving_slice]
+        next_moving_highs = highs[next_moving_slice]
+        next_moving_lows = lows[next_moving_slice]
         previous_slice = slice(previous_start, previous_end)
         previous_highs = highs[previous_slice]
         previous_lows = lows[previous_slice]
@@ -552,37 +562,45 @@ def zigzag(
             return False
 
         slope_ok = False
-        if len(next_closes) >= 2:
-            log_next_closes = np.log(next_closes)
-            log_next_closes_std = np.std(log_next_closes)
-            if np.isclose(log_next_closes_std, 0):
-                next_slope_strength = 0
+        if len(next_moving_closes) >= 2:
+            log_next_moving_closes = np.log(next_moving_closes)
+            log_next_moving_closes_std = np.std(log_next_moving_closes)
+            if np.isclose(log_next_moving_closes_std, 0):
+                next_moving_slope_strength = (
+                    np.sign(log_next_moving_closes[-1] - log_next_moving_closes[0])
+                    * 0.01
+                )
             else:
-                log_next_closes_length = len(log_next_closes)
-                weights = np.linspace(0.5, 1.5, log_next_closes_length)
-                log_next_slope = np.polyfit(
-                    range(log_next_closes_length), log_next_closes, 1, w=weights
+                log_next_closes_moving_length = len(log_next_moving_closes)
+                weights = np.linspace(0.5, 1.5, log_next_closes_moving_length)
+                log_next_moving_slope = np.polyfit(
+                    range(log_next_closes_moving_length),
+                    log_next_moving_closes,
+                    1,
+                    w=weights,
                 )[0]
-                next_slope_strength = log_next_slope / log_next_closes_std
+                next_moving_slope_strength = (
+                    log_next_moving_slope / log_next_moving_closes_std
+                )
             min_slope_strength = calculate_min_slope_strength(candidate_pivot_pos)
             if direction == TrendDirection.DOWN:
-                slope_ok = next_slope_strength < -min_slope_strength
+                slope_ok = next_moving_slope_strength < -min_slope_strength
             elif direction == TrendDirection.UP:
-                slope_ok = next_slope_strength > min_slope_strength
+                slope_ok = next_moving_slope_strength > min_slope_strength
         if not slope_ok:
             return False
 
         significant_move_away_ok = False
         if direction == TrendDirection.DOWN:
             if np.any(
-                next_lows
+                next_moving_lows
                 < highs[candidate_pivot_pos]
                 * (1 - thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
                 significant_move_away_ok = True
         elif direction == TrendDirection.UP:
             if np.any(
-                next_highs
+                next_moving_highs
                 > lows[candidate_pivot_pos]
                 * (1 + thresholds[candidate_pivot_pos] * move_away_ratio)
             ):
