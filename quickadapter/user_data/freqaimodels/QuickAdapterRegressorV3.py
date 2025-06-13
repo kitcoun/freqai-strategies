@@ -354,12 +354,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             finally:
                 self.set_optuna_label_candle(pair)
                 self._optuna_label_candles[pair] = 0
-                if len(self._optuna_label_incremented_pairs) >= len(self.pairs):
-                    self._optuna_label_incremented_pairs = []
         else:
             logger.info(
                 f"Optuna {pair} {namespace} callback throttled, still {optuna_label_remaining_candles} candles to go"
             )
+        if len(self._optuna_label_incremented_pairs) >= len(self.pairs):
+            self._optuna_label_incremented_pairs = []
 
     def fit_live_predictions(self, dk: FreqaiDataKitchen, pair: str) -> None:
         warmed_up = True
