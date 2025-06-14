@@ -14,6 +14,7 @@ from technical.pivots_points import pivots_points
 from freqtrade.persistence import Trade
 import numpy as np
 import pandas_ta as pta
+import scipy as sp
 
 from Utils import (
     alligator,
@@ -33,6 +34,8 @@ from Utils import (
     zero_phase_gaussian,
     zlema,
 )
+
+debug = False
 
 logger = logging.getLogger(__name__)
 
@@ -375,7 +378,7 @@ class QuickAdapterV3(IStrategy):
         )
 
     def set_label_natr_ratio(self, pair: str, label_natr_ratio: float):
-        if isinstance(label_natr_ratio, float) and not np.isnan(label_natr_ratio):
+        if isinstance(label_natr_ratio, float) and np.isfinite(label_natr_ratio):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
     def get_entry_natr_ratio(self, pair: str) -> float:
@@ -432,6 +435,12 @@ class QuickAdapterV3(IStrategy):
             dataframe[EXTREMA_COLUMN],
             self.freqai_info.get("extrema_smoothing_window", 5),
         )
+        if debug:
+            logger.info(f"{dataframe[EXTREMA_COLUMN].to_numpy()=}")
+            n_minima = sp.signal.find_peaks(-dataframe[EXTREMA_COLUMN])[0].size
+            n_maxima = sp.signal.find_peaks(dataframe[EXTREMA_COLUMN])[0].size
+            n_extrema = n_minima + n_maxima
+            logger.info(f"{n_extrema=}")
         return dataframe
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:

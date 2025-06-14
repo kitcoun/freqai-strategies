@@ -19,6 +19,7 @@ from pathlib import Path
 from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 
+debug = True
 
 TEST_SIZE = 0.1
 
@@ -301,15 +302,19 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
             optuna_train_params = self.get_optuna_params(dk.pair, "train")
             if optuna_train_params:
-                train_window = optuna_train_params.get("train_period_candles")
-                X = X.iloc[-train_window:]
-                y = y.iloc[-train_window:]
-                train_weights = train_weights[-train_window:]
+                value: float = optuna_train_params.get("value")
+                if isinstance(value, float) and np.isfinite(value):
+                    train_window = optuna_train_params.get("train_period_candles")
+                    if isinstance(train_window, int) and train_window > 0:
+                        X = X.iloc[-train_window:]
+                        y = y.iloc[-train_window:]
+                        train_weights = train_weights[-train_window:]
 
-                test_window = optuna_train_params.get("test_period_candles")
-                X_test = X_test.iloc[-test_window:]
-                y_test = y_test.iloc[-test_window:]
-                test_weights = test_weights[-test_window:]
+                    test_window = optuna_train_params.get("test_period_candles")
+                    if isinstance(test_window, int) and test_window > 0:
+                        X_test = X_test.iloc[-test_window:]
+                        y_test = y_test.iloc[-test_window:]
+                        test_weights = test_weights[-test_window:]
 
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
@@ -1079,29 +1084,78 @@ def train_objective(
     candles_step: int,
     model_training_parameters: dict,
 ) -> float:
-    min_test_window: int = fit_live_predictions_candles * 4
-    if len(X_test) < min_test_window:
-        logger.warning(f"Insufficient test data: {len(X_test)} < {min_test_window}")
-        return np.inf
-    max_test_window: int = len(X_test)
+    test_ok = True
+    test_length = len(X_test)
+    if debug:
+        n_test_minima: int = sp.signal.find_peaks(-y_test[EXTREMA_COLUMN])[0].size
+        n_test_maxima: int = sp.signal.find_peaks(y_test[EXTREMA_COLUMN])[0].size
+        n_test_extrema: int = n_test_minima + n_test_maxima
+        min_test_extrema: int = int(
+            round((test_length / fit_live_predictions_candles) * 2)
+        )
+        logger.info(
+            f"{test_length=}, {n_test_minima=}, {n_test_maxima=}, {n_test_extrema=}, {min_test_extrema=}"
+        )
+    min_test_window: int = fit_live_predictions_candles
+    if test_length < min_test_window:
+        logger.warning(f"Insufficient test data: {test_length} < {min_test_window}")
+        test_ok = False
+    max_test_window: int = test_length
     test_window: int = trial.suggest_int(
         "test_period_candles", min_test_window, max_test_window, step=candles_step
     )
     X_test = X_test.iloc[-test_window:]
     y_test = y_test.iloc[-test_window:]
+    n_test_minima = sp.signal.find_peaks(-y_test[EXTREMA_COLUMN])[0].size
+    n_test_maxima = sp.signal.find_peaks(y_test[EXTREMA_COLUMN])[0].size
+    n_test_extrema = n_test_minima + n_test_maxima
+    min_test_extrema: int = int(round((test_window / fit_live_predictions_candles) * 2))
+    if n_test_extrema < min_test_extrema:
+        if debug:
+            logger.warning(
+                f"Insufficient extrema in test data with {test_window}: {n_test_extrema} < {min_test_extrema}"
+            )
+        test_ok = False
     test_weights = test_weights[-test_window:]
 
+    train_ok = True
+    train_length = len(X)
+    if debug:
+        n_train_minima: int = sp.signal.find_peaks(-y[EXTREMA_COLUMN])[0].size
+        n_train_maxima: int = sp.signal.find_peaks(y[EXTREMA_COLUMN])[0].size
+        n_train_extrema: int = n_train_minima + n_train_maxima
+        min_train_extrema: int = int(
+            round((train_length / fit_live_predictions_candles) * 2)
+        )
+        logger.info(
+            f"{train_length=}, {n_train_minima=}, {n_train_maxima=}, {n_train_extrema=}, {min_train_extrema=}"
+        )
     min_train_window: int = min_test_window * int(round(1 / test_size - 1))
-    if len(X) < min_train_window:
-        logger.warning(f"Insufficient train data: {len(X)} < {min_train_window}")
-        return np.inf
-    max_train_window: int = len(X)
+    if train_length < min_train_window:
+        logger.warning(f"Insufficient train data: {train_length} < {min_train_window}")
+        train_ok = False
+    max_train_window: int = train_length
     train_window: int = trial.suggest_int(
         "train_period_candles", min_train_window, max_train_window, step=candles_step
     )
     X = X.iloc[-train_window:]
     y = y.iloc[-train_window:]
+    n_train_minima = sp.signal.find_peaks(-y[EXTREMA_COLUMN])[0].size
+    n_train_maxima = sp.signal.find_peaks(y[EXTREMA_COLUMN])[0].size
+    n_train_extrema = n_train_minima + n_train_maxima
+    min_train_extrema: int = int(
+        round((train_window / fit_live_predictions_candles) * 2)
+    )
+    if n_train_extrema < min_train_extrema:
+        if debug:
+            logger.warning(
+                f"Insufficient extrema in train data with {train_window} : {n_train_extrema} < {min_train_extrema}"
+            )
+        train_ok = False
     train_weights = train_weights[-train_window:]
+
+    if not test_ok or not train_ok:
+        return np.inf
 
     model = fit_regressor(
         regressor=regressor,
