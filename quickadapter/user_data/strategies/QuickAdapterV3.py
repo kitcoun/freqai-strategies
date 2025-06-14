@@ -872,13 +872,13 @@ class QuickAdapterV3(IStrategy):
         extrema_smoothing_zero_phase = self.freqai_info.get(
             "extrema_smoothing_zero_phase", True
         )
-        extrema_smoothing_beta = float(
-            self.freqai_info.get("extrema_smoothing_beta", 10.0)
-        )
         std = derive_gaussian_std_from_window(window)
+        extrema_smoothing_beta = float(
+            self.freqai_info.get("extrema_smoothing_beta", 8.0)
+        )
         if debug:
             logger.info(
-                f"{extrema_smoothing=}, {extrema_smoothing_zero_phase=}, {extrema_smoothing_beta=}, {window=}, {std=}"
+                f"{extrema_smoothing=}, {extrema_smoothing_zero_phase=}, {window=}, {std=}, {extrema_smoothing_beta=}"
             )
         gaussian_window = get_gaussian_window(std, True)
         odd_window = get_odd_window(window)
