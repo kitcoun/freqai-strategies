@@ -1084,14 +1084,19 @@ def train_objective(
     candles_step: int,
     model_training_parameters: dict,
 ) -> float:
+    def calculate_min_extrema(
+        length: int, fit_live_predictions_candles: int, min_extrema: float = 2.0
+    ) -> int:
+        return int(round((length / fit_live_predictions_candles) * min_extrema))
+
     test_ok = True
     test_length = len(X_test)
     if debug:
         n_test_minima: int = sp.signal.find_peaks(-y_test[EXTREMA_COLUMN])[0].size
         n_test_maxima: int = sp.signal.find_peaks(y_test[EXTREMA_COLUMN])[0].size
         n_test_extrema: int = n_test_minima + n_test_maxima
-        min_test_extrema: int = int(
-            round((test_length / fit_live_predictions_candles) * 2)
+        min_test_extrema: int = calculate_min_extrema(
+            test_length, fit_live_predictions_candles
         )
         logger.info(
             f"{test_length=}, {n_test_minima=}, {n_test_maxima=}, {n_test_extrema=}, {min_test_extrema=}"
@@ -1109,11 +1114,13 @@ def train_objective(
     n_test_minima = sp.signal.find_peaks(-y_test[EXTREMA_COLUMN])[0].size
     n_test_maxima = sp.signal.find_peaks(y_test[EXTREMA_COLUMN])[0].size
     n_test_extrema = n_test_minima + n_test_maxima
-    min_test_extrema: int = int(round((test_window / fit_live_predictions_candles) * 2))
+    min_test_extrema: int = calculate_min_extrema(
+        test_window, fit_live_predictions_candles
+    )
     if n_test_extrema < min_test_extrema:
         if debug:
             logger.warning(
-                f"Insufficient extrema in test data with {test_window}: {n_test_extrema} < {min_test_extrema}"
+                f"Insufficient extrema in test data with {test_window=}: {n_test_extrema=} < {min_test_extrema=}"
             )
         test_ok = False
     test_weights = test_weights[-test_window:]
@@ -1124,8 +1131,8 @@ def train_objective(
         n_train_minima: int = sp.signal.find_peaks(-y[EXTREMA_COLUMN])[0].size
         n_train_maxima: int = sp.signal.find_peaks(y[EXTREMA_COLUMN])[0].size
         n_train_extrema: int = n_train_minima + n_train_maxima
-        min_train_extrema: int = int(
-            round((train_length / fit_live_predictions_candles) * 2)
+        min_train_extrema: int = calculate_min_extrema(
+            train_length, fit_live_predictions_candles
         )
         logger.info(
             f"{train_length=}, {n_train_minima=}, {n_train_maxima=}, {n_train_extrema=}, {min_train_extrema=}"
@@ -1143,13 +1150,13 @@ def train_objective(
     n_train_minima = sp.signal.find_peaks(-y[EXTREMA_COLUMN])[0].size
     n_train_maxima = sp.signal.find_peaks(y[EXTREMA_COLUMN])[0].size
     n_train_extrema = n_train_minima + n_train_maxima
-    min_train_extrema: int = int(
-        round((train_window / fit_live_predictions_candles) * 2)
+    min_train_extrema: int = calculate_min_extrema(
+        train_window, fit_live_predictions_candles
     )
     if n_train_extrema < min_train_extrema:
         if debug:
             logger.warning(
-                f"Insufficient extrema in train data with {train_window} : {n_train_extrema} < {min_train_extrema}"
+                f"Insufficient extrema in train data with {train_window=}: {n_train_extrema=} < {min_train_extrema=}"
             )
         train_ok = False
     train_weights = train_weights[-train_window:]

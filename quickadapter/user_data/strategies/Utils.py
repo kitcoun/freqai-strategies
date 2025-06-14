@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import talib.abstract as ta
-from typing import Callable, Union
+from typing import Callable, Literal, Union
 from technical import qtpylib
 
 
@@ -45,18 +45,31 @@ def derive_gaussian_std_from_window(window: int) -> float:
 
 
 @lru_cache(maxsize=64)
-def _calculate_gaussian_coeffs(window: int, std: float) -> np.ndarray:
-    gaussian_coeffs = sp.signal.windows.gaussian(M=window, std=std, sym=True)
-    return gaussian_coeffs / np.sum(gaussian_coeffs)
+def _calculate_coeffs(
+    window: int, win_type: Literal["gaussian", "kaiser"], std: float, beta: float
+) -> np.ndarray:
+    if win_type == "gaussian":
+        coeffs = sp.signal.windows.gaussian(M=window, std=std, sym=True)
+    elif win_type == "kaiser":
+        coeffs = sp.signal.windows.kaiser(M=window, beta=beta, sym=True)
+    else:
+        raise ValueError(f"Unknown window type: {win_type}")
+    return coeffs / np.sum(coeffs)
 
 
-def zero_phase_gaussian(series: pd.Series, window: int, std: float) -> pd.Series:
+def zero_phase(
+    series: pd.Series,
+    window: int,
+    win_type: Literal["gaussian", "kaiser"],
+    std: float,
+    beta: float,
+) -> pd.Series:
     if len(series) == 0:
         return series
     if len(series) < window:
         raise ValueError("Series length must be greater than or equal to window size")
     series_values = series.to_numpy()
-    b = _calculate_gaussian_coeffs(window, std)
+    b = _calculate_coeffs(window=window, win_type=win_type, std=std, beta=beta)
     a = 1.0
     filtered_values = sp.signal.filtfilt(b, a, series_values)
     return pd.Series(filtered_values, index=series.index)
@@ -165,7 +178,7 @@ def zlema(series: pd.Series, period: int) -> pd.Series:
     lag = max((period - 1) / 2, 0)
     alpha = 2 / (period + 1)
     zl_series = 2 * series - series.shift(int(lag))
-    return zl_series.ewm(alpha=alpha).mean()
+    return zl_series.ewm(alpha=alpha, adjust=False).mean()
 
 
 def _fractal_dimension(highs: np.ndarray, lows: np.ndarray, period: int) -> float:

@@ -21,6 +21,7 @@ from Utils import (
     bottom_change_percent,
     calculate_quantile,
     get_zl_ma_fn,
+    zero_phase,
     zigzag,
     ewo,
     non_zero_diff,
@@ -31,7 +32,6 @@ from Utils import (
     get_gaussian_window,
     get_odd_window,
     derive_gaussian_std_from_window,
-    zero_phase_gaussian,
     zlema,
 )
 
@@ -638,7 +638,7 @@ class QuickAdapterV3(IStrategy):
                 logger.error(
                     f"Failed to calculate KAMA for pair {pair}: {str(e)}", exc_info=True
                 )
-        return zlema(label_natr, period=trade_duration_candles).iloc[-1]
+        return label_natr.iloc[-1]
 
     def get_trade_natr(
         self, df: DataFrame, trade: Trade, trade_duration_candles: int
@@ -867,32 +867,51 @@ class QuickAdapterV3(IStrategy):
         self,
         series: Series,
         window: int,
-        std: Optional[float] = None,
     ) -> Series:
         extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
-        if std is None:
-            std = derive_gaussian_std_from_window(window)
+        extrema_smoothing_zero_phase = self.freqai_info.get(
+            "extrema_smoothing_zero_phase", True
+        )
+        extrema_smoothing_beta = float(
+            self.freqai_info.get("extrema_smoothing_beta", 10.0)
+        )
+        std = derive_gaussian_std_from_window(window)
+        if debug:
+            logger.info(
+                f"{extrema_smoothing=}, {extrema_smoothing_zero_phase=}, {extrema_smoothing_beta=}, {window=}, {std=}"
+            )
         gaussian_window = get_gaussian_window(std, True)
         odd_window = get_odd_window(window)
         smoothing_methods: dict[str, Series] = {
-            "gaussian": series.rolling(
+            "gaussian": zero_phase(
+                series=series,
+                window=window,
+                win_type="gaussian",
+                std=std,
+                beta=extrema_smoothing_beta,
+            )
+            if extrema_smoothing_zero_phase
+            else series.rolling(
                 window=gaussian_window,
                 win_type="gaussian",
                 center=True,
             ).mean(std=std),
-            "zero_phase_gaussian": zero_phase_gaussian(
-                series=series, window=window, std=std
-            ),
-            "boxcar": series.rolling(
-                window=odd_window, win_type="boxcar", center=True
-            ).mean(),
-            "triang": series.rolling(
-                window=odd_window, win_type="triang", center=True
-            ).mean(),
+            "kaiser": zero_phase(
+                series=series,
+                window=window,
+                win_type="kaiser",
+                std=std,
+                beta=extrema_smoothing_beta,
+            )
+            if extrema_smoothing_zero_phase
+            else series.rolling(
+                window=odd_window,
+                win_type="kaiser",
+                center=True,
+            ).mean(beta=extrema_smoothing_beta),
             "smm": series.rolling(window=odd_window, center=True).median(),
             "sma": series.rolling(window=odd_window, center=True).mean(),
             "ewma": series.ewm(span=window).mean(),
-            "zlewma": zlema(series, period=window),
         }
         return smoothing_methods.get(
             extrema_smoothing,
