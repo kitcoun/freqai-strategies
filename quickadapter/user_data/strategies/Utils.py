@@ -490,7 +490,7 @@ def zigzag(
         last_pivot_pos = pos
         reset_candidate_pivot()
 
-    slopes_ok_cache: dict[tuple[int, int, bool, int, float], bool] = {}
+    slope_ok_cache: dict[tuple[int, int, bool, int, float], bool] = {}
 
     def get_slope_ok(
         pos: int,
@@ -507,16 +507,16 @@ def zigzag(
             min_slope,
         )
 
-        if cache_key in slopes_ok_cache:
-            return slopes_ok_cache[cache_key]
+        if cache_key in slope_ok_cache:
+            return slope_ok_cache[cache_key]
 
         next_start = pos
         next_end = min(next_start + slope_confirmation_window, n)
         next_closes = closes[next_start:next_end]
 
         if len(next_closes) < 2:
-            slopes_ok_cache[cache_key] = False
-            return slopes_ok_cache[cache_key]
+            slope_ok_cache[cache_key] = False
+            return slope_ok_cache[cache_key]
 
         log_next_closes = np.log(next_closes)
         log_next_closes_length = len(log_next_closes)
@@ -532,13 +532,13 @@ def zigzag(
         )[0]
 
         if direction == TrendDirection.DOWN:
-            slopes_ok_cache[cache_key] = log_next_slope < -min_slope
+            slope_ok_cache[cache_key] = log_next_slope < -min_slope
         elif direction == TrendDirection.UP:
-            slopes_ok_cache[cache_key] = log_next_slope > min_slope
+            slope_ok_cache[cache_key] = log_next_slope > min_slope
         else:
-            slopes_ok_cache[cache_key] = False
+            slope_ok_cache[cache_key] = False
 
-        return slopes_ok_cache[cache_key]
+        return slope_ok_cache[cache_key]
 
     def is_pivot_confirmed(
         pos: int,
