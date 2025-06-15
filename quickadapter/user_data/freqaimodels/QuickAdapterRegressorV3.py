@@ -1366,7 +1366,7 @@ def zigzag(
         last_pivot_pos = pos
         reset_candidate_pivot()
 
-    slopes_ok_cache: dict[tuple[int, int, int], bool] = {}
+    slopes_ok_cache: dict[tuple[int, int, bool, int, float], bool] = {}
 
     def get_slope_ok(
         pos: int,
