@@ -45,7 +45,7 @@ def derive_gaussian_std_from_window(window: int) -> float:
     return (window - 1) / 6.0 if window > 1 else 0.5
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=8)
 def _calculate_coeffs(
     window: int, win_type: Literal["gaussian", "kaiser"], std: float, beta: float
 ) -> np.ndarray:
@@ -449,13 +449,14 @@ def zigzag(
             max_window,
         ).astype(int)
 
+    @lru_cache(maxsize=8)
+    def calculate_slopes_ok_min_max(slopes_ok_threshold: float) -> tuple[int, int]:
+        raw_bound1 = math.ceil(1 / slopes_ok_threshold)
+        raw_bound2 = math.ceil(1 / (1 - slopes_ok_threshold))
+        return min(raw_bound1, raw_bound2), max(raw_bound1, raw_bound2)
+
     def calculate_min_slopes_ok(pos: int, slopes_ok_threshold: float) -> int:
-        min_slopes_ok = max(
-            math.ceil(1 / slopes_ok_threshold),
-            math.ceil(1 / (1 - slopes_ok_threshold)),
-            4,
-        )
-        max_slopes_ok = math.ceil(min_slopes_ok * 2)
+        min_slopes_ok, max_slopes_ok = calculate_slopes_ok_min_max(slopes_ok_threshold)
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
             return int(round(median([min_slopes_ok, max_slopes_ok])))
@@ -546,7 +547,7 @@ def zigzag(
         direction: TrendDirection,
         enable_weighting: bool = False,
         min_slope: float = np.finfo(float).eps,
-        slopes_ok_threshold: float = 0.75,
+        slopes_ok_threshold: float = 0.65,
     ) -> bool:
         slope_confirmation_window = calculate_slope_confirmation_window(
             candidate_pivot_pos
