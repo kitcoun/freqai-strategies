@@ -414,7 +414,7 @@ def zigzag(
     pivots_values: list[float] = []
     pivots_directions: list[int] = []
     pivots_scaled_natrs: list[float] = []
-    last_pivot_pos = -1
+    last_pivot_pos: int = -1
 
     candidate_pivot_pos: int = -1
     candidate_pivot_value: float = np.nan
