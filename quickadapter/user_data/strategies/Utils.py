@@ -473,6 +473,8 @@ def zigzag(
 
     def calculate_min_slopes_ok(pos: int, slopes_ok_threshold: float) -> int:
         min_slopes_ok, max_slopes_ok = calculate_slopes_ok_min_max(slopes_ok_threshold)
+        if min_slopes_ok == max_slopes_ok:
+            return min_slopes_ok
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
             return int(round(median([min_slopes_ok, max_slopes_ok])))
