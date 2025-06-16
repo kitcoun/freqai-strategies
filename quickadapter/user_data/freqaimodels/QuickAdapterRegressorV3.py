@@ -1327,7 +1327,7 @@ def zigzag(
 
     def calculate_slopes_ok_threshold(
         pos: int,
-        min_threshold: float = 0.65,
+        min_threshold: float = 0.5,
         max_threshold: float = 0.75,
     ) -> float:
         volatility_quantile = calculate_volatility_quantile(pos)
