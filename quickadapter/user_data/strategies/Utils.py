@@ -449,7 +449,18 @@ def zigzag(
             max_window,
         ).astype(int)
 
-    @lru_cache(maxsize=8)
+    def calculate_slopes_ok_threshold(
+        pos: int,
+        min_threshold: float = 0.65,
+        max_threshold: float = 0.75,
+    ) -> float:
+        volatility_quantile = calculate_volatility_quantile(pos)
+        if np.isnan(volatility_quantile):
+            return median([min_threshold, max_threshold])
+
+        return min_threshold + (max_threshold - min_threshold) * volatility_quantile
+
+    @lru_cache(maxsize=4096)
     def calculate_slopes_ok_min_max(slopes_ok_threshold: float) -> tuple[int, int]:
         raw_bound1 = math.ceil(1 / slopes_ok_threshold)
         raw_bound2 = math.ceil(1 / (1 - slopes_ok_threshold))
@@ -547,7 +558,6 @@ def zigzag(
         direction: TrendDirection,
         enable_weighting: bool = False,
         min_slope: float = np.finfo(float).eps,
-        slopes_ok_threshold: float = 0.65,
     ) -> bool:
         slope_confirmation_window = calculate_slope_confirmation_window(
             candidate_pivot_pos
@@ -565,6 +575,7 @@ def zigzag(
                 )
             )
 
+        slopes_ok_threshold = calculate_slopes_ok_threshold(candidate_pivot_pos)
         min_slopes_ok = calculate_min_slopes_ok(
             candidate_pivot_pos, slopes_ok_threshold
         )
