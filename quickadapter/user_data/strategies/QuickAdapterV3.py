@@ -909,6 +909,17 @@ class QuickAdapterV3(IStrategy):
                 win_type="kaiser",
                 center=True,
             ).mean(beta=extrema_smoothing_beta),
+            "triang": zero_phase(
+                series=series,
+                window=window,
+                win_type="triang",
+                std=std,
+                beta=extrema_smoothing_beta,
+            )
+            if extrema_smoothing_zero_phase
+            else series.rolling(
+                window=odd_window, win_type="triang", center=True
+            ).mean(),
             "smm": series.rolling(window=odd_window, center=True).median(),
             "sma": series.rolling(window=odd_window, center=True).mean(),
             "ewma": series.ewm(span=window).mean(),

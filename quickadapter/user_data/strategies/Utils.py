@@ -47,12 +47,17 @@ def derive_gaussian_std_from_window(window: int) -> float:
 
 @lru_cache(maxsize=8)
 def _calculate_coeffs(
-    window: int, win_type: Literal["gaussian", "kaiser"], std: float, beta: float
+    window: int,
+    win_type: Literal["gaussian", "kaiser", "triang"],
+    std: float,
+    beta: float,
 ) -> np.ndarray:
     if win_type == "gaussian":
         coeffs = sp.signal.windows.gaussian(M=window, std=std, sym=True)
     elif win_type == "kaiser":
         coeffs = sp.signal.windows.kaiser(M=window, beta=beta, sym=True)
+    elif win_type == "triang":
+        coeffs = sp.signal.windows.triang(M=window, sym=True)
     else:
         raise ValueError(f"Unknown window type: {win_type}")
     return coeffs / np.sum(coeffs)
@@ -61,7 +66,7 @@ def _calculate_coeffs(
 def zero_phase(
     series: pd.Series,
     window: int,
-    win_type: Literal["gaussian", "kaiser"],
+    win_type: Literal["gaussian", "kaiser", "triang"],
     std: float,
     beta: float,
 ) -> pd.Series:
