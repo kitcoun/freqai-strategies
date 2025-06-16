@@ -1338,9 +1338,11 @@ def zigzag(
 
     @lru_cache(maxsize=4096)
     def calculate_slopes_ok_min_max(slopes_ok_threshold: float) -> tuple[int, int]:
-        raw_bound1 = math.ceil(1 / slopes_ok_threshold)
-        raw_bound2 = math.ceil(1 / (1 - slopes_ok_threshold))
-        return min(raw_bound1, raw_bound2), max(raw_bound1, raw_bound2)
+        min_slope_bound1 = math.ceil(1 / slopes_ok_threshold)
+        min_slope_bound2 = math.ceil(1 / (1 - slopes_ok_threshold))
+        return min(min_slope_bound1, min_slope_bound2), max(
+            min_slope_bound1, min_slope_bound2
+        )
 
     def calculate_min_slopes_ok(pos: int, slopes_ok_threshold: float) -> int:
         min_slopes_ok, max_slopes_ok = calculate_slopes_ok_min_max(slopes_ok_threshold)
