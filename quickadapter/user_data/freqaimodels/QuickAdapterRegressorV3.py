@@ -1411,7 +1411,7 @@ def zigzag(
 
         polyfit_kwargs = {}
         if enable_weighting:
-            polyfit_kwargs = {"w": np.linspace(0.5, 1.5, log_next_closes_length)}
+            polyfit_kwargs["w"] = np.linspace(0.5, 1.5, log_next_closes_length)
         log_next_slope = np.polyfit(
             range(log_next_closes_length),
             log_next_closes,
