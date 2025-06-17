@@ -1505,7 +1505,7 @@ def largest_divisor(integer: int, step: int) -> Optional[int]:
 
     for q in range(q_start, q_end + 1):
         if integer % q == 0:
-            return int(integer // q)
+            return int(integer / q)
 
     return None
 
