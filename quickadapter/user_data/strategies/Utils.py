@@ -500,10 +500,10 @@ def zigzag(
             pos - candidate_pivot_pos
         )
 
-        if direction == TrendDirection.DOWN:
-            slope_ok_cache[cache_key] = log_slope_close < -min_slope
-        elif direction == TrendDirection.UP:
+        if direction == TrendDirection.UP:
             slope_ok_cache[cache_key] = log_slope_close > min_slope
+        elif direction == TrendDirection.DOWN:
+            slope_ok_cache[cache_key] = log_slope_close < -min_slope
         else:
             slope_ok_cache[cache_key] = False
 
