@@ -2,6 +2,7 @@ import copy
 from enum import IntEnum
 import logging
 import json
+import math
 import random
 from statistics import median
 import time
@@ -13,13 +14,13 @@ import sklearn
 import warnings
 import talib.abstract as ta
 
-from functools import cached_property
+from functools import cached_property, lru_cache
 from typing import Any, Callable, Optional
 from pathlib import Path
 from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 
-debug = True
+debug = False
 
 TEST_SIZE = 0.1
 
@@ -49,7 +50,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.93"
+    version = "3.7.94"
 
     @cached_property
     def _optuna_config(self) -> dict:
@@ -1489,14 +1490,46 @@ def zigzag(
     return pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs
 
 
+@lru_cache(maxsize=8)
+def largest_divisor(integer: int, step: int) -> Optional[int]:
+    if not isinstance(integer, int) or integer <= 0:
+        raise ValueError("integer must be a positive integer")
+    if not isinstance(step, int) or step <= 0:
+        raise ValueError("step must be a positive integer")
+
+    q_start = math.floor(0.5 * step) + 1
+    q_end = math.ceil(1.5 * step) - 1
+
+    if q_start > q_end:
+        return None
+
+    for q in range(q_start, q_end + 1):
+        if integer % q == 0:
+            return int(integer // q)
+
+    return None
+
+
 def label_objective(
     trial: optuna.trial.Trial,
     df: pd.DataFrame,
     fit_live_predictions_candles: int,
     candles_step: int,
 ) -> tuple[float, int]:
+    fit_live_predictions_candles_largest_divisor = largest_divisor(
+        fit_live_predictions_candles, candles_step
+    )
+    if fit_live_predictions_candles_largest_divisor is None:
+        raise ValueError(
+            f"Could not find a suitable largest divisor for {fit_live_predictions_candles} with step {candles_step}, please change your fit_live_predictions_candles or candles_step parameters"
+        )
     min_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 22, candles_step), candles_step
+        max(
+            fit_live_predictions_candles
+            // fit_live_predictions_candles_largest_divisor,
+            candles_step,
+        ),
+        candles_step,
     )
     max_label_period_candles: int = round_to_nearest_int(
         max(fit_live_predictions_candles // 2, min_label_period_candles),
@@ -1508,7 +1541,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 2.0, 22.0, step=0.01)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 2.0, 36.0, step=0.01)
 
     df = df.iloc[
         -(
