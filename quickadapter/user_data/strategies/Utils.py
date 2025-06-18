@@ -5,13 +5,13 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import talib.abstract as ta
-from typing import Callable, Literal, Union
+from typing import Callable, Literal, TypeVar
 from technical import qtpylib
 
+T = TypeVar("T", pd.Series, float)
 
-def get_distance(
-    p1: Union[pd.Series, float], p2: Union[pd.Series, float]
-) -> Union[pd.Series, float]:
+
+def get_distance(p1: T, p2: T) -> T:
     return abs(p1 - p2)
 
 
@@ -141,7 +141,9 @@ def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series
 
 
 # VWAP bands
-def vwapb(dataframe: pd.DataFrame, window: int = 20, std_factor: float = 1.0) -> tuple:
+def vwapb(
+    dataframe: pd.DataFrame, window: int = 20, std_factor: float = 1.0
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     vwap = qtpylib.rolling_vwap(dataframe, window=window)
     rolling_std = vwap.rolling(window=window, min_periods=window).std()
     vwap_low = vwap - (rolling_std * std_factor)
@@ -471,7 +473,7 @@ def zigzag(
         last_pivot_pos = pos
         reset_candidate_pivot()
 
-    slope_ok_cache: dict[tuple[int, int, int, float]] = {}
+    slope_ok_cache: dict[tuple[int, int, int, float], bool] = {}
 
     def get_slope_ok(
         pos: int,

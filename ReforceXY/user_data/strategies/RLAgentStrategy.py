@@ -1,5 +1,6 @@
 import logging
 from functools import cached_property, reduce
+# from typing import Any
 
 # import talib.abstract as ta
 from pandas import DataFrame
@@ -35,7 +36,7 @@ class RLAgentStrategy(IStrategy):
     startup_candle_count: int = 300
 
     # @cached_property
-    # def protections(self):
+    # def protections(self) -> list[dict[str, Any]]:
     #     fit_live_predictions_candles = self.freqai_info.get(
     #         "fit_live_predictions_candles", 100
     #     )
@@ -58,19 +59,19 @@ class RLAgentStrategy(IStrategy):
     #     ]
 
     @cached_property
-    def can_short(self):
+    def can_short(self) -> bool:
         return self.is_short_allowed()
 
     # def feature_engineering_expand_all(
     #     self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
-    # ):
+    # ) -> DataFrame:
     #     dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
 
     #     return dataframe
 
     def feature_engineering_expand_basic(
         self, dataframe: DataFrame, metadata: dict, **kwargs
-    ):
+    ) -> DataFrame:
         dataframe["%-close_pct_change"] = dataframe.get("close").pct_change()
         dataframe["%-raw_volume"] = dataframe.get("volume")
 
@@ -78,7 +79,7 @@ class RLAgentStrategy(IStrategy):
 
     def feature_engineering_standard(
         self, dataframe: DataFrame, metadata: dict, **kwargs
-    ):
+    ) -> DataFrame:
         dates = dataframe.get("date")
         dataframe["%-day_of_week"] = (dates.dt.dayofweek + 1) / 7
         dataframe["%-hour_of_day"] = (dates.dt.hour + 1) / 25
@@ -90,7 +91,9 @@ class RLAgentStrategy(IStrategy):
 
         return dataframe
 
-    def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
+    def set_freqai_targets(
+        self, dataframe: DataFrame, metadata: dict, **kwargs
+    ) -> DataFrame:
         dataframe[ACTION_COLUMN] = 0
 
         return dataframe

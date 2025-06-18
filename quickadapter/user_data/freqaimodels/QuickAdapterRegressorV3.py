@@ -147,7 +147,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             raise ValueError(f"Invalid namespace: {namespace}")
         return params
 
-    def set_optuna_params(self, pair: str, namespace: str, params: dict) -> None:
+    def set_optuna_params(
+        self, pair: str, namespace: str, params: dict[str, Any]
+    ) -> None:
         if namespace == "hp":
             self._optuna_hp_params[pair] = params
         elif namespace == "train":
@@ -237,7 +239,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             self._optuna_label_candle_pool.extend(optuna_label_available_candles)
             random.shuffle(self._optuna_label_candle_pool)
 
-    def fit(self, data_dictionary: dict, dk: FreqaiDataKitchen, **kwargs) -> Any:
+    def fit(
+        self, data_dictionary: dict[str, Any], dk: FreqaiDataKitchen, **kwargs
+    ) -> Any:
         """
         User sets up the training and test data to fit their desired model here
         :param data_dictionary: the dictionary constructed by DataHandler to hold
@@ -473,7 +477,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     def eval_set_and_weights(
         self, X_test: pd.DataFrame, y_test: pd.DataFrame, test_weights: np.ndarray
-    ) -> tuple[list[tuple] | None, list[np.ndarray] | None]:
+    ) -> tuple[
+        Optional[list[tuple[pd.DataFrame, pd.DataFrame]]], Optional[list[np.ndarray]]
+    ]:
         if self.data_split_parameters.get("test_size", TEST_SIZE) == 0:
             eval_set = None
             eval_weights = None
@@ -955,7 +961,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
             raise
 
-    def optuna_load_best_params(self, pair: str, namespace: str) -> Optional[dict]:
+    def optuna_load_best_params(
+        self, pair: str, namespace: str
+    ) -> Optional[dict[str, Any]]:
         best_params_path = Path(
             self.full_path / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"
         )
@@ -1029,11 +1037,11 @@ def fit_regressor(
     X: pd.DataFrame,
     y: pd.DataFrame,
     train_weights: np.ndarray,
-    eval_set: Optional[list[tuple]],
+    eval_set: Optional[list[tuple[pd.DataFrame, pd.DataFrame]]],
     eval_weights: Optional[list[np.ndarray]],
-    model_training_parameters: dict,
+    model_training_parameters: dict[str, Any],
     init_model: Any = None,
-    callbacks: list[Callable] = None,
+    callbacks: Optional[list[Callable]] = None,
 ) -> Any:
     if regressor == "xgboost":
         from xgboost import XGBRegressor
@@ -1083,7 +1091,7 @@ def train_objective(
     test_size: float,
     fit_live_predictions_candles: int,
     candles_step: int,
-    model_training_parameters: dict,
+    model_training_parameters: dict[str, Any],
 ) -> float:
     def calculate_min_extrema(
         length: int, fit_live_predictions_candles: int, min_extrema: int = 2
@@ -1184,7 +1192,7 @@ def train_objective(
 
 def get_optuna_study_model_parameters(
     trial: optuna.trial.Trial, regressor: str
-) -> dict:
+) -> dict[str, Any]:
     study_model_parameters = {
         "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
         "min_child_weight": trial.suggest_float(
@@ -1224,7 +1232,7 @@ def hp_objective(
     X_test: pd.DataFrame,
     y_test: pd.DataFrame,
     test_weights: np.ndarray,
-    model_training_parameters: dict,
+    model_training_parameters: dict[str, Any],
 ) -> float:
     study_model_parameters = get_optuna_study_model_parameters(trial, regressor)
     model_training_parameters = {**model_training_parameters, **study_model_parameters}
@@ -1343,7 +1351,7 @@ def zigzag(
         last_pivot_pos = pos
         reset_candidate_pivot()
 
-    slope_ok_cache: dict[tuple[int, int, int, float]] = {}
+    slope_ok_cache: dict[tuple[int, int, int, float], bool] = {}
 
     def get_slope_ok(
         pos: int,

@@ -215,11 +215,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             raise ValueError("Frame stacking requires predefined observation shape")
         self.eval_env = VecMonitor(eval_env)
 
-    def get_model_params(self) -> Dict:
+    def get_model_params(self) -> Dict[str, Any]:
         """
         Get model parameters
         """
-        model_params: Dict = copy.deepcopy(self.model_training_parameters)
+        model_params: Dict[str, Any] = copy.deepcopy(self.model_training_parameters)
 
         if self.lr_schedule:
             _lr = model_params.get("learning_rate", 0.0003)
@@ -311,7 +311,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         callbacks.append(self.optuna_callback)
         return callbacks
 
-    def fit(self, data_dictionary: Dict[str, Any], dk: FreqaiDataKitchen, **kwargs):
+    def fit(
+        self, data_dictionary: Dict[str, Any], dk: FreqaiDataKitchen, **kwargs
+    ) -> Any:
         """
         User customizable fit method
         :param data_dictionary: dict = common data dictionary containing all train/test
@@ -525,7 +527,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
     def study(
         self, train_df: DataFrame, total_timesteps: int, dk: FreqaiDataKitchen
-    ) -> Optional[Dict]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Runs hyperparameter optimization using Optuna and
         returns the best hyperparameters found merged with the user defined parameters
@@ -736,7 +738,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         return self.optuna_callback.best_mean_reward
 
-    def close_envs(self):
+    def close_envs(self) -> None:
         """
         Closes the training and evaluation environments if they are open
         """
@@ -775,9 +777,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             df: DataFrame,
             prices: DataFrame,
             window_size: int,
-            reward_kwargs: dict,
+            reward_kwargs: Dict[str, Any],
             starting_point=True,
-        ):
+        ) -> None:
             """
             Resets the environment when the agent fails
             """
@@ -794,7 +796,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 low=-np.inf, high=np.inf, shape=self.shape, dtype=np.float32
             )
 
-        def reset(self, seed=None, **kwargs):
+        def reset(self, seed=None, **kwargs) -> Tuple[np.ndarray, Dict[str, Any]]:
             """
             Reset is called at the beginning of every episode
             """
@@ -947,7 +949,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
             return 0.0
 
-        def _get_observation(self):
+        def _get_observation(self) -> np.ndarray:
             """
             This may or may not be independent of action types, user can inherit
             this in their custom "MyRLEnv"
@@ -999,11 +1001,11 @@ class ReforceXY(BaseReinforcementLearningModel):
                 Actions.Short_enter.value: Positions.Short,
             }[action]
 
-        def _enter_trade(self, action):
+        def _enter_trade(self, action: int) -> None:
             self._position = self._get_new_position(action)
             self._last_trade_tick = self._current_tick
 
-        def _exit_trade(self):
+        def _exit_trade(self) -> None:
             self._update_total_profit()
             self._last_closed_position = self._position
             self._position = Positions.Neutral
@@ -1036,7 +1038,9 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self._exit_trade()
                 self.append_trade_history(f"{self._last_closed_position.name}_exit")
 
-        def step(self, action: int):
+        def step(
+            self, action: int
+        ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
             """
             Take a step in the environment based on the provided action
             """
@@ -1070,7 +1074,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 info,
             )
 
-        def append_trade_history(self, trade_type: str):
+        def append_trade_history(self, trade_type: str) -> None:
             self.trade_history.append(
                 {
                     "tick": self._current_tick,
@@ -1228,7 +1232,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             return history
 
-        def get_env_plot(self):
+        def get_env_plot(self) -> plt.Figure:
             """
             Plot trades and environment data
             """
@@ -1405,7 +1409,7 @@ class RolloutPlotCallback(BaseCallback):
     Tensorboard plot callback
     """
 
-    def record_env(self):
+    def record_env(self) -> bool:
         figures = self.training_env.env_method("get_env_plot")
         for i, fig in enumerate(figures):
             figure = Figure(fig, close=True)

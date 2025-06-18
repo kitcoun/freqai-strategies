@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
 from freqtrade.strategy.interface import IStrategy
 from freqtrade.strategy import stoploss_from_absolute
@@ -120,7 +120,7 @@ class QuickAdapterV3(IStrategy):
         }
 
     @cached_property
-    def protections(self) -> list[dict]:
+    def protections(self) -> list[dict[str, Any]]:
         fit_live_predictions_candles = self.freqai_info.get(
             "fit_live_predictions_candles", 100
         )
@@ -195,7 +195,7 @@ class QuickAdapterV3(IStrategy):
 
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
-    ):
+    ) -> DataFrame:
         highs = dataframe.get("high")
         lows = dataframe.get("low")
         closes = dataframe.get("close")
@@ -235,7 +235,7 @@ class QuickAdapterV3(IStrategy):
 
     def feature_engineering_expand_basic(
         self, dataframe: DataFrame, metadata: dict, **kwargs
-    ):
+    ) -> DataFrame:
         highs = dataframe.get("high")
         lows = dataframe.get("low")
         opens = dataframe.get("open")
@@ -350,7 +350,7 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-raw_high"] = highs
         return dataframe
 
-    def feature_engineering_standard(self, dataframe: DataFrame, **kwargs):
+    def feature_engineering_standard(self, dataframe: DataFrame, **kwargs) -> DataFrame:
         dates = dataframe.get("date")
 
         dataframe["%-day_of_week"] = (dates.dt.dayofweek + 1) / 7
@@ -365,7 +365,7 @@ class QuickAdapterV3(IStrategy):
             return label_period_candles
         return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
 
-    def set_label_period_candles(self, pair: str, label_period_candles: int):
+    def set_label_period_candles(self, pair: str, label_period_candles: int) -> None:
         if isinstance(label_period_candles, int):
             self._label_params[pair]["label_period_candles"] = label_period_candles
 
@@ -377,7 +377,7 @@ class QuickAdapterV3(IStrategy):
             self.freqai_info["feature_parameters"].get("label_natr_ratio", 6.0)
         )
 
-    def set_label_natr_ratio(self, pair: str, label_natr_ratio: float):
+    def set_label_natr_ratio(self, pair: str, label_natr_ratio: float) -> None:
         if isinstance(label_natr_ratio, float) and np.isfinite(label_natr_ratio):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
@@ -406,7 +406,9 @@ class QuickAdapterV3(IStrategy):
         except (KeyError, ValueError) as e:
             raise ValueError(f"Invalid pattern '{pattern}': {e}")
 
-    def set_freqai_targets(self, dataframe: DataFrame, metadata: dict, **kwargs):
+    def set_freqai_targets(
+        self, dataframe: DataFrame, metadata: dict, **kwargs
+    ) -> DataFrame:
         pair = str(metadata.get("pair"))
         label_period_candles = self.get_label_period_candles(pair)
         label_natr_ratio = self.get_label_natr_ratio(pair)
