@@ -160,7 +160,7 @@ def calculate_zero_lag(series: pd.Series, period: int) -> pd.Series:
 
 
 def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
-    mamodes: dict = {
+    mamodes: dict[str, Callable[[pd.Series, int], np.ndarray]] = {
         "sma": ta.SMA,
         "ema": ta.EMA,
         "wma": ta.WMA,

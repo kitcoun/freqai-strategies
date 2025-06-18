@@ -120,7 +120,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.check_envs: bool = self.rl_config.get("check_envs", True)
         self.progressbar_callback: Optional[ProgressBarCallback] = None
         # Optuna hyperopt
-        self.rl_config_optuna: dict = self.freqai_info.get("rl_config_optuna", {})
+        self.rl_config_optuna: Dict[str, Any] = self.freqai_info.get(
+            "rl_config_optuna", {}
+        )
         self.hyperopt: bool = (
             self.freqai_info.get("enabled", False)
             and self.rl_config_optuna.get("enabled", False)
@@ -459,7 +461,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         def _predict(window):
             observation: DataFrame = dataframe.iloc[window.index]
-            action_masks_param: dict = {}
+            action_masks_param: Dict[str, Any] = {}
 
             if self.live and self.rl_config.get("add_state_info", False):
                 position, pnl, trade_duration = self.get_state_info(dk.pair)

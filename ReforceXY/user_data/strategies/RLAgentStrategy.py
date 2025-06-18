@@ -1,6 +1,6 @@
 import logging
 from functools import cached_property, reduce
-# from typing import Any
+from typing import Any
 
 # import talib.abstract as ta
 from pandas import DataFrame
@@ -63,14 +63,14 @@ class RLAgentStrategy(IStrategy):
         return self.is_short_allowed()
 
     # def feature_engineering_expand_all(
-    #     self, dataframe: DataFrame, period: int, metadata: dict, **kwargs
+    #     self, dataframe: DataFrame, period: int, metadata: dict[str, Any], **kwargs
     # ) -> DataFrame:
     #     dataframe["%-rsi-period"] = ta.RSI(dataframe, timeperiod=period)
 
     #     return dataframe
 
     def feature_engineering_expand_basic(
-        self, dataframe: DataFrame, metadata: dict, **kwargs
+        self, dataframe: DataFrame, metadata: dict[str, Any], **kwargs
     ) -> DataFrame:
         dataframe["%-close_pct_change"] = dataframe.get("close").pct_change()
         dataframe["%-raw_volume"] = dataframe.get("volume")
@@ -78,7 +78,7 @@ class RLAgentStrategy(IStrategy):
         return dataframe
 
     def feature_engineering_standard(
-        self, dataframe: DataFrame, metadata: dict, **kwargs
+        self, dataframe: DataFrame, metadata: dict[str, Any], **kwargs
     ) -> DataFrame:
         dates = dataframe.get("date")
         dataframe["%-day_of_week"] = (dates.dt.dayofweek + 1) / 7
@@ -92,18 +92,22 @@ class RLAgentStrategy(IStrategy):
         return dataframe
 
     def set_freqai_targets(
-        self, dataframe: DataFrame, metadata: dict, **kwargs
+        self, dataframe: DataFrame, metadata: dict[str, Any], **kwargs
     ) -> DataFrame:
         dataframe[ACTION_COLUMN] = 0
 
         return dataframe
 
-    def populate_indicators(self, dataframe: DataFrame, metadata: dict) -> DataFrame:
+    def populate_indicators(
+        self, dataframe: DataFrame, metadata: dict[str, Any]
+    ) -> DataFrame:
         dataframe = self.freqai.start(dataframe, metadata, self)
 
         return dataframe
 
-    def populate_entry_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
+    def populate_entry_trend(
+        self, df: DataFrame, metadata: dict[str, Any]
+    ) -> DataFrame:
         enter_long_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 1]
 
         df.loc[
@@ -120,7 +124,7 @@ class RLAgentStrategy(IStrategy):
 
         return df
 
-    def populate_exit_trend(self, df: DataFrame, metadata: dict) -> DataFrame:
+    def populate_exit_trend(self, df: DataFrame, metadata: dict[str, Any]) -> DataFrame:
         exit_long_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 2]
         df.loc[reduce(lambda x, y: x & y, exit_long_conditions), "exit_long"] = 1
 

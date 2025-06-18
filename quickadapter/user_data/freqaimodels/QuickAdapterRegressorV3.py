@@ -53,7 +53,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     version = "3.7.94"
 
     @cached_property
-    def _optuna_config(self) -> dict:
+    def _optuna_config(self) -> dict[str, Any]:
         optuna_default_config = {
             "enabled": False,
             "n_jobs": min(
@@ -96,9 +96,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self._optuna_hp_value: dict[str, float] = {}
         self._optuna_train_value: dict[str, float] = {}
         self._optuna_label_values: dict[str, list] = {}
-        self._optuna_hp_params: dict[str, dict] = {}
-        self._optuna_train_params: dict[str, dict] = {}
-        self._optuna_label_params: dict[str, dict] = {}
+        self._optuna_hp_params: dict[str, dict[str, Any]] = {}
+        self._optuna_train_params: dict[str, dict[str, Any]] = {}
+        self._optuna_label_params: dict[str, dict[str, Any]] = {}
         self.init_optuna_label_candle_pool()
         self._optuna_label_candle: dict[str, int] = {}
         self._optuna_label_candles: dict[str, int] = {}
