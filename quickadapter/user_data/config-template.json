@@ -164,6 +164,11 @@
       //   0.25,
       //   0.75
       // ],
+      // "label_metric": "hellinger",
+      // "label_weights": [
+      //   0.5,
+      //   0.5
+      // ],
       "include_shifted_candles": 6,
       "DI_threshold": 10,
       "weight_factor": 0.9,
