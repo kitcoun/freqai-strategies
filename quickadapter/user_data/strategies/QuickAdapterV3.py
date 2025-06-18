@@ -99,7 +99,7 @@ class QuickAdapterV3(IStrategy):
         return self.is_short_allowed()
 
     @cached_property
-    def plot_config(self) -> dict:
+    def plot_config(self) -> dict[str, Any]:
         return {
             "main_plot": {},
             "subplots": {
@@ -936,7 +936,9 @@ class QuickAdapterV3(IStrategy):
             smoothing_methods["gaussian"],
         )
 
-    def optuna_load_best_params(self, pair: str, namespace: str) -> Optional[dict]:
+    def optuna_load_best_params(
+        self, pair: str, namespace: str
+    ) -> Optional[dict[str, Any]]:
         best_params_path = Path(
             self.models_full_path
             / f"optuna-{namespace}-best-params-{pair.split('/')[0]}.json"

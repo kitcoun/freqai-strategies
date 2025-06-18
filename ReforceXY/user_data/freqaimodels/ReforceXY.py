@@ -621,7 +621,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         return {**self.model_training_parameters, **best_trial_params}
 
     def save_best_trial_params(
-        self, best_trial_params: Dict, pair: Optional[str] = None
+        self, best_trial_params: Dict[str, Any], pair: Optional[str] = None
     ) -> None:
         """
         Save the best trial hyperparameters found during hyperparameter optimization
@@ -650,7 +650,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             raise
 
-    def load_best_trial_params(self, pair: Optional[str] = None) -> Optional[Dict]:
+    def load_best_trial_params(
+        self, pair: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Load the best trial hyperparameters found and saved during hyperparameter optimization
         """
