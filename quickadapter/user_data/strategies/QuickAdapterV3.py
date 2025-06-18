@@ -547,9 +547,10 @@ class QuickAdapterV3(IStrategy):
             return None
         median_natr = trade_label_natr.median()
 
-        entry_quantile = calculate_quantile(trade_label_natr.to_numpy(), entry_natr)
-        current_quantile = calculate_quantile(trade_label_natr.to_numpy(), current_natr)
-        median_quantile = calculate_quantile(trade_label_natr.to_numpy(), median_natr)
+        np_trade_label_natr = trade_label_natr.to_numpy()
+        entry_quantile = calculate_quantile(np_trade_label_natr, entry_natr)
+        current_quantile = calculate_quantile(np_trade_label_natr, current_natr)
+        median_quantile = calculate_quantile(np_trade_label_natr, median_natr)
 
         if isna(entry_quantile) or isna(current_quantile) or isna(median_quantile):
             return None
