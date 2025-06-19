@@ -273,6 +273,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     X_test,
                     y_test,
                     test_weights,
+                    self.get_optuna_params(dk.pair, "hp"),
                     model_training_parameters,
                 ),
                 direction=optuna.study.StudyDirection.MINIMIZE,
@@ -1190,33 +1191,118 @@ def train_objective(
 
 
 def get_optuna_study_model_parameters(
-    trial: optuna.trial.Trial, regressor: str
+    trial: optuna.trial.Trial,
+    regressor: str,
+    model_training_best_parameters: dict[str, Any],
 ) -> dict[str, Any]:
+    default_ranges = {
+        "learning_rate": (1e-3, 0.5),
+        "min_child_weight": (1e-8, 100.0),
+        "subsample": (0.5, 1.0),
+        "colsample_bytree": (0.5, 1.0),
+        "reg_alpha": (1e-8, 100.0),
+        "reg_lambda": (1e-8, 100.0),
+        "max_depth": (3, 13),
+        "gamma": (1e-8, 10.0),
+        "num_leaves": (8, 256),
+        "min_split_gain": (1e-8, 10.0),
+        "min_child_samples": (10, 100),
+    }
+
+    ranges = copy.deepcopy(default_ranges)
+    expansion_factor = 0.4  # ±40%
+    if model_training_best_parameters:
+        for param, (default_min, default_max) in default_ranges.items():
+            center_value = model_training_best_parameters.get(param)
+
+            if (
+                center_value is None
+                or not isinstance(center_value, (int, float))
+                or not np.isfinite(center_value)
+            ):
+                continue
+
+            if param in [
+                "learning_rate",
+                "min_child_weight",
+                "reg_alpha",
+                "reg_lambda",
+                "gamma",
+                "min_split_gain",
+            ]:
+                new_min = center_value / (1 + expansion_factor)
+                new_max = center_value * (1 + expansion_factor)
+            else:
+                margin = (default_max - default_min) * expansion_factor / 2
+                new_min = center_value - margin
+                new_max = center_value + margin
+
+            param_min = max(default_min, new_min)
+            param_max = min(default_max, new_max)
+
+            if param_min < param_max:
+                ranges[param] = (param_min, param_max)
+
     study_model_parameters = {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-3, 0.3, log=True),
-        "min_child_weight": trial.suggest_float(
-            "min_child_weight", 1e-8, 100.0, log=True
+        "learning_rate": trial.suggest_float(
+            "learning_rate",
+            ranges["learning_rate"][0],
+            ranges["learning_rate"][1],
+            log=True,
         ),
-        "subsample": trial.suggest_float("subsample", 0.5, 1.0),
-        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
-        "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100.0, log=True),
-        "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 100.0, log=True),
+        "min_child_weight": trial.suggest_float(
+            "min_child_weight",
+            ranges["min_child_weight"][0],
+            ranges["min_child_weight"][1],
+            log=True,
+        ),
+        "subsample": trial.suggest_float(
+            "subsample", ranges["subsample"][0], ranges["subsample"][1]
+        ),
+        "colsample_bytree": trial.suggest_float(
+            "colsample_bytree",
+            ranges["colsample_bytree"][0],
+            ranges["colsample_bytree"][1],
+        ),
+        "reg_alpha": trial.suggest_float(
+            "reg_alpha", ranges["reg_alpha"][0], ranges["reg_alpha"][1], log=True
+        ),
+        "reg_lambda": trial.suggest_float(
+            "reg_lambda", ranges["reg_lambda"][0], ranges["reg_lambda"][1], log=True
+        ),
     }
     if regressor == "xgboost":
         study_model_parameters.update(
             {
-                "max_depth": trial.suggest_int("max_depth", 3, 15),
-                "gamma": trial.suggest_float("gamma", 1e-8, 10.0, log=True),
+                "max_depth": trial.suggest_int(
+                    "max_depth",
+                    int(ranges["max_depth"][0]),
+                    int(ranges["max_depth"][1]),
+                ),
+                "gamma": trial.suggest_float(
+                    "gamma", ranges["gamma"][0], ranges["gamma"][1], log=True
+                ),
             }
         )
     elif regressor == "lightgbm":
         study_model_parameters.update(
             {
-                "num_leaves": trial.suggest_int("num_leaves", 8, 256),
-                "min_split_gain": trial.suggest_float(
-                    "min_split_gain", 1e-8, 10.0, log=True
+                "num_leaves": trial.suggest_int(
+                    "num_leaves",
+                    int(ranges["num_leaves"][0]),
+                    int(ranges["num_leaves"][1]),
                 ),
-                "min_child_samples": trial.suggest_int("min_child_samples", 10, 100),
+                "min_split_gain": trial.suggest_float(
+                    "min_split_gain",
+                    ranges["min_split_gain"][0],
+                    ranges["min_split_gain"][1],
+                    log=True,
+                ),
+                "min_child_samples": trial.suggest_int(
+                    "min_child_samples",
+                    int(ranges["min_child_samples"][0]),
+                    int(ranges["min_child_samples"][1]),
+                ),
             }
         )
     return study_model_parameters
@@ -1231,9 +1317,12 @@ def hp_objective(
     X_test: pd.DataFrame,
     y_test: pd.DataFrame,
     test_weights: np.ndarray,
+    model_training_best_parameters: dict[str, Any],
     model_training_parameters: dict[str, Any],
 ) -> float:
-    study_model_parameters = get_optuna_study_model_parameters(trial, regressor)
+    study_model_parameters = get_optuna_study_model_parameters(
+        trial, regressor, model_training_best_parameters
+    )
     model_training_parameters = {**model_training_parameters, **study_model_parameters}
 
     model = fit_regressor(
