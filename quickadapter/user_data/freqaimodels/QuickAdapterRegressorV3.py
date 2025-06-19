@@ -666,7 +666,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 return np.sum(np_weights * (ideal_point - normalized_matrix), axis=1)
             elif metric in {"kmeans", "kmeans2"}:
                 if n_samples < 2:
-                    return np.ndarray([])
+                    return np.full(n_samples, np.inf)
                 n_clusters = min(max(2, int(np.sqrt(n_samples / 2))), 10, n_samples)
                 if metric == "kmeans":
                     kmeans = sklearn.cluster.KMeans(
