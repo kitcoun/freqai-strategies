@@ -520,11 +520,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         try:
             _ = study.best_trial
             return True
-        # file backend storage raises KeyError
-        except KeyError:
-            return False
-        # sqlite backend storage raises ValueError
-        except ValueError:
+        except (ValueError, KeyError):
             return False
 
     def study(
