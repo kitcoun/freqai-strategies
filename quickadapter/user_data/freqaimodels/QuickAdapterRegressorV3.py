@@ -190,7 +190,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             raise ValueError(f"Invalid namespace: {namespace}")
 
     @lru_cache(maxsize=8)
-    def get_optuna_label_all_candles(self) -> list[int]:
+    def build_optuna_label_candle_pool(self) -> list[int]:
         n_pairs = len(self.pairs)
         label_frequency_candles = max(
             2, 2 * n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
@@ -203,16 +203,22 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         ]
 
     def init_optuna_label_candle_pool(self) -> None:
-        self._optuna_label_candle_pool = self.get_optuna_label_all_candles()
+        self._optuna_label_candle_pool = self.build_optuna_label_candle_pool()
         random.shuffle(self._optuna_label_candle_pool)
         if len(self._optuna_label_candle_pool) == 0:
             raise RuntimeError("Failed to initialize optuna label candle pool")
 
     def set_optuna_label_candle(self, pair: str) -> None:
         if len(self._optuna_label_candle_pool) == 0:
-            raise RuntimeError(
-                "Optuna label candle pool is empty, cannot set optuna label candle"
+            logger.warning(
+                "Optuna label candle pool is empty, reinitializing it"
+                f"{self._optuna_label_candle_pool=}"
+                f"{self.build_optuna_label_candle_pool()=}"
+                f"{self._optuna_label_candle.values()=}"
+                f"{self._optuna_label_candles.values()=}"
+                f"{self._optuna_label_incremented_pairs=}"
             )
+            self.init_optuna_label_candle_pool()
         optuna_label_candle_pool = copy.deepcopy(self._optuna_label_candle_pool)
         for p in self.pairs:
             if p == pair:
@@ -232,7 +238,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self._optuna_label_candle[pair] = optuna_label_candle
         self._optuna_label_candle_pool.remove(optuna_label_candle)
         optuna_label_available_candles = (
-            set(self.get_optuna_label_all_candles())
+            set(self.build_optuna_label_candle_pool())
             - set(self._optuna_label_candle_pool)
             - set(self._optuna_label_candle.values())
         )
