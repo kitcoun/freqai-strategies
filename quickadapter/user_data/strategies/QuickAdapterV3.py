@@ -666,8 +666,9 @@ class QuickAdapterV3(IStrategy):
                 f"Invalid trade_price_target: {trade_price_target}. Expected 'interpolation', 'weighted_interpolation' or 'moving_average'."
             )
 
+    @staticmethod
     @lru_cache(maxsize=128)
-    def get_stoploss_log_factor(self, trade_duration_candles: int) -> float:
+    def get_stoploss_log_factor(trade_duration_candles: int) -> float:
         return 1 / math.log10(3.75 + 0.25 * trade_duration_candles)
 
     def get_stoploss_distance(
@@ -683,11 +684,12 @@ class QuickAdapterV3(IStrategy):
             current_rate
             * (trade_natr / 100.0)
             * self.get_stoploss_natr_ratio(trade.pair)
-            * self.get_stoploss_log_factor(trade_duration_candles)
+            * QuickAdapterV3.get_stoploss_log_factor(trade_duration_candles)
         )
 
+    @staticmethod
     @lru_cache(maxsize=128)
-    def get_take_profit_log_factor(self, trade_duration_candles: int) -> float:
+    def get_take_profit_log_factor(trade_duration_candles: int) -> float:
         return math.log10(9.75 + 0.25 * trade_duration_candles)
 
     def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
@@ -701,7 +703,7 @@ class QuickAdapterV3(IStrategy):
             trade.open_rate
             * (trade_natr / 100.0)
             * self.get_take_profit_natr_ratio(trade.pair)
-            * self.get_take_profit_log_factor(trade_duration_candles)
+            * QuickAdapterV3.get_take_profit_log_factor(trade_duration_candles)
         )
 
     def throttle_callback(
@@ -858,7 +860,6 @@ class QuickAdapterV3(IStrategy):
             )
         return False
 
-    @lru_cache(maxsize=8)
     def max_open_trades_per_side(self) -> int:
         max_open_trades = self.config.get("max_open_trades")
         if max_open_trades < 0:

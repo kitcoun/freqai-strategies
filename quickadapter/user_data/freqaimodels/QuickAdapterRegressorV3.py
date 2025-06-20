@@ -88,7 +88,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             raise ValueError(
                 "FreqAI model requires 'identifier' defined in the freqai section configuration"
             )
-        self._optuna_hyperopt: bool = (
+        self._optuna_hyperopt: bool | None = (
             self.freqai_info.get("enabled", False)
             and self._optuna_config.get("enabled")
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0
@@ -99,6 +99,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self._optuna_hp_params: dict[str, dict[str, Any]] = {}
         self._optuna_train_params: dict[str, dict[str, Any]] = {}
         self._optuna_label_params: dict[str, dict[str, Any]] = {}
+        self._optuna_label_candle_pool_cache: dict[tuple[int, int], list[int]] = {}
         self.init_optuna_label_candle_pool()
         self._optuna_label_candle: dict[str, int] = {}
         self._optuna_label_candles: dict[str, int] = {}
@@ -189,18 +190,21 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
 
-    @lru_cache(maxsize=8)
     def build_optuna_label_candle_pool(self) -> list[int]:
         n_pairs = len(self.pairs)
         label_frequency_candles = max(
             2, 2 * n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
         )
+        cache_key = (n_pairs, label_frequency_candles)
+        if cache_key in self._optuna_label_candle_pool_cache:
+            return self._optuna_label_candle_pool_cache[cache_key]
         min_offset = -int(label_frequency_candles / 2)
         max_offset = int(label_frequency_candles / 2)
-        return [
+        self._optuna_label_candle_pool_cache[cache_key] = [
             max(1, label_frequency_candles + offset)
             for offset in range(min_offset, max_offset + 1)
         ]
+        return self._optuna_label_candle_pool_cache[cache_key]
 
     def init_optuna_label_candle_pool(self) -> None:
         self._optuna_label_candle_pool = self.build_optuna_label_candle_pool()
@@ -1087,6 +1091,13 @@ def fit_regressor(
     return model
 
 
+@lru_cache(maxsize=128)
+def calculate_min_extrema(
+    length: int, fit_live_predictions_candles: int, min_extrema: int = 2
+) -> int:
+    return int(round((length / fit_live_predictions_candles) * min_extrema))
+
+
 def train_objective(
     trial: optuna.trial.Trial,
     regressor: str,
@@ -1101,12 +1112,6 @@ def train_objective(
     candles_step: int,
     model_training_parameters: dict[str, Any],
 ) -> float:
-    @lru_cache(maxsize=128)
-    def calculate_min_extrema(
-        length: int, fit_live_predictions_candles: int, min_extrema: int = 2
-    ) -> int:
-        return int(round((length / fit_live_predictions_candles) * min_extrema))
-
     test_ok = True
     test_length = len(X_test)
     if debug:
