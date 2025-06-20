@@ -215,12 +215,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def set_optuna_label_candle(self, pair: str) -> None:
         if len(self._optuna_label_candle_pool) == 0:
             logger.warning(
-                "Optuna label candle pool is empty, reinitializing it"
-                f"{self._optuna_label_candle_pool=}"
-                f"{self.build_optuna_label_candle_pool()=}"
-                f"{self._optuna_label_candle.values()=}"
-                f"{self._optuna_label_candles.values()=}"
-                f"{self._optuna_label_incremented_pairs=}"
+                "Optuna label candle pool is empty, reinitializing it ("
+                f"{self._optuna_label_candle_pool=} ,"
+                f"{self.build_optuna_label_candle_pool()=} ,"
+                f"{self._optuna_label_candle.values()=} ,"
+                f"{self._optuna_label_candles.values()=} ,"
+                f"{self._optuna_label_incremented_pairs=})"
             )
             self.init_optuna_label_candle_pool()
         optuna_label_candle_pool = copy.deepcopy(self._optuna_label_candle_pool)
