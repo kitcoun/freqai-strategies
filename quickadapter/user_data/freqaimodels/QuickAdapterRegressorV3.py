@@ -189,6 +189,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
 
+    @lru_cache(maxsize=8)
     def get_optuna_label_all_candles(self) -> list[int]:
         n_pairs = len(self.pairs)
         label_frequency_candles = max(
@@ -1094,6 +1095,7 @@ def train_objective(
     candles_step: int,
     model_training_parameters: dict[str, Any],
 ) -> float:
+    @lru_cache(maxsize=128)
     def calculate_min_extrema(
         length: int, fit_live_predictions_candles: int, min_extrema: int = 2
     ) -> int:

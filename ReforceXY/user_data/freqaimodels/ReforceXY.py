@@ -1,4 +1,5 @@
 import copy
+from functools import lru_cache
 import gc
 import json
 import logging
@@ -1503,6 +1504,7 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
     return func
 
 
+@lru_cache(maxsize=32)
 def hours_to_seconds(hours: float) -> float:
     """
     Converts hours to seconds
@@ -1511,6 +1513,7 @@ def hours_to_seconds(hours: float) -> float:
     return seconds
 
 
+@lru_cache(maxsize=32)
 def steps_to_days(steps: int, timeframe: str) -> float:
     """
     Calculate the number of days based on the given number of steps

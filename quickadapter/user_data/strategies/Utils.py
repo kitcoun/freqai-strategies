@@ -22,6 +22,7 @@ def non_zero_diff(s1: pd.Series, s2: pd.Series) -> pd.Series:
     return diff
 
 
+@lru_cache(maxsize=8)
 def get_gaussian_window(std: float, center: bool) -> int:
     if std is None:
         raise ValueError("Standard deviation cannot be None")
@@ -33,12 +34,14 @@ def get_gaussian_window(std: float, center: bool) -> int:
     return max(3, window)
 
 
+@lru_cache(maxsize=8)
 def get_odd_window(window: int) -> int:
     if window < 1:
         raise ValueError("Window size must be greater than 0")
     return window if window % 2 == 1 else window + 1
 
 
+@lru_cache(maxsize=8)
 def derive_gaussian_std_from_window(window: int) -> float:
     # Assuming window = 6 * std + 1 => std = (window - 1) / 6
     return (window - 1) / 6.0 if window > 1 else 0.5
