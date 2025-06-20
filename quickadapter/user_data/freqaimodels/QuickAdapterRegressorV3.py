@@ -74,6 +74,19 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             **self.freqai_info.get("optuna_hyperopt", {}),
         }
 
+    @cached_property
+    def _optuna_label_candle_pool_full(self) -> list[int]:
+        n_pairs = len(self.pairs)
+        label_frequency_candles = max(
+            2, 2 * n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
+        )
+        min_offset = -int(label_frequency_candles / 2)
+        max_offset = int(label_frequency_candles / 2)
+        return [
+            max(1, label_frequency_candles + offset)
+            for offset in range(min_offset, max_offset + 1)
+        ]
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
@@ -189,20 +202,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
 
-    def build_optuna_label_candle_pool(self) -> list[int]:
-        n_pairs = len(self.pairs)
-        label_frequency_candles = max(
-            2, 2 * n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
-        )
-        min_offset = -int(label_frequency_candles / 2)
-        max_offset = int(label_frequency_candles / 2)
-        return [
-            max(1, label_frequency_candles + offset)
-            for offset in range(min_offset, max_offset + 1)
-        ]
-
     def init_optuna_label_candle_pool(self) -> None:
-        self._optuna_label_candle_pool = self.build_optuna_label_candle_pool()
+        self._optuna_label_candle_pool = self._optuna_label_candle_pool_full
         random.shuffle(self._optuna_label_candle_pool)
         if len(self._optuna_label_candle_pool) == 0:
             raise RuntimeError("Failed to initialize optuna label candle pool")
@@ -212,7 +213,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             logger.warning(
                 "Optuna label candle pool is empty, reinitializing it ("
                 f"{self._optuna_label_candle_pool=} ,"
-                f"{self.build_optuna_label_candle_pool()=} ,"
+                f"{self._optuna_label_candle_pool_full=} ,"
                 f"{self._optuna_label_candle.values()=} ,"
                 f"{self._optuna_label_candles.values()=} ,"
                 f"{self._optuna_label_incremented_pairs=})"
@@ -237,7 +238,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self._optuna_label_candle[pair] = optuna_label_candle
         self._optuna_label_candle_pool.remove(optuna_label_candle)
         optuna_label_available_candles = (
-            set(self.build_optuna_label_candle_pool())
+            set(self._optuna_label_candle_pool_full)
             - set(self._optuna_label_candle_pool)
             - set(self._optuna_label_candle.values())
         )

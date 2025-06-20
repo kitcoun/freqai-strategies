@@ -149,6 +149,18 @@ class QuickAdapterV3(IStrategy):
         # Match the predictions warmup period
         return self.freqai_info.get("fit_live_predictions_candles", 100)
 
+    @cached_property
+    def max_open_trades_per_side(self) -> int:
+        max_open_trades = self.config.get("max_open_trades")
+        if max_open_trades < 0:
+            return -1
+        if self.is_short_allowed():
+            if max_open_trades % 2 == 1:
+                max_open_trades += 1
+            return int(max_open_trades / 2)
+        else:
+            return max_open_trades
+
     def bot_start(self, **kwargs) -> None:
         self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
         if not self.pairs:
@@ -819,7 +831,7 @@ class QuickAdapterV3(IStrategy):
     ) -> bool:
         if Trade.get_open_trade_count() >= self.config.get("max_open_trades"):
             return False
-        max_open_trades_per_side = self.max_open_trades_per_side()
+        max_open_trades_per_side = self.max_open_trades_per_side
         if max_open_trades_per_side >= 0:
             open_trades = Trade.get_open_trades()
             trades_per_side = sum(1 for trade in open_trades if trade.enter_tag == side)
@@ -859,17 +871,6 @@ class QuickAdapterV3(IStrategy):
                 f"User denied {side} entry for {pair}: rate {rate} outside bounds [{lower_bound}, {upper_bound}]"
             )
         return False
-
-    def max_open_trades_per_side(self) -> int:
-        max_open_trades = self.config.get("max_open_trades")
-        if max_open_trades < 0:
-            return -1
-        if self.is_short_allowed():
-            if max_open_trades % 2 == 1:
-                max_open_trades += 1
-            return int(max_open_trades / 2)
-        else:
-            return max_open_trades
 
     def is_short_allowed(self) -> bool:
         trading_mode = self.config.get("trading_mode")
