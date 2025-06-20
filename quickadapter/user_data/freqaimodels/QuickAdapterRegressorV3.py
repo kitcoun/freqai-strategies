@@ -723,7 +723,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 elif metric == "knn_d2_max":
                     return np.max(distances[:, 1:], axis=1)
             else:
-                raise ValueError(f"Unsupported distance metric: {metric}")
+                raise ValueError(
+                    f"Unsupported label metric: {metric}. Supported metrics are {', '.join(metrics)}"
+                )
 
         objective_values_matrix = np.array([trial.values for trial in best_trials])
         normalized_matrix = np.zeros_like(objective_values_matrix, dtype=float)
@@ -1020,6 +1022,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return False
 
 
+regressors = {"xgboost", "lightgbm"}
+
+
 def get_callbacks(trial: optuna.trial.Trial, regressor: str) -> list[Callable]:
     if regressor == "xgboost":
         callbacks = [
@@ -1028,7 +1033,9 @@ def get_callbacks(trial: optuna.trial.Trial, regressor: str) -> list[Callable]:
     elif regressor == "lightgbm":
         callbacks = [optuna.integration.LightGBMPruningCallback(trial, "rmse")]
     else:
-        raise ValueError(f"Unsupported regressor model: {regressor}")
+        raise ValueError(
+            f"Unsupported regressor model: {regressor} (supported: {', '.join(regressors)})"
+        )
     return callbacks
 
 
@@ -1075,7 +1082,9 @@ def fit_regressor(
             callbacks=callbacks,
         )
     else:
-        raise ValueError(f"Unsupported regressor model: {regressor}")
+        raise ValueError(
+            f"Unsupported regressor model: {regressor} (supported: {', '.join(regressors)})"
+        )
     return model
 
 
@@ -1195,6 +1204,10 @@ def get_optuna_study_model_parameters(
     regressor: str,
     model_training_best_parameters: dict[str, Any],
 ) -> dict[str, Any]:
+    if regressor not in regressors:
+        raise ValueError(
+            f"Unsupported regressor model: {regressor} (supported: {', '.join(regressors)})"
+        )
     default_ranges = {
         "learning_rate": (1e-3, 0.5),
         "min_child_weight": (1e-8, 100.0),
