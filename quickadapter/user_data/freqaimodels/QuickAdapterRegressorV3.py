@@ -74,18 +74,25 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             **self.freqai_info.get("optuna_hyperopt", {}),
         }
 
-    @cached_property
+    @property
     def _optuna_label_candle_pool_full(self) -> list[int]:
+        if not hasattr(self, "pairs") or not self.pairs:
+            raise RuntimeError(
+                "Failed to initialize optuna label candle pool full: pairs property is not defined"
+            )
         n_pairs = len(self.pairs)
         label_frequency_candles = max(
             2, 2 * n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
         )
-        min_offset = -int(label_frequency_candles / 2)
-        max_offset = int(label_frequency_candles / 2)
-        return [
-            max(1, label_frequency_candles + offset)
-            for offset in range(min_offset, max_offset + 1)
-        ]
+        cache_key = (n_pairs, label_frequency_candles)
+        if cache_key not in self._optuna_label_candle_pool_full_cache:
+            min_offset = -int(label_frequency_candles / 2)
+            max_offset = int(label_frequency_candles / 2)
+            self._optuna_label_candle_pool_full_cache[cache_key] = [
+                max(1, label_frequency_candles + offset)
+                for offset in range(min_offset, max_offset + 1)
+            ]
+        return copy.deepcopy(self._optuna_label_candle_pool_full_cache[cache_key])
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -112,6 +119,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self._optuna_hp_params: dict[str, dict[str, Any]] = {}
         self._optuna_train_params: dict[str, dict[str, Any]] = {}
         self._optuna_label_params: dict[str, dict[str, Any]] = {}
+        self._optuna_label_candle_pool_full_cache: dict[tuple[int, int], list[int]] = {}
         self.init_optuna_label_candle_pool()
         self._optuna_label_candle: dict[str, int] = {}
         self._optuna_label_candles: dict[str, int] = {}
