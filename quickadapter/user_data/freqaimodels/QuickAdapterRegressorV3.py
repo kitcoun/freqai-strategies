@@ -78,7 +78,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def _optuna_label_candle_pool_full(self) -> list[int]:
         if not hasattr(self, "pairs") or not self.pairs:
             raise RuntimeError(
-                "Failed to initialize optuna label candle pool full: pairs property is not defined"
+                "Failed to initialize optuna label candle pool full: pairs property is not defined or empty"
             )
         n_pairs = len(self.pairs)
         label_frequency_candles = max(
@@ -211,7 +211,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             raise ValueError(f"Invalid namespace: {namespace}")
 
     def init_optuna_label_candle_pool(self) -> None:
-        self._optuna_label_candle_pool = self._optuna_label_candle_pool_full
+        optuna_label_candle_pool_full = self._optuna_label_candle_pool_full
+        if len(optuna_label_candle_pool_full) == 0:
+            raise RuntimeError("Failed to initialize optuna label candle pool full")
+        self._optuna_label_candle_pool = optuna_label_candle_pool_full
         random.shuffle(self._optuna_label_candle_pool)
         if len(self._optuna_label_candle_pool) == 0:
             raise RuntimeError("Failed to initialize optuna label candle pool")
