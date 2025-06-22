@@ -84,10 +84,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         label_frequency_candles = max(
             2, 2 * n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
         )
-        cache_key = (n_pairs, label_frequency_candles)
+        cache_key = label_frequency_candles
         if cache_key not in self._optuna_label_candle_pool_full_cache:
-            min_offset = -int(label_frequency_candles / 2)
-            max_offset = int(label_frequency_candles / 2)
+            half_label_frequency_candles = int(label_frequency_candles / 2)
+            min_offset = -half_label_frequency_candles
+            max_offset = half_label_frequency_candles
             self._optuna_label_candle_pool_full_cache[cache_key] = [
                 max(1, label_frequency_candles + offset)
                 for offset in range(min_offset, max_offset + 1)
@@ -119,7 +120,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         self._optuna_hp_params: dict[str, dict[str, Any]] = {}
         self._optuna_train_params: dict[str, dict[str, Any]] = {}
         self._optuna_label_params: dict[str, dict[str, Any]] = {}
-        self._optuna_label_candle_pool_full_cache: dict[tuple[int, int], list[int]] = {}
+        self._optuna_label_candle_pool_full_cache: dict[int, list[int]] = {}
         self.init_optuna_label_candle_pool()
         self._optuna_label_candle: dict[str, int] = {}
         self._optuna_label_candles: dict[str, int] = {}
