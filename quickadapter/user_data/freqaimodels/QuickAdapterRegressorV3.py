@@ -616,7 +616,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 raise ValueError("label_weights sum cannot be zero")
             np_weights = np_weights / label_weights_sum
             knn_kwargs = {}
-            label_knn_metric = self.ft_params.get("label_knn_metric", "euclidean")
+            label_knn_metric = self.ft_params.get("label_knn_metric", "seuclidean")
             if label_knn_metric == "minkowski" and isinstance(label_p_order, float):
                 knn_kwargs["p"] = label_p_order
 
@@ -699,7 +699,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         normalized_matrix, n_clusters, rng=42, minit="++"
                     )
                 label_kmeans_metric = self.ft_params.get(
-                    "label_kmeans_metric", "euclidean"
+                    "label_kmeans_metric", "seuclidean"
                 )
                 cdist_kwargs = {}
                 if label_kmeans_metric == "minkowski" and isinstance(
