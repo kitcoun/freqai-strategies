@@ -109,7 +109,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             raise ValueError(
                 "FreqAI model requires 'identifier' defined in the freqai section configuration"
             )
-        self._optuna_hyperopt: bool | None = (
+        self._optuna_hyperopt: Optional[bool] = (
             self.freqai_info.get("enabled", False)
             and self._optuna_config.get("enabled")
             and self.data_split_parameters.get("test_size", TEST_SIZE) > 0

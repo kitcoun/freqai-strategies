@@ -537,7 +537,7 @@ class QuickAdapterV3(IStrategy):
         )
 
     @staticmethod
-    def is_trade_duration_valid(trade_duration: float) -> bool:
+    def is_trade_duration_valid(trade_duration: Optional[int | float]) -> bool:
         return isinstance(trade_duration, (int, float)) and not (
             isna(trade_duration) or trade_duration <= 0
         )
@@ -751,9 +751,8 @@ class QuickAdapterV3(IStrategy):
         stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
         if isna(stoploss_distance) or stoploss_distance <= 0:
             return None
-        sign = 1 if trade.is_short else -1
         return stoploss_from_absolute(
-            current_rate + (sign * stoploss_distance),
+            current_rate + (1 if trade.is_short else -1) * stoploss_distance,
             current_rate=current_rate,
             is_short=trade.is_short,
             leverage=trade.leverage,
