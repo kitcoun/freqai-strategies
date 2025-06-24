@@ -1101,9 +1101,9 @@ def fit_regressor(
 
 @lru_cache(maxsize=128)
 def calculate_min_extrema(
-    length: int, fit_live_predictions_candles: int, min_extrema: int = 2
+    size: int, fit_live_predictions_candles: int, min_extrema: int = 4
 ) -> int:
-    return int(round((length / fit_live_predictions_candles) * min_extrema))
+    return int(round((size / fit_live_predictions_candles) * min_extrema))
 
 
 def train_objective(
@@ -1132,7 +1132,7 @@ def train_objective(
         logger.info(
             f"{test_length=}, {n_test_minima=}, {n_test_maxima=}, {n_test_extrema=}, {min_test_extrema=}"
         )
-    min_test_window: int = fit_live_predictions_candles
+    min_test_window: int = fit_live_predictions_candles * 2
     if test_length < min_test_window:
         logger.warning(f"Insufficient test data: {test_length} < {min_test_window}")
         test_ok = False
