@@ -17,6 +17,7 @@ import pandas_ta as pta
 import scipy as sp
 
 from Utils import (
+    TrendDirection,
     alligator,
     bottom_change_percent,
     calculate_quantile,
@@ -440,8 +441,12 @@ class QuickAdapterV3(IStrategy):
         else:
             for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
                 dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
-            dataframe["minima"] = np.where(dataframe[EXTREMA_COLUMN] == -1, -1, 0)
-            dataframe["maxima"] = np.where(dataframe[EXTREMA_COLUMN] == 1, 1, 0)
+            dataframe["minima"] = np.where(
+                dataframe[EXTREMA_COLUMN] == TrendDirection.DOWN, -1, 0
+            )
+            dataframe["maxima"] = np.where(
+                dataframe[EXTREMA_COLUMN] == TrendDirection.UP, 1, 0
+            )
             logger.info(
                 f"{pair}: labeled {len(pivots_indices)} extrema (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / {label_natr_ratio=:.2f})"
             )
