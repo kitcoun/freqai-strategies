@@ -456,9 +456,9 @@ class QuickAdapterV3(IStrategy):
         )
         if debug:
             logger.info(f"{dataframe[EXTREMA_COLUMN].to_numpy()=}")
-            n_minima = sp.signal.find_peaks(-dataframe[EXTREMA_COLUMN])[0].size
-            n_maxima = sp.signal.find_peaks(dataframe[EXTREMA_COLUMN])[0].size
-            n_extrema = n_minima + n_maxima
+            n_minima: int = sp.signal.find_peaks(-dataframe[EXTREMA_COLUMN])[0].size
+            n_maxima: int = sp.signal.find_peaks(dataframe[EXTREMA_COLUMN])[0].size
+            n_extrema: int = n_minima + n_maxima
             logger.info(f"{n_extrema=}")
         return dataframe
 

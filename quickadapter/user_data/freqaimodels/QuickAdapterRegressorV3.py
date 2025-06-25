@@ -1144,9 +1144,9 @@ def train_objective(
     X_test = X_test.iloc[-test_window:]
     y_test = y_test.iloc[-test_window:]
     test_extrema = y_test.get(EXTREMA_COLUMN)
-    n_test_minima = sp.signal.find_peaks(-test_extrema)[0].size
-    n_test_maxima = sp.signal.find_peaks(test_extrema)[0].size
-    n_test_extrema = n_test_minima + n_test_maxima
+    n_test_minima: int = sp.signal.find_peaks(-test_extrema)[0].size
+    n_test_maxima: int = sp.signal.find_peaks(test_extrema)[0].size
+    n_test_extrema: int = n_test_minima + n_test_maxima
     min_test_extrema: int = calculate_min_extrema(
         test_window, fit_live_predictions_candles
     )
@@ -1182,9 +1182,9 @@ def train_objective(
     X = X.iloc[-train_window:]
     y = y.iloc[-train_window:]
     train_extrema = y.get(EXTREMA_COLUMN)
-    n_train_minima = sp.signal.find_peaks(-train_extrema)[0].size
-    n_train_maxima = sp.signal.find_peaks(train_extrema)[0].size
-    n_train_extrema = n_train_minima + n_train_maxima
+    n_train_minima: int = sp.signal.find_peaks(-train_extrema)[0].size
+    n_train_maxima: int = sp.signal.find_peaks(train_extrema)[0].size
+    n_train_extrema: int = n_train_minima + n_train_maxima
     min_train_extrema: int = calculate_min_extrema(
         train_window, fit_live_predictions_candles
     )
