@@ -944,7 +944,6 @@ class QuickAdapterV3(IStrategy):
             ).mean(),
             "smm": series.rolling(window=odd_window, center=True).median(),
             "sma": series.rolling(window=odd_window, center=True).mean(),
-            "ewma": series.ewm(span=window).mean(),
         }
         return smoothing_methods.get(
             extrema_smoothing,
