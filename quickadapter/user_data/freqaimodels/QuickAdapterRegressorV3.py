@@ -295,6 +295,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     test_weights,
                     self.get_optuna_params(dk.pair, "hp"),
                     model_training_parameters,
+                    self._optuna_config.get("expansion_factor"),
                 ),
                 direction=optuna.study.StudyDirection.MINIMIZE,
             )
@@ -1221,6 +1222,7 @@ def get_optuna_study_model_parameters(
     trial: optuna.trial.Trial,
     regressor: str,
     model_training_best_parameters: dict[str, Any],
+    expansion_factor: float,
 ) -> dict[str, Any]:
     if regressor not in regressors:
         raise ValueError(
@@ -1241,7 +1243,6 @@ def get_optuna_study_model_parameters(
     }
 
     ranges = copy.deepcopy(default_ranges)
-    expansion_factor = self._optuna_config.get("expansion_factor")
     if model_training_best_parameters:
         for param, (default_min, default_max) in default_ranges.items():
             center_value = model_training_best_parameters.get(param)
@@ -1350,9 +1351,10 @@ def hp_objective(
     test_weights: np.ndarray,
     model_training_best_parameters: dict[str, Any],
     model_training_parameters: dict[str, Any],
+    expansion_factor: float,
 ) -> float:
     study_model_parameters = get_optuna_study_model_parameters(
-        trial, regressor, model_training_best_parameters
+        trial, regressor, model_training_best_parameters, expansion_factor
     )
     model_training_parameters = {**model_training_parameters, **study_model_parameters}
 
