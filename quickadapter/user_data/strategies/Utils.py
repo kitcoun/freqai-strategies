@@ -422,7 +422,7 @@ def zigzag(
     pivots_indices: list[int] = []
     pivots_values: list[float] = []
     pivots_directions: list[TrendDirection] = []
-    pivots_scaled_natrs: list[float] = []
+    pivots_thresholds: list[float] = []
     last_pivot_pos: int = -1
 
     candidate_pivot_pos: int = -1
@@ -472,7 +472,7 @@ def zigzag(
         pivots_indices.append(indices[pos])
         pivots_values.append(value)
         pivots_directions.append(direction)
-        pivots_scaled_natrs.append(thresholds[pos])
+        pivots_thresholds.append(thresholds[pos])
         last_pivot_pos = pos
         reset_candidate_pivot()
 
@@ -620,4 +620,4 @@ def zigzag(
                 )
                 state = TrendDirection.UP
 
-    return pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs
+    return pivots_indices, pivots_values, pivots_directions, pivots_thresholds

@@ -67,6 +67,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "n_trials": 36,
             "timeout": 7200,
             "candles_step": 10,
+            "expansion_factor": 0.4,
             "seed": 1,
         }
         return {
@@ -1240,7 +1241,7 @@ def get_optuna_study_model_parameters(
     }
 
     ranges = copy.deepcopy(default_ranges)
-    expansion_factor = 0.4  # ±40%
+    expansion_factor = self._optuna_config.get("expansion_factor")
     if model_training_best_parameters:
         for param, (default_min, default_max) in default_ranges.items():
             center_value = model_training_best_parameters.get(param)
@@ -1415,7 +1416,7 @@ def zigzag(
     pivots_indices: list[int] = []
     pivots_values: list[float] = []
     pivots_directions: list[TrendDirection] = []
-    pivots_scaled_natrs: list[float] = []
+    pivots_thresholds: list[float] = []
     last_pivot_pos: int = -1
 
     candidate_pivot_pos: int = -1
@@ -1465,7 +1466,7 @@ def zigzag(
         pivots_indices.append(indices[pos])
         pivots_values.append(value)
         pivots_directions.append(direction)
-        pivots_scaled_natrs.append(thresholds[pos])
+        pivots_thresholds.append(thresholds[pos])
         last_pivot_pos = pos
         reset_candidate_pivot()
 
@@ -1613,7 +1614,7 @@ def zigzag(
                 )
                 state = TrendDirection.UP
 
-    return pivots_indices, pivots_values, pivots_directions, pivots_scaled_natrs
+    return pivots_indices, pivots_values, pivots_directions, pivots_thresholds
 
 
 @lru_cache(maxsize=8)
@@ -1679,13 +1680,13 @@ def label_objective(
     if df.empty:
         return -np.inf, -np.inf
 
-    _, pivots_values, _, pivots_scaled_natrs = zigzag(
+    _, pivots_values, _, pivots_thresholds = zigzag(
         df,
         natr_period=label_period_candles,
         natr_ratio=label_natr_ratio,
     )
 
-    return np.median(pivots_scaled_natrs), len(pivots_values)
+    return np.median(pivots_thresholds), len(pivots_values)
 
 
 def smoothed_max(series: pd.Series, temperature=1.0) -> float:
