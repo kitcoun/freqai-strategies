@@ -15,9 +15,17 @@ services:
     # Build step - only needed when additional dependencies are needed
     build:
       context: .
-      dockerfile: "./docker/Dockerfile.custom"
+      dockerfile_inline: |
+        FROM freqtradeorg/freqtrade:stable_freqairl
+
+        ARG optuna_version
+        RUN pip install --user optuna==$${optuna_version} optuna-dashboard
+      args:
+        - optuna_version=4.4.0
     restart: unless-stopped
     container_name: freqtrade-ReforceXY
+    environment:
+      - TZ=Europe/Paris
     volumes:
       - "./user_data:/freqtrade/user_data"
     # Expose api on port 8082
