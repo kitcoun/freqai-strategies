@@ -394,14 +394,14 @@ class QuickAdapterV3(IStrategy):
         if isinstance(label_natr_ratio, float) and np.isfinite(label_natr_ratio):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
-    def get_entry_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.01
+    def get_entry_natr_ratio(self, pair: str, percent: float = 0.01) -> float:
+        return self.get_label_natr_ratio(pair) * percent
 
-    def get_stoploss_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.9
+    def get_stoploss_natr_ratio(self, pair: str, percent: float = 0.9) -> float:
+        return self.get_label_natr_ratio(pair) * percent
 
-    def get_take_profit_natr_ratio(self, pair: str) -> float:
-        return self.get_label_natr_ratio(pair) * 0.7
+    def get_take_profit_natr_ratio(self, pair: str, percent: float = 0.7) -> float:
+        return self.get_label_natr_ratio(pair) * percent
 
     @staticmethod
     def td_format(
