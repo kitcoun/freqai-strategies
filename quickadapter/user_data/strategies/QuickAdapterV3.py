@@ -41,8 +41,8 @@ debug = False
 logger = logging.getLogger(__name__)
 
 EXTREMA_COLUMN = "&s-extrema"
-MINIMA_THRESHOLD_COLUMN = "&s-minima_threshold"
 MAXIMA_THRESHOLD_COLUMN = "&s-maxima_threshold"
+MINIMA_THRESHOLD_COLUMN = "&s-minima_threshold"
 
 
 class QuickAdapterV3(IStrategy):
@@ -109,9 +109,9 @@ class QuickAdapterV3(IStrategy):
                     "train_rmse": {"color": "#a3087a", "type": "line"},
                 },
                 "extrema": {
+                    MAXIMA_THRESHOLD_COLUMN: {"color": "#e6be0b", "type": "line"},
                     EXTREMA_COLUMN: {"color": "#f53580", "type": "line"},
                     MINIMA_THRESHOLD_COLUMN: {"color": "#4ae747", "type": "line"},
-                    MAXIMA_THRESHOLD_COLUMN: {"color": "#e6be0b", "type": "line"},
                 },
                 "min_max": {
                     "maxima": {"color": "#0dd6de", "type": "bar"},

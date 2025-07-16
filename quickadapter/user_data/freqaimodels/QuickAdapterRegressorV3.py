@@ -25,8 +25,8 @@ debug = False
 TEST_SIZE = 0.1
 
 EXTREMA_COLUMN = "&s-extrema"
-MINIMA_THRESHOLD_COLUMN = "&s-minima_threshold"
 MAXIMA_THRESHOLD_COLUMN = "&s-maxima_threshold"
+MINIMA_THRESHOLD_COLUMN = "&s-minima_threshold"
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -518,7 +518,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[float, float]:
         temperature = float(
-            self.freqai_info.get("prediction_thresholds_temperature", 250.0)
+            self.freqai_info.get("prediction_thresholds_temperature", 280.0)
         )
         extrema = pred_df.get(EXTREMA_COLUMN).iloc[
             -(
