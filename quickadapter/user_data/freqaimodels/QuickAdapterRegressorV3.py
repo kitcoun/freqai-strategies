@@ -66,7 +66,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "n_startup_trials": 15,
             "n_trials": 36,
             "timeout": 7200,
-            "candles_step": 4,
+            "label_candles_step": 4,
+            "train_candles_step": 10,
             "expansion_factor": 0.4,
             "seed": 1,
         }
@@ -321,7 +322,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     test_weights,
                     self.data_split_parameters.get("test_size", TEST_SIZE),
                     self.freqai_info.get("fit_live_predictions_candles", 100),
-                    self._optuna_config.get("candles_step"),
+                    self._optuna_config.get("train_candles_step"),
                     model_training_parameters,
                 ),
                 direction=optuna.study.StudyDirection.MINIMIZE,
@@ -412,7 +413,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                             pair=pair, timeframe=self.config.get("timeframe")
                         ),
                         fit_live_predictions_candles,
-                        self._optuna_config.get("candles_step"),
+                        self._optuna_config.get("label_candles_step"),
                     ),
                     directions=[
                         optuna.study.StudyDirection.MAXIMIZE,

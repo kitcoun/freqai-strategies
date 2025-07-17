@@ -126,7 +126,8 @@
       "n_jobs": 6,
       "n_trials": 36,
       "timeout": 7200,
-      "candles_step": 4,
+      "label_candles_step": 4,
+      "train_candles_step": 10,
       "storage": "file"
     },
     "extra_returns_per_train": {
