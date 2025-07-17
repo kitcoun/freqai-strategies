@@ -851,6 +851,9 @@ class QuickAdapterV3(IStrategy):
         last_candle_close = last_candle.get("close")
         last_candle_high = last_candle.get("high")
         last_candle_low = last_candle.get("low")
+        last_candle_weighted_close_price = (
+            last_candle_high + last_candle_low + 2 * last_candle_close
+        ) / 4.0
         last_candle_natr = last_candle.get("natr_label_period_candles")
         if isna(last_candle_natr) or last_candle_natr < 0:
             return False
@@ -859,9 +862,9 @@ class QuickAdapterV3(IStrategy):
         price_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(pair)
         if side == "long":
             lower_bound = last_candle_low * (1 - price_deviation)
-            upper_bound = last_candle_close * (1 + price_deviation)
+            upper_bound = last_candle_weighted_close_price * (1 + price_deviation)
         elif side == "short":
-            lower_bound = last_candle_close * (1 - price_deviation)
+            lower_bound = last_candle_weighted_close_price * (1 - price_deviation)
             upper_bound = last_candle_high * (1 + price_deviation)
         if lower_bound < 0:
             logger.info(
