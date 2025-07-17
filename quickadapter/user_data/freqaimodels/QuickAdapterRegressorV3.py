@@ -66,7 +66,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "n_startup_trials": 15,
             "n_trials": 36,
             "timeout": 7200,
-            "candles_step": 10,
+            "candles_step": 4,
             "expansion_factor": 0.4,
             "seed": 1,
         }
@@ -518,7 +518,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[float, float]:
         temperature = float(
-            self.freqai_info.get("prediction_thresholds_temperature", 280.0)
+            self.freqai_info.get("prediction_thresholds_temperature", 300.0)
         )
         extrema = pred_df.get(EXTREMA_COLUMN).iloc[
             -(
@@ -1661,7 +1661,7 @@ def label_objective(
         candles_step,
     )
     max_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 2, min_label_period_candles),
+        max(fit_live_predictions_candles // 4, min_label_period_candles),
         candles_step,
     )
     label_period_candles = trial.suggest_int(
@@ -1670,7 +1670,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 2.0, 36.0, step=0.01)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 2.0, 38.0, step=0.01)
 
     df = df.iloc[
         -(
