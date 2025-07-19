@@ -169,7 +169,7 @@ class QuickAdapterV3(IStrategy):
                 "FreqAI strategy requires StaticPairList method defined in pairlists configuration and 'pair_whitelist' defined in exchange section configuration"
             )
         if (
-            self.freqai_info.get("identifier") is None
+            not isinstance(self.freqai_info.get("identifier"), str)
             or self.freqai_info.get("identifier").strip() == ""
         ):
             raise ValueError(
@@ -755,7 +755,6 @@ class QuickAdapterV3(IStrategy):
         df, _ = self.dp.get_analyzed_dataframe(
             pair=pair, timeframe=self.config.get("timeframe")
         )
-
         if df.empty:
             return None
 
@@ -781,7 +780,6 @@ class QuickAdapterV3(IStrategy):
         df, _ = self.dp.get_analyzed_dataframe(
             pair=pair, timeframe=self.config.get("timeframe")
         )
-
         if df.empty:
             return None
 
