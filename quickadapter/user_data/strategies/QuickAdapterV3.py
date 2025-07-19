@@ -394,13 +394,13 @@ class QuickAdapterV3(IStrategy):
         if isinstance(label_natr_ratio, float) and np.isfinite(label_natr_ratio):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
-    def get_entry_natr_ratio(self, pair: str, percent: float = 0.01) -> float:
+    def get_entry_natr_ratio(self, pair: str, percent: float) -> float:
         return self.get_label_natr_ratio(pair) * percent
 
-    def get_stoploss_natr_ratio(self, pair: str, percent: float = 0.9) -> float:
+    def get_stoploss_natr_ratio(self, pair: str, percent: float) -> float:
         return self.get_label_natr_ratio(pair) * percent
 
-    def get_take_profit_natr_ratio(self, pair: str, percent: float = 0.7) -> float:
+    def get_take_profit_natr_ratio(self, pair: str, percent: float) -> float:
         return self.get_label_natr_ratio(pair) * percent
 
     @staticmethod
@@ -689,7 +689,11 @@ class QuickAdapterV3(IStrategy):
         return 1 / math.log10(3.75 + 0.25 * trade_duration_candles)
 
     def get_stoploss_distance(
-        self, df: DataFrame, trade: Trade, current_rate: float
+        self,
+        df: DataFrame,
+        trade: Trade,
+        current_rate: float,
+        natr_ratio_percent: float,
     ) -> Optional[float]:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
@@ -700,7 +704,7 @@ class QuickAdapterV3(IStrategy):
         return (
             current_rate
             * (trade_natr / 100.0)
-            * self.get_stoploss_natr_ratio(trade.pair)
+            * self.get_stoploss_natr_ratio(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_stoploss_log_factor(trade_duration_candles)
         )
 
@@ -709,7 +713,9 @@ class QuickAdapterV3(IStrategy):
     def get_take_profit_log_factor(trade_duration_candles: int) -> float:
         return math.log10(9.75 + 0.25 * trade_duration_candles)
 
-    def get_take_profit_distance(self, df: DataFrame, trade: Trade) -> Optional[float]:
+    def get_take_profit_distance(
+        self, df: DataFrame, trade: Trade, natr_ratio_percent: float
+    ) -> Optional[float]:
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
@@ -719,7 +725,7 @@ class QuickAdapterV3(IStrategy):
         return (
             trade.open_rate
             * (trade_natr / 100.0)
-            * self.get_take_profit_natr_ratio(trade.pair)
+            * self.get_take_profit_natr_ratio(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_take_profit_log_factor(trade_duration_candles)
         )
 
@@ -753,7 +759,7 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        stoploss_distance = self.get_stoploss_distance(df, trade, current_rate)
+        stoploss_distance = self.get_stoploss_distance(df, trade, current_rate, 0.9)
         if isna(stoploss_distance) or stoploss_distance <= 0:
             return None
         return stoploss_from_absolute(
@@ -800,7 +806,7 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        take_profit_distance = self.get_take_profit_distance(df, trade)
+        take_profit_distance = self.get_take_profit_distance(df, trade, 0.7)
         if isna(take_profit_distance) or take_profit_distance <= 0:
             return None
         take_profit_price = (
@@ -859,7 +865,9 @@ class QuickAdapterV3(IStrategy):
             return False
         lower_bound = 0
         upper_bound = 0
-        price_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(pair)
+        price_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
+            pair, 0.01
+        )
         if side == "long":
             lower_bound = last_candle_low * (1 - price_deviation)
             upper_bound = last_candle_weighted_close_price * (1 + price_deviation)
