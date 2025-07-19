@@ -1,4 +1,0 @@
-FROM freqtradeorg/freqtrade:stable_freqairl
-
-ARG optuna_version=4.2.1
-RUN pip install --user optuna==${optuna_version} optuna-dashboard

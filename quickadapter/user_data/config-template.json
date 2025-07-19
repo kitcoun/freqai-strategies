@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.freqtrade.io/schema.json",
   "strategy": "QuickAdapterV3",
-  "freqaimodel": "XGBoostRegressorQuickAdapterV3",
-  // "freqaimodel": "LightGBMRegressorQuickAdapterV3",
+  "freqaimodel": "QuickAdapterRegressorV3",
+  "db_url": "sqlite:////freqtrade/user_data/freqtrade-quickadapter-tradesv3.sqlite",
+  "logfile": "/freqtrade/user_data/logs/freqtrade-quickadapter.log",
   "max_open_trades": 10,
   "stake_currency": "USDT",
   "stake_amount": "unlimited",
@@ -21,7 +22,7 @@
     "unit": "minutes"
   },
   "entry_pricing": {
-    "price_side": "other",
+    "price_side": "same",
     "use_order_book": true,
     "order_book_top": 1,
     "price_last_balance": 0.0,
@@ -31,7 +32,7 @@
     }
   },
   "exit_pricing": {
-    "price_side": "other",
+    "price_side": "same",
     "use_order_book": true,
     "order_book_top": 1,
     "price_last_balance": 0.0
@@ -105,26 +106,28 @@
   },
   "freqai": {
     "enabled": true,
+    "regressor": "xgboost",
+    // "regressor": "lightgbm",
     "conv_width": 1,
     "purge_old_models": 2,
-    "expiration_hours": 12,
+    "expiration_hours": 24,
     "train_period_days": 60,
     // "live_retrain_hours": 1,
     "backtest_period_days": 2,
     "write_metrics_to_disk": false,
     "identifier": "quickadapter-xgboost",
-    // "identifier": "quickadapter-lgbm",
+    // "identifier": "quickadapter-lightgbm",
     "fit_live_predictions_candles": 600,
     "data_kitchen_thread_count": 6, // set to number of CPU threads / 4
     "track_performance": false,
-    "prediction_thresholds_smoothing": "mean",
     "outlier_threshold": 0.999,
     "optuna_hyperopt": {
       "enabled": true,
       "n_jobs": 6,
       "n_trials": 36,
       "timeout": 7200,
-      "candles_step": 10,
+      "label_candles_step": 4,
+      "train_candles_step": 10,
       "storage": "file"
     },
     "extra_returns_per_train": {
@@ -135,8 +138,9 @@
       "&s-minima_threshold": -2,
       "&s-maxima_threshold": 2,
       "label_period_candles": 100,
+      "label_natr_ratio": 6.0,
       "hp_rmse": -1,
-      "period_rmse": -1
+      "train_rmse": -1
     },
     "feature_parameters": {
       "include_corr_pairlist": [
@@ -151,6 +155,21 @@
         // "1d"
       ],
       "label_period_candles": 100,
+      "label_metric": "euclidean",
+      "label_weights": [
+        0.5,
+        0.5
+      ],
+      // "label_metric": "chebyshev",
+      // "label_weights": [
+      //   0.25,
+      //   0.75
+      // ],
+      // "label_metric": "hellinger",
+      // "label_weights": [
+      //   0.5,
+      //   0.5
+      // ],
       "include_shifted_candles": 6,
       "DI_threshold": 10,
       "weight_factor": 0.9,

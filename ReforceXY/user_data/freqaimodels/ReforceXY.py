@@ -1,4 +1,5 @@
 import copy
+from functools import lru_cache
 import gc
 import json
 import logging
@@ -20,7 +21,7 @@ from optuna.exceptions import ExperimentalWarning
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
 from optuna.study import Study, StudyDirection
-from optuna.storages import JournalStorage, BaseStorage
+from optuna.storages import BaseStorage, JournalStorage, RDBStorage
 from optuna.storages.journal import JournalFileBackend
 from pandas import DataFrame, concat, merge
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
@@ -86,7 +87,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "enabled": false,                   // Enable optuna hyperopt
                 "per_pair: false,                   // Enable per pair hyperopt
                 "n_trials": 100,
-                "n_startup_trials": 10,
+                "n_startup_trials": 15,
                 "timeout_hours": 0,
             }
         }
@@ -120,7 +121,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.check_envs: bool = self.rl_config.get("check_envs", True)
         self.progressbar_callback: Optional[ProgressBarCallback] = None
         # Optuna hyperopt
-        self.rl_config_optuna: dict = self.freqai_info.get("rl_config_optuna", {})
+        self.rl_config_optuna: Dict[str, Any] = self.freqai_info.get(
+            "rl_config_optuna", {}
+        )
         self.hyperopt: bool = (
             self.freqai_info.get("enabled", False)
             and self.rl_config_optuna.get("enabled", False)
@@ -129,7 +132,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.optuna_timeout_hours: float = self.rl_config_optuna.get("timeout_hours", 0)
         self.optuna_n_trials: int = self.rl_config_optuna.get("n_trials", 100)
         self.optuna_n_startup_trials: int = self.rl_config_optuna.get(
-            "n_startup_trials", 10
+            "n_startup_trials", 15
         )
         self.optuna_callback: Optional[MaskableTrialEvalCallback] = None
         self.unset_unsupported()
@@ -158,8 +161,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         """
         self.close_envs()
 
-        train_df = data_dictionary["train_features"]
-        test_df = data_dictionary["test_features"]
+        train_df = data_dictionary.get("train_features")
+        test_df = data_dictionary.get("test_features")
         env_dict = self.pack_env_dict(dk.pair)
         seed = self.model_training_parameters.get("seed", 42)
 
@@ -215,11 +218,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             raise ValueError("Frame stacking requires predefined observation shape")
         self.eval_env = VecMonitor(eval_env)
 
-    def get_model_params(self) -> Dict:
+    def get_model_params(self) -> Dict[str, Any]:
         """
         Get model parameters
         """
-        model_params: Dict = copy.deepcopy(self.model_training_parameters)
+        model_params: Dict[str, Any] = copy.deepcopy(self.model_training_parameters)
 
         if self.lr_schedule:
             _lr = model_params.get("learning_rate", 0.0003)
@@ -234,7 +237,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         if not model_params.get("policy_kwargs"):
             model_params["policy_kwargs"] = {}
 
-        net_arch = model_params["policy_kwargs"].get("net_arch", [128, 128])
+        net_arch = model_params.get("policy_kwargs", {}).get("net_arch", [128, 128])
         if "PPO" in self.model_type:
             model_params["policy_kwargs"]["net_arch"] = {
                 "pi": net_arch,
@@ -244,11 +247,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             model_params["policy_kwargs"]["net_arch"] = net_arch
 
         model_params["policy_kwargs"]["activation_fn"] = get_activation_fn(
-            model_params["policy_kwargs"].get("activation_fn", "relu")
+            model_params.get("policy_kwargs", {}).get("activation_fn", "relu")
         )
 
         model_params["policy_kwargs"]["optimizer_class"] = get_optimizer_class(
-            model_params["policy_kwargs"].get("optimizer_class", "adam")
+            model_params.get("policy_kwargs", {}).get("optimizer_class", "adam")
         )
 
         return model_params
@@ -311,7 +314,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         callbacks.append(self.optuna_callback)
         return callbacks
 
-    def fit(self, data_dictionary: Dict[str, Any], dk: FreqaiDataKitchen, **kwargs):
+    def fit(
+        self, data_dictionary: Dict[str, Any], dk: FreqaiDataKitchen, **kwargs
+    ) -> Any:
         """
         User customizable fit method
         :param data_dictionary: dict = common data dictionary containing all train/test
@@ -320,13 +325,14 @@ class ReforceXY(BaseReinforcementLearningModel):
         :return:
         model Any = trained model to be used for inference in dry/live/backtesting
         """
-        train_df = data_dictionary["train_features"]
+        train_df = data_dictionary.get("train_features")
         train_timesteps = len(train_df)
-        test_timesteps = len(data_dictionary["test_features"])
+        test_df = data_dictionary.get("test_features")
+        test_timesteps = len(test_df)
         train_cycles = max(1, int(self.rl_config.get("train_cycles", 25)))
         total_timesteps = train_timesteps * train_cycles * self.n_envs
-        train_days = steps_to_days(train_timesteps, self.config["timeframe"])
-        total_days = steps_to_days(total_timesteps, self.config["timeframe"])
+        train_days = steps_to_days(train_timesteps, self.config.get("timeframe"))
+        total_days = steps_to_days(total_timesteps, self.config.get("timeframe"))
 
         logger.info("Action masking: %s", self.is_maskable)
         logger.info(
@@ -341,7 +347,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         logger.info(
             "Test: %s steps (%s days)",
             test_timesteps,
-            steps_to_days(test_timesteps, self.config["timeframe"]),
+            steps_to_days(test_timesteps, self.config.get("timeframe")),
         )
         logger.info("Hyperopt: %s", self.hyperopt)
 
@@ -388,7 +394,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             if self.progressbar_callback:
                 self.progressbar_callback.on_training_end()
             self.close_envs()
-            model.env.close()
+            if hasattr(model, "env") and model.env is not None:
+                model.env.close()
         time_spent = time.time() - start
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
 
@@ -455,7 +462,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         def _predict(window):
             observation: DataFrame = dataframe.iloc[window.index]
-            action_masks_param: dict = {}
+            action_masks_param: Dict[str, Any] = {}
 
             if self.live and self.rl_config.get("add_state_info", False):
                 position, pnl, trade_duration = self.get_state_info(dk.pair)
@@ -486,7 +493,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         output = output.rolling(window=self.CONV_WIDTH).apply(_predict)
         return output
 
-    def get_storage(self, pair: str | None = None) -> BaseStorage | None:
+    def get_storage(self, pair: Optional[str] = None) -> BaseStorage:
         """
         Get the storage for Optuna
         """
@@ -494,30 +501,32 @@ class ReforceXY(BaseReinforcementLearningModel):
         storage_filename = f"optuna-{pair.split('/')[0]}" if pair else "optuna"
         storage_backend = self.rl_config_optuna.get("storage", "sqlite")
         if storage_backend == "sqlite":
-            storage = f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
+            storage = RDBStorage(
+                url=f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
+            )
         elif storage_backend == "file":
             storage = JournalStorage(
                 JournalFileBackend(f"{storage_dir}/{storage_filename}.log")
             )
+        else:
+            raise ValueError(
+                f"Unsupported storage backend: {storage_backend}. Supported backends are: 'sqlite' and 'file'"
+            )
         return storage
 
     @staticmethod
-    def study_has_best_trial_params(study: Study | None) -> bool:
+    def study_has_best_trial(study: Optional[Study]) -> bool:
         if study is None:
             return False
         try:
-            _ = study.best_trial.params
+            _ = study.best_trial
             return True
-        # file backend storage raises KeyError
-        except KeyError:
-            return False
-        # sqlite backend storage raises ValueError
-        except ValueError:
+        except (ValueError, KeyError):
             return False
 
     def study(
         self, train_df: DataFrame, total_timesteps: int, dk: FreqaiDataKitchen
-    ) -> Dict | None:
+    ) -> Optional[Dict[str, Any]]:
         """
         Runs hyperparameter optimization using Optuna and
         returns the best hyperparameters found merged with the user defined parameters
@@ -536,6 +545,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 n_startup_trials=self.optuna_n_startup_trials,
                 multivariate=True,
                 group=True,
+                seed=self.rl_config_optuna.get("seed", 42),
             ),
             pruner=HyperbandPruner(
                 min_resource=3,
@@ -571,9 +581,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             hyperopt_failed = True
         time_spent = time.time() - start
-        if ReforceXY.study_has_best_trial_params(study) is False:
+        if ReforceXY.study_has_best_trial(study) is False:
             logger.error(
-                f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no study best trial params found"
+                f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no study best trial found"
             )
             hyperopt_failed = True
 
@@ -608,7 +618,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         return {**self.model_training_parameters, **best_trial_params}
 
     def save_best_trial_params(
-        self, best_trial_params: Dict, pair: str | None = None
+        self, best_trial_params: Dict[str, Any], pair: Optional[str] = None
     ) -> None:
         """
         Save the best trial hyperparameters found during hyperparameter optimization
@@ -627,10 +637,19 @@ class ReforceXY(BaseReinforcementLearningModel):
             else f"saving best params to {best_trial_params_path} JSON file"
         )
         logger.info(log_msg)
-        with best_trial_params_path.open("w", encoding="utf-8") as write_file:
-            json.dump(best_trial_params, write_file, indent=4)
+        try:
+            with best_trial_params_path.open("w", encoding="utf-8") as write_file:
+                json.dump(best_trial_params, write_file, indent=4)
+        except Exception as e:
+            logger.error(
+                f"Error saving best trial params to {best_trial_params_path}: {e}",
+                exc_info=True,
+            )
+            raise
 
-    def load_best_trial_params(self, pair: str | None = None) -> Dict | None:
+    def load_best_trial_params(
+        self, pair: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Load the best trial hyperparameters found and saved during hyperparameter optimization
         """
@@ -709,17 +728,18 @@ class ReforceXY(BaseReinforcementLearningModel):
             if self.progressbar_callback:
                 self.progressbar_callback.on_training_end()
             self.close_envs()
-            model.env.close()
+            if hasattr(model, "env") and model.env is not None:
+                model.env.close()
 
         if nan_encountered:
-            return float("nan")
+            return np.nan
 
         if self.optuna_callback.is_pruned:
             raise TrialPruned()
 
         return self.optuna_callback.best_mean_reward
 
-    def close_envs(self):
+    def close_envs(self) -> None:
         """
         Closes the training and evaluation environments if they are open
         """
@@ -737,10 +757,10 @@ class ReforceXY(BaseReinforcementLearningModel):
             super().__init__(**kwargs)
             self.force_actions: bool = self.rl_config.get("force_actions", False)
             self._force_action: Optional[ForceActions] = None
-            self.take_profit: float = self.config["minimal_roi"]["0"]
-            self.stop_loss: float = self.config["stoploss"]
+            self.take_profit: float = self.config.get("minimal_roi", {}).get("0", 0.03)
+            self.stop_loss: float = self.config.get("stoploss", -0.02)
             self.timeout: int = self.rl_config.get("max_trade_duration_candles", 128)
-            self._last_closed_position: Positions = None
+            self._last_closed_position: Optional[Positions] = None
             self._last_closed_trade_tick: int = 0
             if self.force_actions:
                 logger.info(
@@ -749,7 +769,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                     self.take_profit,
                     self.stop_loss,
                     self.timeout,
-                    steps_to_days(self.timeout, self.config["timeframe"]),
+                    steps_to_days(self.timeout, self.config.get("timeframe")),
                     self.observation_space,
                 )
 
@@ -758,9 +778,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             df: DataFrame,
             prices: DataFrame,
             window_size: int,
-            reward_kwargs: dict,
+            reward_kwargs: Dict[str, Any],
             starting_point=True,
-        ):
+        ) -> None:
             """
             Resets the environment when the agent fails
             """
@@ -777,13 +797,13 @@ class ReforceXY(BaseReinforcementLearningModel):
                 low=-np.inf, high=np.inf, shape=self.shape, dtype=np.float32
             )
 
-        def reset(self, seed=None, **kwargs):
+        def reset(self, seed=None, **kwargs) -> Tuple[np.ndarray, Dict[str, Any]]:
             """
             Reset is called at the beginning of every episode
             """
             observation, history = super().reset(seed, **kwargs)
             self._force_action: Optional[ForceActions] = None
-            self._last_closed_position: Positions = None
+            self._last_closed_position: Optional[Positions] = None
             self._last_closed_trade_tick: int = 0
             return observation, history
 
@@ -855,7 +875,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             #     name="%-rsi",
             #     period=8,
             #     pair=self.pair,
-            #     timeframe=self.config["timeframe"],
+            #     timeframe=self.config.get("timeframe"),
             #     raw=True,
             # )
 
@@ -930,7 +950,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
             return 0.0
 
-        def _get_observation(self):
+        def _get_observation(self) -> np.ndarray:
             """
             This may or may not be independent of action types, user can inherit
             this in their custom "MyRLEnv"
@@ -974,6 +994,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 return ForceActions.Take_profit
             if pnl <= self.stop_loss:
                 return ForceActions.Stop_loss
+            return None
 
         def _get_new_position(self, action: int) -> Positions:
             return {
@@ -981,11 +1002,11 @@ class ReforceXY(BaseReinforcementLearningModel):
                 Actions.Short_enter.value: Positions.Short,
             }[action]
 
-        def _enter_trade(self, action):
+        def _enter_trade(self, action: int) -> None:
             self._position = self._get_new_position(action)
             self._last_trade_tick = self._current_tick
 
-        def _exit_trade(self):
+        def _exit_trade(self) -> None:
             self._update_total_profit()
             self._last_closed_position = self._position
             self._position = Positions.Neutral
@@ -1018,7 +1039,9 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self._exit_trade()
                 self.append_trade_history(f"{self._last_closed_position.name}_exit")
 
-        def step(self, action: int):
+        def step(
+            self, action: int
+        ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
             """
             Take a step in the environment based on the provided action
             """
@@ -1052,7 +1075,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 info,
             )
 
-        def append_trade_history(self, trade_type: str):
+        def append_trade_history(self, trade_type: str) -> None:
             self.trade_history.append(
                 {
                     "tick": self._current_tick,
@@ -1126,8 +1149,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             return self._current_tick - self._last_closed_trade_tick
 
         def get_most_recent_max_pnl(self) -> float:
+            pnl_history = self.history.get("pnl")
             return (
-                np.max(self.history.get("pnl")) if self.history.get("pnl") else -np.inf
+                np.max(pnl_history) if pnl_history and len(pnl_history) > 0 else -np.inf
             )
 
         def get_most_recent_return(self) -> float:
@@ -1140,8 +1164,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             if self._current_tick <= 0:
                 return 0.0
             if self._position == Positions.Long:
-                current_price = self.prices.iloc[self._current_tick].open
-                previous_price = self.prices.iloc[self._current_tick - 1].open
+                current_price = self.prices.iloc[self._current_tick].get("open")
+                previous_price = self.prices.iloc[self._current_tick - 1].get("open")
                 if (
                     self._position_history[self._current_tick - 1] == Positions.Short
                     or self._position_history[self._current_tick - 1]
@@ -1150,8 +1174,8 @@ class ReforceXY(BaseReinforcementLearningModel):
                     previous_price = self.add_entry_fee(previous_price)
                 return np.log(current_price) - np.log(previous_price)
             if self._position == Positions.Short:
-                current_price = self.prices.iloc[self._current_tick].open
-                previous_price = self.prices.iloc[self._current_tick - 1].open
+                current_price = self.prices.iloc[self._current_tick].get("open")
+                previous_price = self.prices.iloc[self._current_tick - 1].get("open")
                 if (
                     self._position_history[self._current_tick - 1] == Positions.Long
                     or self._position_history[self._current_tick - 1]
@@ -1176,21 +1200,19 @@ class ReforceXY(BaseReinforcementLearningModel):
             return 0.0
 
         def previous_price(self) -> float:
-            return self.prices.iloc[self._current_tick - 1].open
+            return self.prices.iloc[self._current_tick - 1].get("open")
 
         def get_env_history(self) -> DataFrame:
             """
             Get environment data from the first to the last trade
             """
-            # Check if history or trade_history is empty
             if not self.history or not self.trade_history:
                 logger.warning("History or trade history is empty.")
-                return DataFrame()  # Return an empty DataFrame
+                return DataFrame()
 
             _history_df = DataFrame.from_dict(self.history)
             _trade_history_df = DataFrame.from_dict(self.trade_history)
 
-            # Check if 'tick' column exists in both DataFrames
             if (
                 "tick" not in _history_df.columns
                 or "tick" not in _trade_history_df.columns
@@ -1198,11 +1220,11 @@ class ReforceXY(BaseReinforcementLearningModel):
                 logger.warning(
                     "'tick' column is missing from history or trade history."
                 )
-                return DataFrame()  # Return an empty DataFrame
+                return DataFrame()
 
-            _rollout_history = _history_df.merge(
-                _trade_history_df, on="tick", how="left"
-            ).fillna(method="ffill")
+            _rollout_history = merge(
+                _history_df, _trade_history_df, on="tick", how="left"
+            ).ffill()
             _price_history = (
                 self.prices.iloc[_rollout_history.tick].copy().reset_index()
             )
@@ -1211,7 +1233,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             return history
 
-        def get_env_plot(self):
+        def get_env_plot(self) -> plt.Figure:
             """
             Plot trades and environment data
             """
@@ -1239,20 +1261,32 @@ class ReforceXY(BaseReinforcementLearningModel):
                 sharex=True,
             )
 
-            # Return empty fig if no trades
             if len(self.trade_history) == 0:
                 return fig
 
             history = self.get_env_history()
+            if len(history) == 0:
+                return fig
 
-            enter_long_prices = history.loc[history["type"] == "long_enter"]["price"]
-            enter_short_prices = history.loc[history["type"] == "short_enter"]["price"]
-            exit_long_prices = history.loc[history["type"] == "long_exit"]["price"]
-            exit_short_prices = history.loc[history["type"] == "short_exit"]["price"]
-            take_profit_prices = history.loc[history["type"] == "take_profit"]["price"]
-            stop_loss_prices = history.loc[history["type"] == "stop_loss"]["price"]
-            timeout_prices = history.loc[history["type"] == "timeout"]["price"]
-            axs[0].plot(history["open"], linewidth=1, color="orchid")
+            history_price = history.get("price")
+            if history_price is None or len(history_price) == 0:
+                return fig
+            history_type = history.get("type")
+            if history_type is None or len(history_type) == 0:
+                return fig
+            history_open = history.get("open")
+            if history_open is None or len(history_open) == 0:
+                return fig
+
+            enter_long_prices = history.loc[history_type == "long_enter", "price"]
+            enter_short_prices = history.loc[history_type == "short_enter", "price"]
+            exit_long_prices = history.loc[history_type == "long_exit", "price"]
+            exit_short_prices = history.loc[history_type == "short_exit", "price"]
+            take_profit_prices = history.loc[history_type == "take_profit"]
+            stop_loss_prices = history.loc[history_type == "stop_loss", "price"]
+            timeout_prices = history.loc[history_type == "timeout", "price"]
+
+            axs[0].plot(history_open, linewidth=1, color="orchid")
 
             plot_markers(axs[0], enter_long_prices, "^", "forestgreen", 5, -0.1)
             plot_markers(axs[0], enter_short_prices, "v", "firebrick", 5, 0.1)
@@ -1260,24 +1294,24 @@ class ReforceXY(BaseReinforcementLearningModel):
             plot_markers(axs[0], exit_short_prices, ".", "thistle", 4, -0.1)
             plot_markers(axs[0], take_profit_prices, "*", "lime", 8, 0.1)
             plot_markers(axs[0], stop_loss_prices, "x", "red", 8, -0.1)
-            plot_markers(axs[0], timeout_prices, "1", "yellow", 8, 0)
+            plot_markers(axs[0], timeout_prices, "1", "yellow", 8, 0.0)
 
             axs[1].set_ylabel("pnl")
-            axs[1].plot(history["pnl"], linewidth=1, color="gray")
+            axs[1].plot(history.get("pnl"), linewidth=1, color="gray")
             axs[1].axhline(y=0, label="0", alpha=0.33, color="gray")
             axs[1].axhline(y=self.take_profit, label="tp", alpha=0.33, color="green")
             axs[1].axhline(y=self.stop_loss, label="sl", alpha=0.33, color="red")
 
             axs[2].set_ylabel("reward")
-            axs[2].plot(history["reward"], linewidth=1, color="gray")
+            axs[2].plot(history.get("reward"), linewidth=1, color="gray")
             axs[2].axhline(y=0, label="0", alpha=0.33)
 
             axs[3].set_ylabel("total_profit")
-            axs[3].plot(history["total_profit"], linewidth=1, color="gray")
+            axs[3].plot(history.get("total_profit"), linewidth=1, color="gray")
             axs[3].axhline(y=1, label="0", alpha=0.33)
 
             axs[4].set_ylabel("total_reward")
-            axs[4].plot(history["total_reward"], linewidth=1, color="gray")
+            axs[4].plot(history.get("total_reward"), linewidth=1, color="gray")
             axs[4].axhline(y=0, label="0", alpha=0.33)
             axs[4].set_xlabel("tick")
 
@@ -1297,7 +1331,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         def close(self) -> None:
             plt.close()
             gc.collect()
-            th.cuda.empty_cache()
+            if th.cuda.is_available():
+                th.cuda.empty_cache()
 
 
 class InfoMetricsCallback(TensorboardCallback):
@@ -1308,7 +1343,7 @@ class InfoMetricsCallback(TensorboardCallback):
     def _on_training_start(self) -> None:
         _lr = self.model.learning_rate
         _lr = _lr if isinstance(_lr, float) else "lr_schedule"
-        hparam_dict: Dict = {
+        hparam_dict: Dict[str, Any] = {
             "algorithm": self.model.__class__.__name__,
             "learning_rate": _lr,
             "gamma": self.model.gamma,
@@ -1342,8 +1377,8 @@ class InfoMetricsCallback(TensorboardCallback):
         if "QRDQN" in self.model.__class__.__name__:
             hparam_dict.update({"n_quantiles": self.model.n_quantiles})
         metric_dict = {
-            "info/total_reward": 0,
-            "info/total_profit": 1,
+            "info/total_reward": 0.0,
+            "info/total_profit": 1.0,
             "info/trade_count": 0,
             "info/trade_duration": 0,
         }
@@ -1354,17 +1389,18 @@ class InfoMetricsCallback(TensorboardCallback):
         )
 
     def _on_step(self) -> bool:
-        local_info = self.locals["infos"][0]
+        local_info = self.locals.get("infos", [{}])[0]
         if self.training_env is None:
             return True
         tensorboard_metrics = self.training_env.get_attr("tensorboard_metrics")[0]
         for metric in local_info:
             if metric not in ["episode", "terminal_observation", "TimeLimit.truncated"]:
-                self.logger.record(f"info/{metric}", local_info[metric])
+                self.logger.record(f"info/{metric}", local_info.get(metric))
         for category in tensorboard_metrics:
-            for metric in tensorboard_metrics[category]:
+            for metric in tensorboard_metrics.get(category, {}):
                 self.logger.record(
-                    f"{category}/{metric}", tensorboard_metrics[category][metric]
+                    f"{category}/{metric}",
+                    tensorboard_metrics.get(category, {}).get(metric),
                 )
         return True
 
@@ -1374,7 +1410,7 @@ class RolloutPlotCallback(BaseCallback):
     Tensorboard plot callback
     """
 
-    def record_env(self):
+    def record_env(self) -> bool:
         figures = self.training_env.env_method("get_env_plot")
         for i, fig in enumerate(figures):
             figure = Figure(fig, close=True)
@@ -1420,10 +1456,11 @@ class MaskableTrialEvalCallback(MaskableEvalCallback):
         if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
             super()._on_step()
             self.eval_idx += 1
-            self.trial.report(self.last_mean_reward, self.eval_idx)
+            if hasattr(self.trial, "report"):
+                self.trial.report(self.last_mean_reward, self.eval_idx)
 
-            # Prune trial if need
-            if self.trial.should_prune():
+            # Prune trial if needed
+            if hasattr(self.trial, "should_prune") and self.trial.should_prune():
                 self.is_pruned = True
                 return False
 
@@ -1467,7 +1504,8 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
     return func
 
 
-def hours_to_seconds(hours):
+@lru_cache(maxsize=32)
+def hours_to_seconds(hours: float) -> float:
     """
     Converts hours to seconds
     """
@@ -1475,6 +1513,7 @@ def hours_to_seconds(hours):
     return seconds
 
 
+@lru_cache(maxsize=32)
 def steps_to_days(steps: int, timeframe: str) -> float:
     """
     Calculate the number of days based on the given number of steps

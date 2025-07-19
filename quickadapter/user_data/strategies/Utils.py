@@ -1,22 +1,28 @@
+from enum import IntEnum
+from functools import lru_cache
+from statistics import median
 import numpy as np
 import pandas as pd
+import scipy as sp
 import talib.abstract as ta
-from scipy.signal import convolve
-from scipy.signal.windows import gaussian
+from typing import Callable, Literal, TypeVar
 from technical import qtpylib
 
+T = TypeVar("T", pd.Series, float)
 
-def get_distance(p1: pd.Series | float, p2: pd.Series | float) -> pd.Series | float:
+
+def get_distance(p1: T, p2: T) -> T:
     return abs(p1 - p2)
 
 
-def non_zero_range(s1: pd.Series, s2: pd.Series) -> pd.Series:
+def non_zero_diff(s1: pd.Series, s2: pd.Series) -> pd.Series:
     """Returns the difference of two series and adds epsilon to any zero values."""
     diff = s1 - s2
     diff = diff.mask(diff == 0, other=diff + np.finfo(float).eps)
     return diff
 
 
+@lru_cache(maxsize=8)
 def get_gaussian_window(std: float, center: bool) -> int:
     if std is None:
         raise ValueError("Standard deviation cannot be None")
@@ -28,28 +34,53 @@ def get_gaussian_window(std: float, center: bool) -> int:
     return max(3, window)
 
 
+@lru_cache(maxsize=8)
 def get_odd_window(window: int) -> int:
     if window < 1:
         raise ValueError("Window size must be greater than 0")
     return window if window % 2 == 1 else window + 1
 
 
+@lru_cache(maxsize=8)
 def derive_gaussian_std_from_window(window: int) -> float:
     # Assuming window = 6 * std + 1 => std = (window - 1) / 6
     return (window - 1) / 6.0 if window > 1 else 0.5
 
 
-def zero_phase_gaussian(series: pd.Series, window: int, std: float):
-    kernel = gaussian(window, std=std)
-    kernel /= kernel.sum()
+@lru_cache(maxsize=8)
+def _calculate_coeffs(
+    window: int,
+    win_type: Literal["gaussian", "kaiser", "triang"],
+    std: float,
+    beta: float,
+) -> np.ndarray:
+    if win_type == "gaussian":
+        coeffs = sp.signal.windows.gaussian(M=window, std=std, sym=True)
+    elif win_type == "kaiser":
+        coeffs = sp.signal.windows.kaiser(M=window, beta=beta, sym=True)
+    elif win_type == "triang":
+        coeffs = sp.signal.windows.triang(M=window, sym=True)
+    else:
+        raise ValueError(f"Unknown window type: {win_type}")
+    return coeffs / np.sum(coeffs)
 
-    padding_length = window - 1
-    padded_series = np.pad(series.values, (padding_length, padding_length), mode="edge")
 
-    forward = convolve(padded_series, kernel, mode="valid")
-    backward = convolve(forward[::-1], kernel, mode="valid")[::-1]
-
-    return pd.Series(backward, index=series.index)
+def zero_phase(
+    series: pd.Series,
+    window: int,
+    win_type: Literal["gaussian", "kaiser", "triang"],
+    std: float,
+    beta: float,
+) -> pd.Series:
+    if len(series) == 0:
+        return series
+    if len(series) < window:
+        raise ValueError("Series length must be greater than or equal to window size")
+    series_values = series.to_numpy()
+    b = _calculate_coeffs(window=window, win_type=win_type, std=std, beta=beta)
+    a = 1.0
+    filtered_values = sp.signal.filtfilt(b, a, series_values)
+    return pd.Series(filtered_values, index=series.index)
 
 
 def top_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
@@ -64,10 +95,10 @@ def top_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
         raise ValueError("period must be greater than or equal to 1")
 
     previous_close_top = (
-        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
+        dataframe.get("close").rolling(period, min_periods=period).max().shift(1)
     )
 
-    return (dataframe["close"] - previous_close_top) / previous_close_top
+    return (dataframe.get("close") - previous_close_top) / previous_close_top
 
 
 def bottom_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
@@ -82,10 +113,10 @@ def bottom_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
         raise ValueError("period must be greater than or equal to 1")
 
     previous_close_bottom = (
-        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
+        dataframe.get("close").rolling(period, min_periods=period).min().shift(1)
     )
 
-    return (dataframe["close"] - previous_close_bottom) / previous_close_bottom
+    return (dataframe.get("close") - previous_close_bottom) / previous_close_bottom
 
 
 def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
@@ -101,34 +132,38 @@ def price_retracement_percent(dataframe: pd.DataFrame, period: int) -> pd.Series
         raise ValueError("period must be greater than or equal to 1")
 
     previous_close_low = (
-        dataframe["close"].rolling(period, min_periods=period).min().shift(1)
+        dataframe.get("close").rolling(period, min_periods=period).min().shift(1)
     )
     previous_close_high = (
-        dataframe["close"].rolling(period, min_periods=period).max().shift(1)
+        dataframe.get("close").rolling(period, min_periods=period).max().shift(1)
     )
 
-    return (dataframe["close"] - previous_close_low) / (
-        non_zero_range(previous_close_high, previous_close_low)
+    return (dataframe.get("close") - previous_close_low) / (
+        non_zero_diff(previous_close_high, previous_close_low)
     )
 
 
 # VWAP bands
-def vwapb(dataframe: pd.DataFrame, window=20, num_of_std=1) -> tuple:
+def vwapb(
+    dataframe: pd.DataFrame, window: int = 20, std_factor: float = 1.0
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     vwap = qtpylib.rolling_vwap(dataframe, window=window)
-    rolling_std = vwap.rolling(window=window).std()
-    vwap_low = vwap - (rolling_std * num_of_std)
-    vwap_high = vwap + (rolling_std * num_of_std)
+    rolling_std = vwap.rolling(window=window, min_periods=window).std()
+    vwap_low = vwap - (rolling_std * std_factor)
+    vwap_high = vwap + (rolling_std * std_factor)
     return vwap_low, vwap, vwap_high
 
 
-def zero_lag_series(series: pd.Series, period: int) -> pd.Series:
+def calculate_zero_lag(series: pd.Series, period: int) -> pd.Series:
     """Applies a zero lag filter to reduce MA lag."""
-    lag = int(0.5 * (period - 1))
-    return 2 * series - series.shift(lag)
+    lag = max((period - 1) / 2, 0)
+    if lag == 0:
+        return series
+    return 2 * series - series.shift(int(lag))
 
 
-def get_ma_fn(mamode: str) -> callable:
-    mamodes: dict = {
+def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
+    mamodes: dict[str, Callable[[pd.Series, int], np.ndarray]] = {
         "sma": ta.SMA,
         "ema": ta.EMA,
         "wma": ta.WMA,
@@ -141,21 +176,36 @@ def get_ma_fn(mamode: str) -> callable:
     return mamodes.get(mamode, mamodes["sma"])
 
 
-def __fractal_dimension(high: np.ndarray, low: np.ndarray, period: int) -> float:
+def get_zl_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
+    ma_fn = get_ma_fn(mamode)
+    return lambda series, timeperiod: ma_fn(
+        calculate_zero_lag(series, timeperiod), timeperiod=timeperiod
+    )
+
+
+def zlema(series: pd.Series, period: int) -> pd.Series:
+    """Ehlers' Zero Lag EMA."""
+    lag = max((period - 1) / 2, 0)
+    alpha = 2 / (period + 1)
+    zl_series = 2 * series - series.shift(int(lag))
+    return zl_series.ewm(alpha=alpha, adjust=False).mean()
+
+
+def _fractal_dimension(highs: np.ndarray, lows: np.ndarray, period: int) -> float:
     """Original fractal dimension computation implementation per Ehlers' paper."""
     if period % 2 != 0:
         raise ValueError("period must be even")
 
     half_period = period // 2
 
-    H1 = np.max(high[:half_period])
-    L1 = np.min(low[:half_period])
+    H1 = np.max(highs[:half_period])
+    L1 = np.min(lows[:half_period])
 
-    H2 = np.max(high[half_period:])
-    L2 = np.min(low[half_period:])
+    H2 = np.max(highs[half_period:])
+    L2 = np.min(lows[half_period:])
 
-    H3 = np.max(high)
-    L3 = np.min(low)
+    H3 = np.max(highs)
+    L3 = np.min(lows)
 
     HL1 = H1 - L1
     HL2 = H2 - L2
@@ -175,30 +225,34 @@ def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
     if period % 2 != 0:
         raise ValueError("period must be even")
 
-    high = df["high"]
-    low = df["low"]
-    close = df["close"]
+    n = len(df)
+
+    highs = df.get("high")
+    lows = df.get("low")
+    closes = df.get("close")
 
     if zero_lag:
-        high = zero_lag_series(high, period=period)
-        low = zero_lag_series(low, period=period)
-        close = zero_lag_series(close, period=period)
+        highs = calculate_zero_lag(highs, period=period)
+        lows = calculate_zero_lag(lows, period=period)
+        closes = calculate_zero_lag(closes, period=period)
 
-    fd = pd.Series(np.nan, index=close.index)
-    for i in range(period, len(close)):
-        window_high = high.iloc[i - period : i]
-        window_low = low.iloc[i - period : i]
-        fd.iloc[i] = __fractal_dimension(window_high.values, window_low.values, period)
+    fd = pd.Series(np.nan, index=closes.index)
+    for i in range(period, n):
+        window_highs = highs.iloc[i - period : i]
+        window_lows = lows.iloc[i - period : i]
+        fd.iloc[i] = _fractal_dimension(
+            window_highs.to_numpy(), window_lows.to_numpy(), period
+        )
 
     alpha = np.exp(-4.6 * (fd - 1)).clip(0.01, 1)
 
-    frama = pd.Series(np.nan, index=close.index)
-    frama.iloc[period - 1] = close.iloc[:period].mean()
-    for i in range(period, len(close)):
+    frama = pd.Series(np.nan, index=closes.index)
+    frama.iloc[period - 1] = closes.iloc[:period].mean()
+    for i in range(period, n):
         if pd.isna(frama.iloc[i - 1]) or pd.isna(alpha.iloc[i]):
             continue
         frama.iloc[i] = (
-            alpha.iloc[i] * close.iloc[i] + (1 - alpha.iloc[i]) * frama.iloc[i - 1]
+            alpha.iloc[i] * closes.iloc[i] + (1 - alpha.iloc[i]) * frama.iloc[i - 1]
         )
 
     return frama
@@ -212,15 +266,16 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     """
     if period <= 0:
         raise ValueError("period must be greater than 0")
-    if len(series) < period:
+    n = len(series)
+    if n < period:
         return pd.Series(index=series.index, dtype=float)
 
     if zero_lag:
-        series = zero_lag_series(series, period=period)
+        series = calculate_zero_lag(series, period=period)
     smma = pd.Series(np.nan, index=series.index)
     smma.iloc[period - 1] = series.iloc[:period].mean()
 
-    for i in range(period, len(series)):
+    for i in range(period, n):
         smma.iloc[i] = (smma.iloc[i - 1] * (period - 1) + series.iloc[i]) / period
 
     if offset != 0:
@@ -229,13 +284,13 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     return smma
 
 
-def get_price_fn(pricemode: str) -> callable:
+def get_price_fn(pricemode: str) -> Callable[[pd.DataFrame], pd.Series]:
     pricemodes = {
         "average": ta.AVGPRICE,
         "median": ta.MEDPRICE,
         "typical": ta.TYPPRICE,
         "weighted-close": ta.WCLPRICE,
-        "close": lambda df: df["close"],
+        "close": lambda df: df.get("close"),
     }
     return pricemodes.get(pricemode, pricemodes["close"])
 
@@ -252,21 +307,21 @@ def ewo(
     """
     Calculate the Elliott Wave Oscillator (EWO) using two moving averages.
     """
-    price_series = get_price_fn(pricemode)(dataframe)
+    prices = get_price_fn(pricemode)(dataframe)
 
     if zero_lag:
-        price_series_ma1 = zero_lag_series(price_series, period=ma1_length)
-        price_series_ma2 = zero_lag_series(price_series, period=ma2_length)
+        if mamode == "ema":
+            ma_fn = lambda series, timeperiod: zlema(series, period=timeperiod)
+        else:
+            ma_fn = get_zl_ma_fn(mamode)
     else:
-        price_series_ma1 = price_series
-        price_series_ma2 = price_series
+        ma_fn = get_ma_fn(mamode)
 
-    ma_fn = get_ma_fn(mamode)
-    ma1 = ma_fn(price_series_ma1, timeperiod=ma1_length)
-    ma2 = ma_fn(price_series_ma2, timeperiod=ma2_length)
+    ma1 = ma_fn(prices, timeperiod=ma1_length)
+    ma2 = ma_fn(prices, timeperiod=ma2_length)
     madiff = ma1 - ma2
     if normalize:
-        madiff = (madiff / price_series) * 100
+        madiff = (madiff / prices) * 100.0
     return madiff
 
 
@@ -284,12 +339,285 @@ def alligator(
     """
     Calculate Bill Williams' Alligator indicator lines.
     """
-    price_series = get_price_fn(pricemode)(df)
+    prices = get_price_fn(pricemode)(df)
 
-    jaw = smma(price_series, period=jaw_period, zero_lag=zero_lag, offset=jaw_shift)
-    teeth = smma(
-        price_series, period=teeth_period, zero_lag=zero_lag, offset=teeth_shift
-    )
-    lips = smma(price_series, period=lips_period, zero_lag=zero_lag, offset=lips_shift)
+    jaw = smma(prices, period=jaw_period, zero_lag=zero_lag, offset=jaw_shift)
+    teeth = smma(prices, period=teeth_period, zero_lag=zero_lag, offset=teeth_shift)
+    lips = smma(prices, period=lips_period, zero_lag=zero_lag, offset=lips_shift)
 
     return jaw, teeth, lips
+
+
+def find_fractals(df: pd.DataFrame, period: int = 2) -> tuple[list[int], list[int]]:
+    n = len(df)
+    if n < 2 * period + 1:
+        return [], []
+
+    highs = df.get("high").to_numpy()
+    lows = df.get("low").to_numpy()
+
+    indices = df.index.tolist()
+
+    fractal_highs = []
+    fractal_lows = []
+
+    for i in range(period, n - period):
+        is_high_fractal = all(
+            highs[i] > highs[i - j] and highs[i] > highs[i + j]
+            for j in range(1, period + 1)
+        )
+        is_low_fractal = all(
+            lows[i] < lows[i - j] and lows[i] < lows[i + j]
+            for j in range(1, period + 1)
+        )
+
+        if is_high_fractal:
+            fractal_highs.append(indices[i])
+        if is_low_fractal:
+            fractal_lows.append(indices[i])
+
+    return fractal_highs, fractal_lows
+
+
+def calculate_quantile(values: np.ndarray, value: float) -> float:
+    if values.size == 0:
+        return np.nan
+
+    first_value = values[0]
+    if np.all(np.isclose(values, first_value)):
+        return (
+            0.5
+            if np.isclose(value, first_value)
+            else (0.0 if value < first_value else 1.0)
+        )
+
+    return np.sum(values <= value) / values.size
+
+
+class TrendDirection(IntEnum):
+    NEUTRAL = 0
+    UP = 1
+    DOWN = -1
+
+
+def zigzag(
+    df: pd.DataFrame,
+    natr_period: int = 14,
+    natr_ratio: float = 6.0,
+) -> tuple[list[int], list[float], list[TrendDirection], list[float]]:
+    n = len(df)
+    if df.empty or n < natr_period:
+        return [], [], [], []
+
+    natr_values = (ta.NATR(df, timeperiod=natr_period).bfill() / 100.0).to_numpy()
+
+    indices: list[int] = df.index.tolist()
+    thresholds: np.ndarray = natr_values * natr_ratio
+    closes = df.get("close").to_numpy()
+    highs = df.get("high").to_numpy()
+    lows = df.get("low").to_numpy()
+
+    state: TrendDirection = TrendDirection.NEUTRAL
+
+    pivots_indices: list[int] = []
+    pivots_values: list[float] = []
+    pivots_directions: list[TrendDirection] = []
+    pivots_thresholds: list[float] = []
+    last_pivot_pos: int = -1
+
+    candidate_pivot_pos: int = -1
+    candidate_pivot_value: float = np.nan
+
+    volatility_quantile_cache: dict[int, float] = {}
+
+    def calculate_volatility_quantile(pos: int) -> float:
+        if pos not in volatility_quantile_cache:
+            start = max(0, pos + 1 - natr_period)
+            end = min(pos + 1, n)
+            if start >= end:
+                volatility_quantile_cache[pos] = np.nan
+            else:
+                volatility_quantile_cache[pos] = calculate_quantile(
+                    natr_values[start:end], natr_values[pos]
+                )
+
+        return volatility_quantile_cache[pos]
+
+    def calculate_slopes_ok_threshold(
+        pos: int,
+        min_threshold: float = 0.65,
+        max_threshold: float = 0.85,
+    ) -> float:
+        volatility_quantile = calculate_volatility_quantile(pos)
+        if np.isnan(volatility_quantile):
+            return median([min_threshold, max_threshold])
+
+        return min_threshold + (max_threshold - min_threshold) * volatility_quantile
+
+    def update_candidate_pivot(pos: int, value: float):
+        nonlocal candidate_pivot_pos, candidate_pivot_value
+        if 0 <= pos < n:
+            candidate_pivot_pos = pos
+            candidate_pivot_value = value
+
+    def reset_candidate_pivot():
+        nonlocal candidate_pivot_pos, candidate_pivot_value
+        candidate_pivot_pos = -1
+        candidate_pivot_value = np.nan
+
+    def add_pivot(pos: int, value: float, direction: TrendDirection):
+        nonlocal last_pivot_pos
+        if pivots_indices and indices[pos] == pivots_indices[-1]:
+            return
+        pivots_indices.append(indices[pos])
+        pivots_values.append(value)
+        pivots_directions.append(direction)
+        pivots_thresholds.append(thresholds[pos])
+        last_pivot_pos = pos
+        reset_candidate_pivot()
+
+    slope_ok_cache: dict[tuple[int, int, TrendDirection, float], bool] = {}
+
+    def get_slope_ok(
+        pos: int,
+        candidate_pivot_pos: int,
+        direction: TrendDirection,
+        min_slope: float,
+    ) -> bool:
+        cache_key = (
+            pos,
+            candidate_pivot_pos,
+            direction,
+            min_slope,
+        )
+
+        if cache_key in slope_ok_cache:
+            return slope_ok_cache[cache_key]
+
+        if pos <= candidate_pivot_pos:
+            slope_ok_cache[cache_key] = False
+            return slope_ok_cache[cache_key]
+
+        log_candidate_pivot_close = np.log(closes[candidate_pivot_pos])
+        log_current_close = np.log(closes[pos])
+
+        log_slope_close = (log_current_close - log_candidate_pivot_close) / (
+            pos - candidate_pivot_pos
+        )
+
+        if direction == TrendDirection.UP:
+            slope_ok_cache[cache_key] = log_slope_close > min_slope
+        elif direction == TrendDirection.DOWN:
+            slope_ok_cache[cache_key] = log_slope_close < -min_slope
+        else:
+            slope_ok_cache[cache_key] = False
+
+        return slope_ok_cache[cache_key]
+
+    def is_pivot_confirmed(
+        pos: int,
+        candidate_pivot_pos: int,
+        direction: TrendDirection,
+        min_slope: float = np.finfo(float).eps,
+        alpha: float = 0.05,
+    ) -> bool:
+        start_pos = min(candidate_pivot_pos + 1, n)
+        end_pos = min(pos + 1, n)
+        n_slopes = max(0, end_pos - start_pos)
+
+        if n_slopes < 1:
+            return False
+
+        slopes_ok: list[bool] = []
+        for i in range(start_pos, end_pos):
+            slopes_ok.append(
+                get_slope_ok(
+                    pos=i,
+                    candidate_pivot_pos=candidate_pivot_pos,
+                    direction=direction,
+                    min_slope=min_slope,
+                )
+            )
+
+        slopes_ok_threshold = calculate_slopes_ok_threshold(candidate_pivot_pos)
+        n_slopes_ok = sum(slopes_ok)
+        binomtest = sp.stats.binomtest(
+            k=n_slopes_ok, n=n_slopes, p=0.5, alternative="greater"
+        )
+
+        return (
+            binomtest.pvalue <= alpha
+            and (n_slopes_ok / n_slopes) >= slopes_ok_threshold
+        )
+
+    start_pos = 0
+    initial_high_pos = start_pos
+    initial_low_pos = start_pos
+    initial_high = highs[initial_high_pos]
+    initial_low = lows[initial_low_pos]
+    for i in range(start_pos + 1, n):
+        current_high = highs[i]
+        current_low = lows[i]
+        if current_high > initial_high:
+            initial_high, initial_high_pos = current_high, i
+        if current_low < initial_low:
+            initial_low, initial_low_pos = current_low, i
+
+        initial_move_from_high = (initial_high - current_low) / initial_high
+        initial_move_from_low = (current_high - initial_low) / initial_low
+        is_initial_high_move_significant = (
+            initial_move_from_high >= thresholds[initial_high_pos]
+        )
+        is_initial_low_move_significant = (
+            initial_move_from_low >= thresholds[initial_low_pos]
+        )
+        if is_initial_high_move_significant and is_initial_low_move_significant:
+            if initial_move_from_high > initial_move_from_low:
+                add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
+                state = TrendDirection.DOWN
+                break
+            else:
+                add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
+                state = TrendDirection.UP
+                break
+        else:
+            if is_initial_high_move_significant:
+                add_pivot(initial_high_pos, initial_high, TrendDirection.UP)
+                state = TrendDirection.DOWN
+                break
+            elif is_initial_low_move_significant:
+                add_pivot(initial_low_pos, initial_low, TrendDirection.DOWN)
+                state = TrendDirection.UP
+                break
+    else:
+        return [], [], [], []
+
+    for i in range(last_pivot_pos + 1, n):
+        current_high = highs[i]
+        current_low = lows[i]
+
+        if state == TrendDirection.UP:
+            if np.isnan(candidate_pivot_value) or current_high > candidate_pivot_value:
+                update_candidate_pivot(i, current_high)
+            if (
+                candidate_pivot_value - current_low
+            ) / candidate_pivot_value >= thresholds[
+                candidate_pivot_pos
+            ] and is_pivot_confirmed(i, candidate_pivot_pos, TrendDirection.DOWN):
+                add_pivot(candidate_pivot_pos, candidate_pivot_value, TrendDirection.UP)
+                state = TrendDirection.DOWN
+
+        elif state == TrendDirection.DOWN:
+            if np.isnan(candidate_pivot_value) or current_low < candidate_pivot_value:
+                update_candidate_pivot(i, current_low)
+            if (
+                current_high - candidate_pivot_value
+            ) / candidate_pivot_value >= thresholds[
+                candidate_pivot_pos
+            ] and is_pivot_confirmed(i, candidate_pivot_pos, TrendDirection.UP):
+                add_pivot(
+                    candidate_pivot_pos, candidate_pivot_value, TrendDirection.DOWN
+                )
+                state = TrendDirection.UP
+
+    return pivots_indices, pivots_values, pivots_directions, pivots_thresholds
