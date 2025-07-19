@@ -1230,6 +1230,7 @@ def get_optuna_study_model_parameters(
             f"Unsupported regressor model: {regressor} (supported: {', '.join(regressors)})"
         )
     default_ranges = {
+        "n_estimators": (100, 1500),
         "learning_rate": (1e-3, 0.5),
         "min_child_weight": (1e-8, 100.0),
         "subsample": (0.5, 1.0),
@@ -1279,6 +1280,11 @@ def get_optuna_study_model_parameters(
                 ranges[param] = (param_min, param_max)
 
     study_model_parameters = {
+        "n_estimators": trial.suggest_int(
+            "n_estimators",
+            int(ranges["n_estimators"][0]),
+            int(ranges["n_estimators"][1]),
+        ),
         "learning_rate": trial.suggest_float(
             "learning_rate",
             ranges["learning_rate"][0],
