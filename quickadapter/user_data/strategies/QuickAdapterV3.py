@@ -372,7 +372,9 @@ class QuickAdapterV3(IStrategy):
         dataframe["%-raw_high"] = highs
         return dataframe
 
-    def feature_engineering_standard(self, dataframe: DataFrame, **kwargs) -> DataFrame:
+    def feature_engineering_standard(
+        self, dataframe: DataFrame, metadata: dict[str, Any], **kwargs
+    ) -> DataFrame:
         dates = dataframe.get("date")
 
         dataframe["%-day_of_week"] = (dates.dt.dayofweek + 1) / 7
@@ -499,34 +501,36 @@ class QuickAdapterV3(IStrategy):
         return dataframe
 
     def populate_entry_trend(
-        self, df: DataFrame, metadata: dict[str, Any]
+        self, dataframe: DataFrame, metadata: dict[str, Any]
     ) -> DataFrame:
         enter_long_conditions = [
-            df.get("do_predict") == 1,
-            df.get("DI_catch") == 1,
-            df.get(EXTREMA_COLUMN) < df.get("minima_threshold"),
+            dataframe.get("do_predict") == 1,
+            dataframe.get("DI_catch") == 1,
+            dataframe.get(EXTREMA_COLUMN) < dataframe.get("minima_threshold"),
         ]
 
-        df.loc[
+        dataframe.loc[
             reduce(lambda x, y: x & y, enter_long_conditions),
             ["enter_long", "enter_tag"],
         ] = (1, "long")
 
         enter_short_conditions = [
-            df.get("do_predict") == 1,
-            df.get("DI_catch") == 1,
-            df.get(EXTREMA_COLUMN) > df.get("maxima_threshold"),
+            dataframe.get("do_predict") == 1,
+            dataframe.get("DI_catch") == 1,
+            dataframe.get(EXTREMA_COLUMN) > dataframe.get("maxima_threshold"),
         ]
 
-        df.loc[
+        dataframe.loc[
             reduce(lambda x, y: x & y, enter_short_conditions),
             ["enter_short", "enter_tag"],
         ] = (1, "short")
 
-        return df
+        return dataframe
 
-    def populate_exit_trend(self, df: DataFrame, metadata: dict[str, Any]) -> DataFrame:
-        return df
+    def populate_exit_trend(
+        self, dataframe: DataFrame, metadata: dict[str, Any]
+    ) -> DataFrame:
+        return dataframe
 
     def get_trade_entry_date(self, trade: Trade) -> datetime.datetime:
         return timeframe_to_prev_date(self.config.get("timeframe"), trade.open_date_utc)
@@ -759,6 +763,7 @@ class QuickAdapterV3(IStrategy):
         current_time: datetime.datetime,
         current_rate: float,
         current_profit: float,
+        after_fill: bool,
         **kwargs,
     ) -> Optional[float]:
         df, _ = self.dp.get_analyzed_dataframe(

@@ -106,32 +106,48 @@ class RLAgentStrategy(IStrategy):
         return dataframe
 
     def populate_entry_trend(
-        self, df: DataFrame, metadata: dict[str, Any]
+        self, dataframe: DataFrame, metadata: dict[str, Any]
     ) -> DataFrame:
-        enter_long_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 1]
+        enter_long_conditions = [
+            dataframe.get("do_predict") == 1,
+            dataframe.get(ACTION_COLUMN) == 1,
+        ]
 
-        df.loc[
+        dataframe.loc[
             reduce(lambda x, y: x & y, enter_long_conditions),
             ["enter_long", "enter_tag"],
         ] = (1, "long")
 
-        enter_short_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 3]
+        enter_short_conditions = [
+            dataframe.get("do_predict") == 1,
+            dataframe.get(ACTION_COLUMN) == 3,
+        ]
 
-        df.loc[
+        dataframe.loc[
             reduce(lambda x, y: x & y, enter_short_conditions),
             ["enter_short", "enter_tag"],
         ] = (1, "short")
 
-        return df
+        return dataframe
 
-    def populate_exit_trend(self, df: DataFrame, metadata: dict[str, Any]) -> DataFrame:
-        exit_long_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 2]
-        df.loc[reduce(lambda x, y: x & y, exit_long_conditions), "exit_long"] = 1
+    def populate_exit_trend(
+        self, dataframe: DataFrame, metadata: dict[str, Any]
+    ) -> DataFrame:
+        exit_long_conditions = [
+            dataframe.get("do_predict") == 1,
+            dataframe.get(ACTION_COLUMN) == 2,
+        ]
+        dataframe.loc[reduce(lambda x, y: x & y, exit_long_conditions), "exit_long"] = 1
 
-        exit_short_conditions = [df.get("do_predict") == 1, df.get(ACTION_COLUMN) == 4]
-        df.loc[reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"] = 1
+        exit_short_conditions = [
+            dataframe.get("do_predict") == 1,
+            dataframe.get(ACTION_COLUMN) == 4,
+        ]
+        dataframe.loc[
+            reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"
+        ] = 1
 
-        return df
+        return dataframe
 
     def is_short_allowed(self) -> bool:
         trading_mode = self.config.get("trading_mode")
