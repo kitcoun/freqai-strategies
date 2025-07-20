@@ -280,7 +280,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         model_training_parameters = self.model_training_parameters
 
-        start = time.time()
+        start_time = time.time()
         if self._optuna_hyperopt:
             self.optuna_optimize(
                 pair=dk.pair,
@@ -356,7 +356,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             model_training_parameters=model_training_parameters,
             init_model=self.get_init_model(dk.pair),
         )
-        time_spent = time.time() - start
+        time_spent = time.time() - start_time
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
 
         return model
@@ -1437,13 +1437,13 @@ def zigzag(
 
     def calculate_volatility_quantile(pos: int) -> float:
         if pos not in volatility_quantile_cache:
-            start = max(0, pos + 1 - natr_period)
-            end = min(pos + 1, n)
-            if start >= end:
+            start_pos = max(0, pos + 1 - natr_period)
+            end_pos = min(pos + 1, n)
+            if start_pos >= end_pos:
                 volatility_quantile_cache[pos] = np.nan
             else:
                 volatility_quantile_cache[pos] = calculate_quantile(
-                    natr_values[start:end], natr_values[pos]
+                    natr_values[start_pos:end_pos], natr_values[pos]
                 )
 
         return volatility_quantile_cache[pos]

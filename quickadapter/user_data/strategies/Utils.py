@@ -432,13 +432,13 @@ def zigzag(
 
     def calculate_volatility_quantile(pos: int) -> float:
         if pos not in volatility_quantile_cache:
-            start = max(0, pos + 1 - natr_period)
-            end = min(pos + 1, n)
-            if start >= end:
+            start_pos = max(0, pos + 1 - natr_period)
+            end_pos = min(pos + 1, n)
+            if start_pos >= end_pos:
                 volatility_quantile_cache[pos] = np.nan
             else:
                 volatility_quantile_cache[pos] = calculate_quantile(
-                    natr_values[start:end], natr_values[pos]
+                    natr_values[start_pos:end_pos], natr_values[pos]
                 )
 
         return volatility_quantile_cache[pos]

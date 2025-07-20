@@ -886,15 +886,13 @@ class QuickAdapterV3(IStrategy):
         if self.position_adjustment_enable:
             if exit_stage == start_partial_exit_stage:
                 return None
+            natr_ratio_percent = (
+                self.partial_exit_stages[exit_stage][0]
+                if exit_stage in self.partial_exit_stages
+                else 1.0
+            )
             secure_take_profit_distance = self.get_take_profit_distance(
-                df,
-                trade,
-                min(
-                    self.config.get("exit_pricing", {}).get(
-                        "trade_secure_percent", 0.2
-                    ),
-                    self.partial_exit_stages[start_partial_exit_stage][0] * 0.95,
-                ),
+                df, trade, natr_ratio_percent / 3
             )
             if isna(secure_take_profit_distance) or secure_take_profit_distance <= 0:
                 return None
@@ -920,12 +918,10 @@ class QuickAdapterV3(IStrategy):
                 if exit_stage < final_exit_stage:
                     trade.set_custom_data(key="exit_stage", value=final_exit_stage)
                 return f"secure_take_profit_{trade.trade_direction}_{final_exit_stage}"
-            if exit_stage == final_exit_stage:
-                natr_ratio_percent = 1.0
-            else:
+            if start_partial_exit_stage < exit_stage < final_exit_stage:
                 return None
         else:
-            if start_partial_exit_stage <= exit_stage <= end_partial_exit_stage:
+            if exit_stage in self.partial_exit_stages:
                 trade.set_custom_data(key="exit_stage", value=final_exit_stage)
             natr_ratio_percent = 0.7
 
