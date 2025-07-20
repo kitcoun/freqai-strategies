@@ -330,17 +330,18 @@ class ReforceXY(BaseReinforcementLearningModel):
         test_df = data_dictionary.get("test_features")
         test_timesteps = len(test_df)
         train_cycles = max(1, int(self.rl_config.get("train_cycles", 25)))
-        total_timesteps = train_timesteps * train_cycles * self.n_envs
+        total_timesteps = (
+            (train_timesteps * train_cycles + self.n_envs - 1) // self.n_envs
+        ) * self.n_envs
         train_days = steps_to_days(train_timesteps, self.config.get("timeframe"))
         total_days = steps_to_days(total_timesteps, self.config.get("timeframe"))
 
         logger.info("Action masking: %s", self.is_maskable)
         logger.info(
-            "Train: %s steps (%s days) * %s cycles * %s environments = Total %s (%s days)",
+            "Train: %s steps (%s days) * %s cycles = Total %s (%s days)",
             train_timesteps,
             train_days,
             train_cycles,
-            self.n_envs,
             total_timesteps,
             total_days,
         )
