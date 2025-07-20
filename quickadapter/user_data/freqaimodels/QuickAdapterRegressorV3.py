@@ -50,7 +50,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.95"
+    version = "3.7.96"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -66,7 +66,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "n_startup_trials": 15,
             "n_trials": 36,
             "timeout": 7200,
-            "label_candles_step": 4,
+            "label_candles_step": 2,
             "train_candles_step": 10,
             "expansion_factor": 0.4,
             "seed": 1,
@@ -1230,7 +1230,7 @@ def get_optuna_study_model_parameters(
             f"Unsupported regressor model: {regressor} (supported: {', '.join(regressors)})"
         )
     default_ranges = {
-        "n_estimators": (100, 1500),
+        "n_estimators": (100, 2000),
         "learning_rate": (1e-3, 0.5),
         "min_child_weight": (1e-8, 100.0),
         "subsample": (0.5, 1.0),
