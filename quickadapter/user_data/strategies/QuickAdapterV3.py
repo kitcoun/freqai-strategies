@@ -783,7 +783,7 @@ class QuickAdapterV3(IStrategy):
         current_time: datetime.datetime,
         current_rate: float,
         current_profit: float,
-        min_stake: float,
+        min_stake: Optional[float],
         max_stake: float,
         current_entry_rate: float,
         current_exit_rate: float,
