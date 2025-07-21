@@ -895,9 +895,7 @@ class QuickAdapterV3(IStrategy):
                 start_partial_exit_stage < exit_stage < final_exit_stage
             )
             natr_ratio_percent = (
-                self.partial_exit_stages[exit_stage][0]
-                if exit_stage in self.partial_exit_stages
-                else 1.0
+                self.partial_exit_stages[exit_stage][0] if partial_exit_stage else 1.0
             )
             secure_take_profit_distance = self.get_take_profit_distance(
                 df, trade, natr_ratio_percent / 4.0
