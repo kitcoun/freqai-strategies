@@ -387,7 +387,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             model.set_env(self.train_env)
 
         callbacks = self.get_callbacks(
-            train_timesteps // self.n_envs, str(dk.data_path)
+            max(1, train_timesteps // self.n_envs), str(dk.data_path)
         )
         try:
             model.learn(total_timesteps=total_timesteps, callback=callbacks)
