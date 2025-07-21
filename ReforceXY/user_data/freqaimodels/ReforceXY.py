@@ -334,22 +334,14 @@ class ReforceXY(BaseReinforcementLearningModel):
             (train_timesteps * train_cycles + self.n_envs - 1) // self.n_envs
         ) * self.n_envs
         train_days = steps_to_days(train_timesteps, self.config.get("timeframe"))
+        test_days = steps_to_days(test_timesteps, self.config.get("timeframe"))
         total_days = steps_to_days(total_timesteps, self.config.get("timeframe"))
 
         logger.info("Action masking: %s", self.is_maskable)
-        logger.info(
-            "Train: %s steps (%s days) * %s cycles = Total %s (%s days)",
-            train_timesteps,
-            train_days,
-            train_cycles,
-            total_timesteps,
-            total_days,
-        )
-        logger.info(
-            "Test: %s steps (%s days)",
-            test_timesteps,
-            steps_to_days(test_timesteps, self.config.get("timeframe")),
-        )
+        logger.info("Train: %s steps (%s days)", train_timesteps, train_days)
+        logger.info("Train cycles: %s", train_cycles)
+        logger.info("Train total: %s steps (%s days)", total_timesteps, total_days)
+        logger.info("Test: %s steps (%s days)", test_timesteps, test_days)
         logger.info("Hyperopt: %s", self.hyperopt)
 
         start_time = time.time()
