@@ -904,22 +904,20 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        end_partial_exit_stage = list(self.partial_exit_stages.keys())[-1]
-        final_exit_stage = end_partial_exit_stage + 1
         exit_stage: int = trade.get_custom_data("exit_stage", 0)
         if self.position_adjustment_enable:
             if exit_stage in self.partial_exit_stages:
                 return None
             natr_ratio_percent = 1.0
         else:
-            if exit_stage in self.partial_exit_stages:
-                trade.set_custom_data(key="exit_stage", value=final_exit_stage)
             natr_ratio_percent = 0.7
 
         take_profit_price = self.get_take_profit_price(df, trade, natr_ratio_percent)
         if isna(take_profit_price):
             return None
 
+        end_partial_exit_stage = list(self.partial_exit_stages.keys())[-1]
+        final_exit_stage = end_partial_exit_stage + 1
         trade_exit = QuickAdapterV3.can_take_profit(
             trade, current_rate, take_profit_price
         )
@@ -932,6 +930,8 @@ class QuickAdapterV3(IStrategy):
                 ),
             )
         if trade_exit:
+            if exit_stage in self.partial_exit_stages:
+                trade.set_custom_data(key="exit_stage", value=final_exit_stage)
             return f"take_profit_{trade.trade_direction}_{final_exit_stage}"
 
         return None
