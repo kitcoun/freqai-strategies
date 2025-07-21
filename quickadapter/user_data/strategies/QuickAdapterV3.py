@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.103"
+        return "3.3.104"
 
     timeframe = "5m"
 
@@ -720,7 +720,7 @@ class QuickAdapterV3(IStrategy):
             * (trade_natr / 100.0)
             * self.get_stoploss_natr_ratio(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_stoploss_log_factor(
-                trade_duration_candles + trade_exit_stage
+                trade_duration_candles + trade_exit_stage**2
             )
         )
 
@@ -785,6 +785,35 @@ class QuickAdapterV3(IStrategy):
             leverage=trade.leverage,
         )
 
+    @staticmethod
+    def can_take_profit(
+        trade: Trade, current_rate: float, take_profit_price: float
+    ) -> bool:
+        return (trade.is_short and current_rate <= take_profit_price) or (
+            not trade.is_short and current_rate >= take_profit_price
+        )
+
+    def get_take_profit_price(
+        self, df: DataFrame, trade: Trade, natr_ratio_percent: float
+    ) -> Optional[float]:
+        take_profit_distance = self.get_take_profit_distance(
+            df, trade, natr_ratio_percent
+        )
+        if isna(take_profit_distance) or take_profit_distance <= 0:
+            return None
+
+        take_profit_price = (
+            trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
+        )
+        previous_take_profit_price = trade.get_custom_data("take_profit_price", None)
+        if (
+            previous_take_profit_price is None
+            or previous_take_profit_price != take_profit_price
+        ):
+            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
+
+        return take_profit_price
+
     def adjust_trade_position(
         self,
         trade: Trade,
@@ -814,24 +843,12 @@ class QuickAdapterV3(IStrategy):
 
         natr_ratio_percent, stake_percent = self.partial_exit_stages[exit_stage]
 
-        take_profit_distance = self.get_take_profit_distance(
-            df, trade, natr_ratio_percent
-        )
-        if isna(take_profit_distance) or take_profit_distance <= 0:
+        take_profit_price = self.get_take_profit_price(df, trade, natr_ratio_percent)
+        if isna(take_profit_price):
             return None
 
-        take_profit_price = (
-            trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
-        )
-        previous_take_profit_price = trade.get_custom_data("take_profit_price", None)
-        if (
-            previous_take_profit_price is None
-            or previous_take_profit_price != take_profit_price
-        ):
-            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
-
-        trade_partial_exit = (trade.is_short and current_rate <= take_profit_price) or (
-            not trade.is_short and current_rate >= take_profit_price
+        trade_partial_exit = QuickAdapterV3.can_take_profit(
+            trade, current_rate, take_profit_price
         )
         if not trade_partial_exit:
             self.throttle_callback(
@@ -899,22 +916,12 @@ class QuickAdapterV3(IStrategy):
                 trade.set_custom_data(key="exit_stage", value=final_exit_stage)
             natr_ratio_percent = 0.7
 
-        take_profit_distance = self.get_take_profit_distance(
-            df, trade, natr_ratio_percent
-        )
-        if isna(take_profit_distance) or take_profit_distance <= 0:
+        take_profit_price = self.get_take_profit_price(df, trade, natr_ratio_percent)
+        if isna(take_profit_price):
             return None
-        take_profit_price = (
-            trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
-        )
-        previous_take_profit_price = trade.get_custom_data("take_profit_price", None)
-        if (
-            previous_take_profit_price is None
-            or previous_take_profit_price != take_profit_price
-        ):
-            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
-        trade_exit = (trade.is_short and current_rate <= take_profit_price) or (
-            not trade.is_short and current_rate >= take_profit_price
+
+        trade_exit = QuickAdapterV3.can_take_profit(
+            trade, current_rate, take_profit_price
         )
         if not trade_exit:
             self.throttle_callback(
