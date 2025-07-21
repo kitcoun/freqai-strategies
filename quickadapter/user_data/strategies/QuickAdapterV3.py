@@ -836,7 +836,7 @@ class QuickAdapterV3(IStrategy):
             return None
 
         df, _ = self.dp.get_analyzed_dataframe(
-            trade.pair, timeframe=self.config.get("timeframe")
+            pair=trade.pair, timeframe=self.config.get("timeframe")
         )
         if df.empty:
             return None
