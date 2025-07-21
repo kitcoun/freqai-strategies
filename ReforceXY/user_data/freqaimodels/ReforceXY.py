@@ -352,7 +352,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
         logger.info("Hyperopt: %s", self.hyperopt)
 
-        start = time.time()
+        start_time = time.time()
         if self.hyperopt:
             best_trial_params = self.study(train_df, total_timesteps, dk)
             if best_trial_params is None:
@@ -397,7 +397,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             self.close_envs()
             if hasattr(model, "env") and model.env is not None:
                 model.env.close()
-        time_spent = time.time() - start
+        time_spent = time.time() - start_time
         self.dd.update_metric_tracker("fit_time", time_spent, dk.pair)
 
         model_filename = dk.model_filename if dk.model_filename else "best"
@@ -558,7 +558,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             load_if_exists=True,
         )
         hyperopt_failed = False
-        start = time.time()
+        start_time = time.time()
         try:
             study.optimize(
                 lambda trial: self.objective(trial, train_df, total_timesteps, dk),
@@ -575,13 +575,13 @@ class ReforceXY(BaseReinforcementLearningModel):
         except KeyboardInterrupt:
             pass
         except Exception as e:
-            time_spent = time.time() - start
+            time_spent = time.time() - start_time
             logger.error(
                 f"Hyperopt {study_name} failed ({time_spent:.2f} secs): {e}",
                 exc_info=True,
             )
             hyperopt_failed = True
-        time_spent = time.time() - start
+        time_spent = time.time() - start_time
         if ReforceXY.study_has_best_trial(study) is False:
             logger.error(
                 f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no study best trial found"
@@ -718,7 +718,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
 
         callbacks = self.get_callbacks(
-            len(train_df) // self.n_envs, str(dk.data_path), trial
+            max(1, len(train_df) // self.n_envs), str(dk.data_path), trial
         )
         try:
             model.learn(total_timesteps=total_timesteps, callback=callbacks)
