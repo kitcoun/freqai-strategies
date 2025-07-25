@@ -720,7 +720,7 @@ class QuickAdapterV3(IStrategy):
             * (trade_natr / 100.0)
             * self.get_stoploss_natr_ratio(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_stoploss_log_factor(
-                trade_duration_candles + trade_exit_stage**2
+                trade_duration_candles + int(round(trade_exit_stage ** (1.75)))
             )
         )
 
