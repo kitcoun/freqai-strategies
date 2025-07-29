@@ -518,17 +518,23 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         fit_live_predictions_candles: int,
         label_period_candles: int,
     ) -> tuple[float, float]:
-        temperature = float(
+        label_period_cycles = fit_live_predictions_candles / label_period_candles
+        thresholds_candles = int(
+            self.freqai_info.get(
+                "prediction_thresholds_candles",
+                int(
+                    round(
+                        ((max(2, int(label_period_cycles)) * label_period_candles) / 2)
+                    )
+                ),
+            )
+        )
+        extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
+        thresholds_temperature = float(
             self.freqai_info.get("prediction_thresholds_temperature", 300.0)
         )
-        extrema = pred_df.get(EXTREMA_COLUMN).iloc[
-            -(
-                max(2, int(fit_live_predictions_candles / label_period_candles))
-                * label_period_candles
-            ) :
-        ]
-        min_pred = smoothed_min(extrema, temperature=temperature)
-        max_pred = smoothed_max(extrema, temperature=temperature)
+        min_pred = smoothed_min(extrema, temperature=thresholds_temperature)
+        max_pred = smoothed_max(extrema, temperature=thresholds_temperature)
         return min_pred, max_pred
 
     def get_multi_objective_study_best_trial(
@@ -1681,12 +1687,8 @@ def label_objective(
     )
     label_natr_ratio = trial.suggest_float("label_natr_ratio", 2.0, 38.0, step=0.01)
 
-    df = df.iloc[
-        -(
-            max(2, int(fit_live_predictions_candles / label_period_candles))
-            * label_period_candles
-        ) :
-    ]
+    label_period_cycles = fit_live_predictions_candles / label_period_candles
+    df = df.iloc[-(max(2, int(label_period_cycles)) * label_period_candles) :]
 
     if df.empty:
         return -np.inf, -np.inf
