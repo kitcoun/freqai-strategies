@@ -531,7 +531,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         )
         extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
-        thresholds_smoothing = self.freqai_info.get(
+        thresholds_smoothing: str = self.freqai_info.get(
             "prediction_thresholds_smoothing", "logsumexp"
         )
         thresholds_smoothing_methods = {
@@ -555,10 +555,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         elif thresholds_smoothing in thresholds_smoothing_methods:
             return QuickAdapterRegressorV3.common_min_max(
-                extrema,
-                int(label_period_cycles),
-                thresholds_quantile,
-                thresholds_smoothing,
+                extrema, int(label_period_cycles), thresholds_smoothing
             )
         else:
             raise ValueError(
@@ -577,7 +574,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         label_period_cycles: int,
         method: str,
     ) -> tuple[float, float]:
-        n_values = min(int(label_period_cycles), len(series))
+        n_values = min(label_period_cycles, len(series))
         if n_values <= 0:
             return np.nan, np.nan
 
