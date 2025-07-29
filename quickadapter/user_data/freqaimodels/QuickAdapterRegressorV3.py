@@ -50,7 +50,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.97"
+    version = "3.7.98"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -518,15 +518,17 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         fit_live_predictions_candles: int,
         label_period_candles: int,
     ) -> tuple[float, float]:
-        q = float(self.freqai_info.get("prediction_thresholds_quantile", 0.95))
+        temperature = float(
+            self.freqai_info.get("prediction_thresholds_temperature", 300.0)
+        )
         extrema = pred_df.get(EXTREMA_COLUMN).iloc[
             -(
                 max(2, int(fit_live_predictions_candles / label_period_candles))
                 * label_period_candles
             ) :
         ]
-        min_pred = extrema.quantile(q=1 - q)
-        max_pred = extrema.quantile(q=q)
+        min_pred = smoothed_min(extrema, temperature=temperature)
+        max_pred = smoothed_max(extrema, temperature=temperature)
         return min_pred, max_pred
 
     def get_multi_objective_study_best_trial(
@@ -1696,6 +1698,28 @@ def label_objective(
     )
 
     return np.median(pivots_thresholds), len(pivots_values)
+
+
+def smoothed_max(series: pd.Series, temperature=1.0) -> float:
+    data_array = series.to_numpy()
+    if data_array.size == 0:
+        return np.nan
+    if temperature < 0:
+        raise ValueError("temperature must be non-negative")
+    if np.isclose(temperature, 0):
+        return data_array.max()
+    return sp.special.logsumexp(temperature * data_array) / temperature
+
+
+def smoothed_min(series: pd.Series, temperature=1.0) -> float:
+    data_array = series.to_numpy()
+    if data_array.size == 0:
+        return np.nan
+    if temperature < 0:
+        raise ValueError("temperature must be non-negative")
+    if np.isclose(temperature, 0):
+        return data_array.min()
+    return -sp.special.logsumexp(-temperature * data_array) / temperature
 
 
 def round_to_nearest_int(value: float, step: int) -> int:
