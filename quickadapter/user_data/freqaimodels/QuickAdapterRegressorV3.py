@@ -549,7 +549,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         elif thresholds_smoothing in thresholds_smoothing_methods:
             thresholds_ratio = float(
-                self.freqai_info.get("prediction_thresholds_ratio", 0.25)
+                self.freqai_info.get("prediction_thresholds_ratio", 1.0)
             )
             return QuickAdapterRegressorV3.common_min_max(
                 pred_extrema, thresholds_ratio, thresholds_smoothing
