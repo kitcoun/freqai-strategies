@@ -11,6 +11,7 @@ import pandas as pd
 import scipy as sp
 import optuna
 import sklearn
+import skimage
 import warnings
 import talib.abstract as ta
 
@@ -50,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.99"
+    version = "3.7.100"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -530,12 +531,100 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         )
         extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
-        thresholds_temperature = float(
-            self.freqai_info.get("prediction_thresholds_temperature", 300.0)
+        thresholds_smoothing = self.freqai_info.get(
+            "prediction_thresholds_smoothing", "logsumexp"
         )
-        min_pred = smoothed_min(extrema, temperature=thresholds_temperature)
-        max_pred = smoothed_max(extrema, temperature=thresholds_temperature)
-        return min_pred, max_pred
+        thresholds_smoothing_methods = {
+            "logsumexp",
+            "isodata",
+            "li",
+            "mean",
+            "minimum",
+            "niblack",
+            "otsu",
+            "sauvola",
+            "triangle",
+            "yen",
+        }
+        if thresholds_smoothing == "logsumexp":
+            thresholds_temperature = float(
+                self.freqai_info.get("prediction_thresholds_temperature", 300.0)
+            )
+            return QuickAdapterRegressorV3.logsumexp_min_max(
+                extrema, thresholds_temperature
+            )
+        elif thresholds_smoothing in thresholds_smoothing_methods:
+            return QuickAdapterRegressorV3.common_min_max(
+                extrema,
+                int(label_period_cycles),
+                thresholds_quantile,
+                thresholds_smoothing,
+            )
+        else:
+            raise ValueError(
+                f"Unsupported thresholds smoothing method: {thresholds_smoothing}. Supported methods are {', '.join(thresholds_smoothing_methods)}"
+            )
+
+    @staticmethod
+    def logsumexp_min_max(series: pd.Series, temperature: float) -> tuple[float, float]:
+        min_val = smoothed_min(series, temperature=temperature)
+        max_val = smoothed_max(series, temperature=temperature)
+        return min_val, max_val
+
+    @staticmethod
+    def common_min_max(
+        series: pd.Series,
+        label_period_cycles: int,
+        method: str,
+    ) -> tuple[float, float]:
+        n_values = min(int(label_period_cycles), len(series))
+        if n_values <= 0:
+            return np.nan, np.nan
+
+        sorted_series = series.sort_values(ascending=True)
+        min_subset = sorted_series.iloc[:n_values]
+        max_subset = sorted_series.iloc[-n_values:]
+
+        method_functions = {
+            "isodata": QuickAdapterRegressorV3.apply_skimage_threshold,
+            "li": QuickAdapterRegressorV3.apply_skimage_threshold,
+            "mean": QuickAdapterRegressorV3.apply_skimage_threshold,
+            "minimum": QuickAdapterRegressorV3.apply_skimage_threshold,
+            "niblack": QuickAdapterRegressorV3.apply_skimage_threshold,
+            "otsu": QuickAdapterRegressorV3.apply_skimage_threshold,
+            "sauvola": QuickAdapterRegressorV3.apply_skimage_threshold,
+            "triangle": QuickAdapterRegressorV3.apply_skimage_threshold,
+            "yen": QuickAdapterRegressorV3.apply_skimage_threshold,
+        }
+
+        if method not in method_functions:
+            raise ValueError(f"Unsupported method: {method}")
+
+        min_func = method_functions[method]
+        max_func = method_functions[method]
+
+        try:
+            threshold_func = getattr(skimage.filters, f"threshold_{method}")
+        except AttributeError:
+            raise ValueError(f"Unknown skimage threshold function: threshold_{method}")
+
+        min_val = min_func(min_subset, threshold_func)
+        max_val = max_func(max_subset, threshold_func)
+
+        return min_val, max_val
+
+    @staticmethod
+    def apply_skimage_threshold(
+        series: pd.Series, threshold_func: Callable[[np.ndarray], float]
+    ) -> float:
+        values = series.to_numpy()
+
+        if values.size < 2 or np.all(values == values[0]):
+            return values.mean() if values.size > 0 else np.nan
+        try:
+            return threshold_func(values)
+        except Exception:
+            return np.median(values)
 
     def get_multi_objective_study_best_trial(
         self, namespace: str, study: optuna.study.Study
