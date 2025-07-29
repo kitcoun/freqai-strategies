@@ -51,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.101"
+    version = "3.7.102"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -528,10 +528,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
         pred_extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
         thresholds_smoothing = str(
-            self.freqai_info.get("prediction_thresholds_smoothing", "logsumexp")
+            self.freqai_info.get("prediction_thresholds_smoothing", "exp_weighted_mean")
         )
         thresholds_smoothing_methods = {
-            "logsumexp",
+            "exp_weighted_mean",
             "isodata",
             "li",
             "mean",
@@ -540,12 +540,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "triangle",
             "yen",
         }
-        if thresholds_smoothing == "logsumexp":
-            thresholds_temperature = float(
-                self.freqai_info.get("prediction_thresholds_temperature", 200.0)
+        if thresholds_smoothing == "exp_weighted_mean":
+            thresholds_alpha = float(
+                self.freqai_info.get("prediction_thresholds_alpha", 0.25)
             )
-            return QuickAdapterRegressorV3.logsumexp_min_max(
-                pred_extrema, thresholds_temperature
+            return QuickAdapterRegressorV3.exp_weighted_mean_min_max(
+                pred_extrema, thresholds_alpha
             )
         elif thresholds_smoothing in thresholds_smoothing_methods:
             thresholds_ratio = float(
@@ -560,11 +560,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
 
     @staticmethod
-    def logsumexp_min_max(
-        pred_extrema: pd.Series, temperature: float
+    def exp_weighted_mean_min_max(
+        pred_extrema: pd.Series, alpha: float
     ) -> tuple[float, float]:
-        min_val = smoothed_min(pred_extrema, temperature=temperature)
-        max_val = smoothed_max(pred_extrema, temperature=temperature)
+        min_val = smoothed_min(pred_extrema, alpha=alpha)
+        max_val = smoothed_max(pred_extrema, alpha=alpha)
         return min_val, max_val
 
     @staticmethod
@@ -1530,7 +1530,7 @@ def zigzag(
 
     def calculate_slopes_ok_threshold(
         pos: int,
-        min_threshold: float = 0.75,
+        min_threshold: float = 0.85,
         max_threshold: float = 0.95,
     ) -> float:
         volatility_quantile = calculate_volatility_quantile(pos)
@@ -1776,26 +1776,30 @@ def label_objective(
     return np.median(pivots_thresholds), len(pivots_values)
 
 
-def smoothed_max(series: pd.Series, temperature=1.0) -> float:
-    data_array = series.to_numpy()
-    if data_array.size == 0:
+def exponential_weighted_mean(series: pd.Series, alpha: float) -> float:
+    np_array = series.to_numpy()
+    if np_array.size == 0:
         return np.nan
-    if temperature < 0:
-        raise ValueError("temperature must be non-negative")
-    if np.isclose(temperature, 0):
-        return data_array.max()
-    return sp.special.logsumexp(temperature * data_array) / temperature
+    if np.isclose(alpha, 0):
+        return np.mean(np_array)
+    scaled_data = alpha * np_array
+    max_scaled_data = np.max(scaled_data)
+    if np.isinf(max_scaled_data):
+        return np_array[np.argmax(scaled_data)]
+    shifted_exponentials = np.exp(scaled_data - max_scaled_data)
+    numerator = np.sum(np_array * shifted_exponentials)
+    denominator = np.sum(shifted_exponentials)
+    if np.isclose(denominator, 0):
+        return np.max(np_array)
+    return numerator / denominator
 
 
-def smoothed_min(series: pd.Series, temperature=1.0) -> float:
-    data_array = series.to_numpy()
-    if data_array.size == 0:
-        return np.nan
-    if temperature < 0:
-        raise ValueError("temperature must be non-negative")
-    if np.isclose(temperature, 0):
-        return data_array.min()
-    return -sp.special.logsumexp(-temperature * data_array) / temperature
+def smoothed_max(series: pd.Series, alpha: float = 1.0) -> float:
+    return exponential_weighted_mean(series, alpha)
+
+
+def smoothed_min(series: pd.Series, alpha: float = 1.0) -> float:
+    return exponential_weighted_mean(series, -alpha)
 
 
 def round_to_nearest_int(value: float, step: int) -> int:
