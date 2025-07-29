@@ -518,17 +518,15 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         fit_live_predictions_candles: int,
         label_period_candles: int,
     ) -> tuple[float, float]:
-        temperature = float(
-            self.freqai_info.get("prediction_thresholds_temperature", 300.0)
-        )
+        q = float(self.freqai_info.get("prediction_thresholds_quantile", 0.95))
         extrema = pred_df.get(EXTREMA_COLUMN).iloc[
             -(
                 max(2, int(fit_live_predictions_candles / label_period_candles))
                 * label_period_candles
             ) :
         ]
-        min_pred = smoothed_min(extrema, temperature=temperature)
-        max_pred = smoothed_max(extrema, temperature=temperature)
+        min_pred = extrema.quantile(q=1 - q)
+        max_pred = extrema.quantile(q=q)
         return min_pred, max_pred
 
     def get_multi_objective_study_best_trial(
@@ -1698,44 +1696,6 @@ def label_objective(
     )
 
     return np.median(pivots_thresholds), len(pivots_values)
-
-
-def smoothed_max(series: pd.Series, temperature=1.0) -> float:
-    data_array = series.to_numpy()
-    if data_array.size == 0:
-        return np.nan
-    if temperature < 0:
-        raise ValueError("temperature must be non-negative")
-    if np.isclose(temperature, 0):
-        return data_array.max()
-    return sp.special.logsumexp(temperature * data_array) / temperature
-
-
-def smoothed_min(series: pd.Series, temperature=1.0) -> float:
-    data_array = series.to_numpy()
-    if data_array.size == 0:
-        return np.nan
-    if temperature < 0:
-        raise ValueError("temperature must be non-negative")
-    if np.isclose(temperature, 0):
-        return data_array.min()
-    return -sp.special.logsumexp(-temperature * data_array) / temperature
-
-
-def boltzmann_operator(series: pd.Series, alpha: float) -> float:
-    """
-    Compute the Boltzmann operator of a series with parameter alpha.
-    """
-    data_array = series.to_numpy()
-    if data_array.size == 0:
-        return np.nan
-    if alpha == 0:
-        return np.mean(data_array)
-    scaled_data = alpha * data_array
-    shifted_exponentials = np.exp(scaled_data - np.max(scaled_data))
-    numerator = np.sum(data_array * shifted_exponentials)
-    denominator = np.sum(shifted_exponentials)
-    return numerator / denominator
 
 
 def round_to_nearest_int(value: float, step: int) -> int:
