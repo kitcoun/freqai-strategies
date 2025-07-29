@@ -542,7 +542,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         }
         if thresholds_smoothing == "exp_weighted_mean":
             thresholds_alpha = float(
-                self.freqai_info.get("prediction_thresholds_alpha", 5.0)
+                self.freqai_info.get("prediction_thresholds_alpha", 12.0)
             )
             return QuickAdapterRegressorV3.exp_weighted_mean_min_max(
                 pred_extrema, thresholds_alpha
