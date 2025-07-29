@@ -83,6 +83,12 @@ def zero_phase(
     return pd.Series(filtered_values, index=series.index)
 
 
+def calculate_n_extrema(extrema: pd.Series) -> int:
+    return (
+        sp.signal.find_peaks(-extrema)[0].size + sp.signal.find_peaks(extrema)[0].size
+    )
+
+
 def top_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
     """
     Percentage change of the current close relative to the top close price in the previous `period` bars.

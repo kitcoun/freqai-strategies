@@ -51,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.100"
+    version = "3.7.101"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -523,16 +523,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         thresholds_candles = int(
             self.freqai_info.get(
                 "prediction_thresholds_candles",
-                int(
-                    round(
-                        ((max(2, int(label_period_cycles)) * label_period_candles) / 2)
-                    )
-                ),
+                max(2, int(label_period_cycles)) * label_period_candles,
             )
         )
-        extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
-        thresholds_smoothing: str = self.freqai_info.get(
-            "prediction_thresholds_smoothing", "logsumexp"
+        pred_extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
+        thresholds_smoothing = str(
+            self.freqai_info.get("prediction_thresholds_smoothing", "logsumexp")
         )
         thresholds_smoothing_methods = {
             "logsumexp",
@@ -540,22 +536,23 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "li",
             "mean",
             "minimum",
-            "niblack",
             "otsu",
-            "sauvola",
             "triangle",
             "yen",
         }
         if thresholds_smoothing == "logsumexp":
             thresholds_temperature = float(
-                self.freqai_info.get("prediction_thresholds_temperature", 300.0)
+                self.freqai_info.get("prediction_thresholds_temperature", 200.0)
             )
             return QuickAdapterRegressorV3.logsumexp_min_max(
-                extrema, thresholds_temperature
+                pred_extrema, thresholds_temperature
             )
         elif thresholds_smoothing in thresholds_smoothing_methods:
+            thresholds_ratio = float(
+                self.freqai_info.get("prediction_thresholds_ratio", 0.25)
+            )
             return QuickAdapterRegressorV3.common_min_max(
-                extrema, int(label_period_cycles), thresholds_smoothing
+                pred_extrema, thresholds_ratio, thresholds_smoothing
             )
         else:
             raise ValueError(
@@ -563,33 +560,30 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
 
     @staticmethod
-    def logsumexp_min_max(series: pd.Series, temperature: float) -> tuple[float, float]:
-        min_val = smoothed_min(series, temperature=temperature)
-        max_val = smoothed_max(series, temperature=temperature)
+    def logsumexp_min_max(
+        pred_extrema: pd.Series, temperature: float
+    ) -> tuple[float, float]:
+        min_val = smoothed_min(pred_extrema, temperature=temperature)
+        max_val = smoothed_max(pred_extrema, temperature=temperature)
         return min_val, max_val
 
     @staticmethod
     def common_min_max(
-        series: pd.Series,
-        label_period_cycles: int,
-        method: str,
+        pred_extrema: pd.Series, ratio: float, method: str
     ) -> tuple[float, float]:
-        n_values = min(label_period_cycles, len(series))
-        if n_values <= 0:
-            return np.nan, np.nan
+        n_pred_extrema = calculate_n_extrema(pred_extrema)
+        n_pred_extrema_values = max(1, int(n_pred_extrema * ratio))
 
-        sorted_series = series.sort_values(ascending=True)
-        min_subset = sorted_series.iloc[:n_values]
-        max_subset = sorted_series.iloc[-n_values:]
+        sorted_pred_extrema = pred_extrema.sort_values(ascending=True)
+        min_pred_extrema = sorted_pred_extrema.iloc[:n_pred_extrema_values]
+        max_pred_extrema = sorted_pred_extrema.iloc[-n_pred_extrema_values:]
 
         method_functions = {
             "isodata": QuickAdapterRegressorV3.apply_skimage_threshold,
             "li": QuickAdapterRegressorV3.apply_skimage_threshold,
             "mean": QuickAdapterRegressorV3.apply_skimage_threshold,
             "minimum": QuickAdapterRegressorV3.apply_skimage_threshold,
-            "niblack": QuickAdapterRegressorV3.apply_skimage_threshold,
             "otsu": QuickAdapterRegressorV3.apply_skimage_threshold,
-            "sauvola": QuickAdapterRegressorV3.apply_skimage_threshold,
             "triangle": QuickAdapterRegressorV3.apply_skimage_threshold,
             "yen": QuickAdapterRegressorV3.apply_skimage_threshold,
         }
@@ -605,8 +599,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         except AttributeError:
             raise ValueError(f"Unknown skimage threshold function: threshold_{method}")
 
-        min_val = min_func(min_subset, threshold_func)
-        max_val = max_func(max_subset, threshold_func)
+        min_val = min_func(min_pred_extrema, threshold_func)
+        max_val = max_func(max_pred_extrema, threshold_func)
 
         return min_val, max_val
 
@@ -1201,6 +1195,12 @@ def calculate_min_extrema(
     return int(round(size / fit_live_predictions_candles) * min_extrema)
 
 
+def calculate_n_extrema(extrema: pd.Series) -> int:
+    return (
+        sp.signal.find_peaks(-extrema)[0].size + sp.signal.find_peaks(extrema)[0].size
+    )
+
+
 def train_objective(
     trial: optuna.trial.Trial,
     regressor: str,
@@ -1219,15 +1219,11 @@ def train_objective(
     test_length = len(X_test)
     if debug:
         test_extrema = y_test.get(EXTREMA_COLUMN)
-        n_test_minima: int = sp.signal.find_peaks(-test_extrema)[0].size
-        n_test_maxima: int = sp.signal.find_peaks(test_extrema)[0].size
-        n_test_extrema: int = n_test_minima + n_test_maxima
+        n_test_extrema: int = calculate_n_extrema(test_extrema)
         min_test_extrema: int = calculate_min_extrema(
             test_length, fit_live_predictions_candles
         )
-        logger.info(
-            f"{test_length=}, {n_test_minima=}, {n_test_maxima=}, {n_test_extrema=}, {min_test_extrema=}"
-        )
+        logger.info(f"{test_length=}, {n_test_extrema=}, {min_test_extrema=}")
     min_test_window: int = fit_live_predictions_candles * 2
     if test_length < min_test_window:
         logger.warning(f"Insufficient test data: {test_length} < {min_test_window}")
@@ -1239,9 +1235,7 @@ def train_objective(
     X_test = X_test.iloc[-test_window:]
     y_test = y_test.iloc[-test_window:]
     test_extrema = y_test.get(EXTREMA_COLUMN)
-    n_test_minima: int = sp.signal.find_peaks(-test_extrema)[0].size
-    n_test_maxima: int = sp.signal.find_peaks(test_extrema)[0].size
-    n_test_extrema: int = n_test_minima + n_test_maxima
+    n_test_extrema: int = calculate_n_extrema(test_extrema)
     min_test_extrema: int = calculate_min_extrema(
         test_window, fit_live_predictions_candles
     )
@@ -1257,15 +1251,11 @@ def train_objective(
     train_length = len(X)
     if debug:
         train_extrema = y.get(EXTREMA_COLUMN)
-        n_train_minima: int = sp.signal.find_peaks(-train_extrema)[0].size
-        n_train_maxima: int = sp.signal.find_peaks(train_extrema)[0].size
-        n_train_extrema: int = n_train_minima + n_train_maxima
+        n_train_extrema: int = calculate_n_extrema(train_extrema)
         min_train_extrema: int = calculate_min_extrema(
             train_length, fit_live_predictions_candles
         )
-        logger.info(
-            f"{train_length=}, {n_train_minima=}, {n_train_maxima=}, {n_train_extrema=}, {min_train_extrema=}"
-        )
+        logger.info(f"{train_length=}, {n_train_extrema=}, {min_train_extrema=}")
     min_train_window: int = min_test_window * int(round(1 / test_size - 1))
     if train_length < min_train_window:
         logger.warning(f"Insufficient train data: {train_length} < {min_train_window}")
@@ -1277,9 +1267,7 @@ def train_objective(
     X = X.iloc[-train_window:]
     y = y.iloc[-train_window:]
     train_extrema = y.get(EXTREMA_COLUMN)
-    n_train_minima: int = sp.signal.find_peaks(-train_extrema)[0].size
-    n_train_maxima: int = sp.signal.find_peaks(train_extrema)[0].size
-    n_train_extrema: int = n_train_minima + n_train_maxima
+    n_train_extrema: int = calculate_n_extrema(train_extrema)
     min_train_extrema: int = calculate_min_extrema(
         train_window, fit_live_predictions_candles
     )

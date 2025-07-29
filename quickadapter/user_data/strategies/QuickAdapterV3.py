@@ -14,12 +14,12 @@ from technical.pivots_points import pivots_points
 from freqtrade.persistence import Trade
 import numpy as np
 import pandas_ta as pta
-import scipy as sp
 
 from Utils import (
     TrendDirection,
     alligator,
     bottom_change_percent,
+    calculate_n_extrema,
     calculate_quantile,
     get_zl_ma_fn,
     zero_phase,
@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.108"
+        return "3.3.109"
 
     timeframe = "5m"
 
@@ -466,10 +466,9 @@ class QuickAdapterV3(IStrategy):
             self.freqai_info.get("extrema_smoothing_window", 5),
         )
         if debug:
-            logger.info(f"{dataframe[EXTREMA_COLUMN].to_numpy()=}")
-            n_minima: int = sp.signal.find_peaks(-dataframe[EXTREMA_COLUMN])[0].size
-            n_maxima: int = sp.signal.find_peaks(dataframe[EXTREMA_COLUMN])[0].size
-            n_extrema: int = n_minima + n_maxima
+            extrema = dataframe[EXTREMA_COLUMN]
+            logger.info(f"{extrema.to_numpy()=}")
+            n_extrema: int = calculate_n_extrema(extrema)
             logger.info(f"{n_extrema=}")
         return dataframe
 
@@ -508,7 +507,6 @@ class QuickAdapterV3(IStrategy):
             dataframe.get("DI_catch") == 1,
             dataframe.get(EXTREMA_COLUMN) < dataframe.get("minima_threshold"),
         ]
-
         dataframe.loc[
             reduce(lambda x, y: x & y, enter_long_conditions),
             ["enter_long", "enter_tag"],
@@ -519,7 +517,6 @@ class QuickAdapterV3(IStrategy):
             dataframe.get("DI_catch") == 1,
             dataframe.get(EXTREMA_COLUMN) > dataframe.get("maxima_threshold"),
         ]
-
         dataframe.loc[
             reduce(lambda x, y: x & y, enter_short_conditions),
             ["enter_short", "enter_tag"],
