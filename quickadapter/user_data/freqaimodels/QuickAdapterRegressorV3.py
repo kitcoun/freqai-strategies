@@ -51,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.102"
+    version = "3.7.103"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -542,7 +542,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         }
         if thresholds_smoothing == "exp_weighted_mean":
             thresholds_alpha = float(
-                self.freqai_info.get("prediction_thresholds_alpha", 12.0)
+                self.freqai_info.get("prediction_thresholds_alpha", 25.0)
             )
             return QuickAdapterRegressorV3.exp_weighted_mean_min_max(
                 pred_extrema, thresholds_alpha
@@ -571,12 +571,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def common_min_max(
         pred_extrema: pd.Series, ratio: float, method: str
     ) -> tuple[float, float]:
-        n_pred_extrema = calculate_n_extrema(pred_extrema)
-        n_pred_extrema_values = max(1, int(n_pred_extrema * ratio))
+        n_pred_minima = sp.signal.find_peaks(-pred_extrema)[0].size
+        n_pred_maxima = sp.signal.find_peaks(pred_extrema)[0].size
+        n_pred_minima_values = max(1, int(n_pred_minima * ratio))
+        n_pred_maxima_values = max(1, int(n_pred_maxima * ratio))
 
         sorted_pred_extrema = pred_extrema.sort_values(ascending=True)
-        min_pred_extrema = sorted_pred_extrema.iloc[:n_pred_extrema_values]
-        max_pred_extrema = sorted_pred_extrema.iloc[-n_pred_extrema_values:]
+        min_pred_extrema = sorted_pred_extrema.iloc[:n_pred_minima_values]
+        max_pred_extrema = sorted_pred_extrema.iloc[-n_pred_maxima_values:]
 
         method_functions = {
             "isodata": QuickAdapterRegressorV3.apply_skimage_threshold,
@@ -610,7 +612,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     ) -> float:
         values = series.to_numpy()
 
-        if values.size < 2 or np.all(values == values[0]):
+        if values.size < 2 or np.all(np.isclose(values, values[0])):
             return values.mean() if values.size > 0 else np.nan
         try:
             return threshold_func(values)
