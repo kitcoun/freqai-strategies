@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.111"
+        return "3.3.112"
 
     timeframe = "5m"
 
@@ -94,9 +94,10 @@ class QuickAdapterV3(IStrategy):
 
     # {stage: (natr_ratio_percent, stake_percent)}
     partial_exit_stages: dict[int, tuple[float, float]] = {
-        0: (0.4, 0.35),
-        1: (0.7, 0.75),
-        2: (0.9, 0.5),
+        0: (0.4167, 0.4167),
+        1: (0.6667, 0.25),
+        2: (0.8333, 0.1667),
+        3: (0.9167, 0.0833),
     }
 
     timeframe_minutes = timeframe_to_minutes(timeframe)

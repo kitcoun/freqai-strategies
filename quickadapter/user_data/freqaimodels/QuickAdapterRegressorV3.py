@@ -51,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.103"
+    version = "3.7.104"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -528,7 +528,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
         pred_extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
         thresholds_smoothing = str(
-            self.freqai_info.get("prediction_thresholds_smoothing", "exp_weighted_mean")
+            self.freqai_info.get("prediction_thresholds_smoothing", "mean")
         )
         thresholds_smoothing_methods = {
             "exp_weighted_mean",
@@ -542,7 +542,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         }
         if thresholds_smoothing == "exp_weighted_mean":
             thresholds_alpha = float(
-                self.freqai_info.get("prediction_thresholds_alpha", 75.0)
+                self.freqai_info.get("prediction_thresholds_alpha", 100.0)
             )
             return QuickAdapterRegressorV3.exp_weighted_mean_min_max(
                 pred_extrema, thresholds_alpha
@@ -639,22 +639,22 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "cityblock",
             "correlation",
             "cosine",
-            "dice",
+            # "dice",
             "euclidean",
-            "hamming",
-            "jaccard",
+            # "hamming",
+            # "jaccard",
             "jensenshannon",
-            "kulczynski1",
+            # "kulczynski1",
             "mahalanobis",
-            "matching",
+            # "matching",
             "minkowski",
-            "rogerstanimoto",
-            "russellrao",
+            # "rogerstanimoto",
+            # "russellrao",
             "seuclidean",
-            "sokalmichener",
-            "sokalsneath",
+            # "sokalmichener",
+            # "sokalsneath",
             "sqeuclidean",
-            "yule",
+            # "yule",
             "hellinger",
             "shellinger",
             "geometric_mean",
@@ -721,22 +721,22 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 "cityblock",
                 "correlation",
                 "cosine",
-                "dice",
+                # "dice",
                 "euclidean",
-                "hamming",
-                "jaccard",
+                # "hamming",
+                # "jaccard",
                 "jensenshannon",
-                "kulczynski1",  # deprecated since version 1.15.0
+                # "kulczynski1",  # deprecated since version 1.15.0
                 "mahalanobis",
-                "matching",
+                # "matching",
                 "minkowski",
-                "rogerstanimoto",
-                "russellrao",
+                # "rogerstanimoto",
+                # "russellrao",
                 "seuclidean",
-                "sokalmichener",  # deprecated since version 1.15.0
-                "sokalsneath",
+                # "sokalmichener",  # deprecated since version 1.15.0
+                # "sokalsneath",
                 "sqeuclidean",
-                "yule",
+                # "yule",
             }:
                 cdist_kwargs = {"w": np_weights}
                 if metric in {
