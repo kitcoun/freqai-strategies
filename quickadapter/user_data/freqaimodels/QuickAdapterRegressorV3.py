@@ -51,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.105"
+    version = "3.7.106"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -545,7 +545,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
         if thresholds_smoothing == "soft_extremum":
             thresholds_alpha = float(
-                self.freqai_info.get("prediction_thresholds_alpha", 0.5)
+                self.freqai_info.get("prediction_thresholds_alpha", 10.0)
             )
             return QuickAdapterRegressorV3.soft_extremum_min_max(
                 pred_extrema, thresholds_ratio, thresholds_alpha
@@ -1803,7 +1803,7 @@ def soft_extremum(series: pd.Series, alpha: float) -> float:
     shifted_exponentials = np.exp(scaled_data - max_scaled_data)
     numerator = np.sum(np_array * shifted_exponentials)
     denominator = np.sum(shifted_exponentials)
-    if np.isclose(denominator, 0):
+    if denominator == 0:
         return np.max(np_array)
     return numerator / denominator
 
