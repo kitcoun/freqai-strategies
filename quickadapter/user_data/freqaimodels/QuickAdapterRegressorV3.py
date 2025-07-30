@@ -51,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.104"
+    version = "3.7.105"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -531,7 +531,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             self.freqai_info.get("prediction_thresholds_smoothing", "mean")
         )
         thresholds_smoothing_methods = {
-            "exp_weighted_mean",
+            "soft_extremum",
             "isodata",
             "li",
             "mean",
@@ -540,18 +540,18 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "triangle",
             "yen",
         }
-        if thresholds_smoothing == "exp_weighted_mean":
+        thresholds_ratio = float(
+            self.freqai_info.get("prediction_thresholds_ratio", 1.0)
+        )
+        if thresholds_smoothing == "soft_extremum":
             thresholds_alpha = float(
-                self.freqai_info.get("prediction_thresholds_alpha", 100.0)
+                self.freqai_info.get("prediction_thresholds_alpha", 0.5)
             )
-            return QuickAdapterRegressorV3.exp_weighted_mean_min_max(
-                pred_extrema, thresholds_alpha
+            return QuickAdapterRegressorV3.soft_extremum_min_max(
+                pred_extrema, thresholds_ratio, thresholds_alpha
             )
         elif thresholds_smoothing in thresholds_smoothing_methods:
-            thresholds_ratio = float(
-                self.freqai_info.get("prediction_thresholds_ratio", 1.0)
-            )
-            return QuickAdapterRegressorV3.common_min_max(
+            return QuickAdapterRegressorV3.skimage_min_max(
                 pred_extrema, thresholds_ratio, thresholds_smoothing
             )
         else:
@@ -560,25 +560,37 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
 
     @staticmethod
-    def exp_weighted_mean_min_max(
-        pred_extrema: pd.Series, alpha: float
-    ) -> tuple[float, float]:
-        min_val = smoothed_min(pred_extrema, alpha=alpha)
-        max_val = smoothed_max(pred_extrema, alpha=alpha)
-        return min_val, max_val
-
-    @staticmethod
-    def common_min_max(
-        pred_extrema: pd.Series, ratio: float, method: str
-    ) -> tuple[float, float]:
+    def get_pred_min_max(
+        pred_extrema: pd.Series, ratio: float
+    ) -> tuple[pd.Series, pd.Series]:
         n_pred_minima = sp.signal.find_peaks(-pred_extrema)[0].size
         n_pred_maxima = sp.signal.find_peaks(pred_extrema)[0].size
         n_pred_minima_values = max(1, int(n_pred_minima * ratio))
         n_pred_maxima_values = max(1, int(n_pred_maxima * ratio))
 
         sorted_pred_extrema = pred_extrema.sort_values(ascending=True)
-        min_pred_extrema = sorted_pred_extrema.iloc[:n_pred_minima_values]
-        max_pred_extrema = sorted_pred_extrema.iloc[-n_pred_maxima_values:]
+        return sorted_pred_extrema.iloc[
+            :n_pred_minima_values
+        ], sorted_pred_extrema.iloc[-n_pred_maxima_values:]
+
+    @staticmethod
+    def soft_extremum_min_max(
+        pred_extrema: pd.Series, ratio: float, alpha: float
+    ) -> tuple[float, float]:
+        pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
+            pred_extrema, ratio
+        )
+        return soft_extremum(pred_minima, alpha=-alpha), soft_extremum(
+            pred_maxima, alpha=alpha
+        )
+
+    @staticmethod
+    def skimage_min_max(
+        pred_extrema: pd.Series, ratio: float, method: str
+    ) -> tuple[float, float]:
+        pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
+            pred_extrema, ratio
+        )
 
         method_functions = {
             "isodata": QuickAdapterRegressorV3.apply_skimage_threshold,
@@ -601,8 +613,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         except AttributeError:
             raise ValueError(f"Unknown skimage threshold function: threshold_{method}")
 
-        min_val = min_func(min_pred_extrema, threshold_func)
-        max_val = max_func(max_pred_extrema, threshold_func)
+        min_val = min_func(pred_minima, threshold_func)
+        max_val = max_func(pred_maxima, threshold_func)
 
         return min_val, max_val
 
@@ -1778,7 +1790,7 @@ def label_objective(
     return np.median(pivots_thresholds), len(pivots_values)
 
 
-def exponential_weighted_mean(series: pd.Series, alpha: float) -> float:
+def soft_extremum(series: pd.Series, alpha: float) -> float:
     np_array = series.to_numpy()
     if np_array.size == 0:
         return np.nan
@@ -1794,14 +1806,6 @@ def exponential_weighted_mean(series: pd.Series, alpha: float) -> float:
     if np.isclose(denominator, 0):
         return np.max(np_array)
     return numerator / denominator
-
-
-def smoothed_max(series: pd.Series, alpha: float = 1.0) -> float:
-    return exponential_weighted_mean(series, alpha)
-
-
-def smoothed_min(series: pd.Series, alpha: float = 1.0) -> float:
-    return exponential_weighted_mean(series, -alpha)
 
 
 def round_to_nearest_int(value: float, step: int) -> int:
