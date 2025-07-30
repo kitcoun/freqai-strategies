@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.114"
+        return "3.3.115"
 
     timeframe = "5m"
 
@@ -94,10 +94,9 @@ class QuickAdapterV3(IStrategy):
 
     # {stage: (natr_ratio_percent, stake_percent)}
     partial_exit_stages: dict[int, tuple[float, float]] = {
-        0: (0.4167, 0.3333),
-        1: (0.6667, 0.2667),
-        2: (0.8333, 0.2000),
-        3: (0.9167, 0.1333),
+        0: (0.4444, 0.4),
+        1: (0.7222, 0.3),
+        2: (0.8889, 0.2),
     }
 
     timeframe_minutes = timeframe_to_minutes(timeframe)
@@ -903,14 +902,10 @@ class QuickAdapterV3(IStrategy):
             return "maxima_detected_long"
 
         exit_stage: int = trade.get_custom_data("exit_stage", 0)
-        if self.position_adjustment_enable:
-            if exit_stage in self.partial_exit_stages:
-                return None
-            natr_ratio_percent = 1.0
-        else:
-            natr_ratio_percent = 0.7
+        if exit_stage in self.partial_exit_stages:
+            return None
 
-        take_profit_price = self.get_take_profit_price(df, trade, natr_ratio_percent)
+        take_profit_price = self.get_take_profit_price(df, trade, 1.0)
         if isna(take_profit_price):
             return None
 
@@ -964,22 +959,19 @@ class QuickAdapterV3(IStrategy):
         last_candle_close = last_candle.get("close")
         last_candle_high = last_candle.get("high")
         last_candle_low = last_candle.get("low")
-        last_candle_weighted_close_price = (
-            last_candle_high + last_candle_low + 2 * last_candle_close
-        ) / 4.0
         last_candle_natr = last_candle.get("natr_label_period_candles")
         if isna(last_candle_natr) or last_candle_natr < 0:
             return False
         lower_bound = 0
         upper_bound = 0
         price_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
-            pair, 0.0075
+            pair, 0.0025
         )
         if side == "long":
             lower_bound = last_candle_low * (1 - price_deviation)
-            upper_bound = last_candle_weighted_close_price * (1 + price_deviation)
+            upper_bound = last_candle_close * (1 + price_deviation)
         elif side == "short":
-            lower_bound = last_candle_weighted_close_price * (1 - price_deviation)
+            lower_bound = last_candle_close * (1 - price_deviation)
             upper_bound = last_candle_high * (1 + price_deviation)
         if lower_bound < 0:
             logger.info(
