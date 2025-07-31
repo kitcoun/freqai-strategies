@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.117"
+        return "3.3.118"
 
     timeframe = "5m"
 
@@ -961,23 +961,25 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return False
         last_candle = df.iloc[-1]
-        last_candle_close = last_candle.get("close")
-        last_candle_high = last_candle.get("high")
-        last_candle_low = last_candle.get("low")
+        last_candle_weighted_close = (
+            last_candle.get("high")
+            + last_candle.get("low")
+            + 2 * last_candle.get("close")
+        ) / 4.0
         last_candle_natr = last_candle.get("natr_label_period_candles")
         if isna(last_candle_natr) or last_candle_natr < 0:
             return False
         lower_bound = 0
         upper_bound = 0
         price_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
-            pair, 0.00125
+            pair, 0.00075
         )
         if side == "long":
-            lower_bound = last_candle_low * (1 - price_deviation)
-            upper_bound = last_candle_close * (1 + price_deviation)
+            lower_bound = last_candle_weighted_close * (1 - 2 * price_deviation)
+            upper_bound = last_candle_weighted_close * (1 + price_deviation)
         elif side == "short":
-            lower_bound = last_candle_close * (1 - price_deviation)
-            upper_bound = last_candle_high * (1 + price_deviation)
+            lower_bound = last_candle_weighted_close * (1 - price_deviation)
+            upper_bound = last_candle_weighted_close * (1 + 2 * price_deviation)
         if lower_bound < 0:
             logger.info(
                 f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
