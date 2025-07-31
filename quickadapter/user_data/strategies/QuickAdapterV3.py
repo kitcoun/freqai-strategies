@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.115"
+        return "3.3.116"
 
     timeframe = "5m"
 
@@ -965,7 +965,7 @@ class QuickAdapterV3(IStrategy):
         lower_bound = 0
         upper_bound = 0
         price_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
-            pair, 0.0025
+            pair, 0.00125
         )
         if side == "long":
             lower_bound = last_candle_low * (1 - price_deviation)

@@ -51,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.106"
+    version = "3.7.107"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -1544,14 +1544,14 @@ def zigzag(
 
     def calculate_slopes_ok_threshold(
         pos: int,
-        min_threshold: float = 0.85,
+        min_threshold: float = 0.75,
         max_threshold: float = 0.95,
     ) -> float:
         volatility_quantile = calculate_volatility_quantile(pos)
         if np.isnan(volatility_quantile):
             return median([min_threshold, max_threshold])
 
-        return min_threshold + (max_threshold - min_threshold) * volatility_quantile
+        return max_threshold - (max_threshold - min_threshold) * volatility_quantile
 
     def update_candidate_pivot(pos: int, value: float):
         nonlocal candidate_pivot_pos, candidate_pivot_value
