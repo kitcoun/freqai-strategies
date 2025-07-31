@@ -94,9 +94,9 @@ class QuickAdapterV3(IStrategy):
 
     # {stage: (natr_ratio_percent, stake_percent)}
     partial_exit_stages: dict[int, tuple[float, float]] = {
-        0: (0.4444, 0.4),
-        1: (0.7222, 0.3),
-        2: (0.8889, 0.2),
+        0: (0.4858, 0.4),
+        1: (0.6180, 0.3),
+        2: (0.7640, 0.2),
     }
 
     timeframe_minutes = timeframe_to_minutes(timeframe)
@@ -772,7 +772,7 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        stoploss_distance = self.get_stoploss_distance(df, trade, current_rate, 0.9)
+        stoploss_distance = self.get_stoploss_distance(df, trade, current_rate, 0.7860)
         if isna(stoploss_distance) or stoploss_distance <= 0:
             return None
         return stoploss_from_absolute(
