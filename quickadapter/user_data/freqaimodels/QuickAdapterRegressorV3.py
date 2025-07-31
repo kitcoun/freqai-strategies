@@ -51,7 +51,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.107"
+    version = "3.7.108"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -540,19 +540,16 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "triangle",
             "yen",
         }
-        thresholds_ratio = float(
-            self.freqai_info.get("prediction_thresholds_ratio", 1.0)
-        )
         if thresholds_smoothing == "soft_extremum":
             thresholds_alpha = float(
                 self.freqai_info.get("prediction_thresholds_alpha", 10.0)
             )
             return QuickAdapterRegressorV3.soft_extremum_min_max(
-                pred_extrema, thresholds_ratio, thresholds_alpha
+                pred_extrema, thresholds_alpha
             )
         elif thresholds_smoothing in thresholds_smoothing_methods:
             return QuickAdapterRegressorV3.skimage_min_max(
-                pred_extrema, thresholds_ratio, thresholds_smoothing
+                pred_extrema, thresholds_smoothing
             )
         else:
             raise ValueError(
@@ -560,36 +557,27 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
 
     @staticmethod
-    def get_pred_min_max(
-        pred_extrema: pd.Series, ratio: float
-    ) -> tuple[pd.Series, pd.Series]:
-        n_pred_minima = sp.signal.find_peaks(-pred_extrema)[0].size
-        n_pred_maxima = sp.signal.find_peaks(pred_extrema)[0].size
-        n_pred_minima_values = max(1, int(n_pred_minima * ratio))
-        n_pred_maxima_values = max(1, int(n_pred_maxima * ratio))
+    def get_pred_min_max(pred_extrema: pd.Series) -> tuple[pd.Series, pd.Series]:
+        minima_indices = sp.signal.find_peaks(-pred_extrema)[0]
+        maxima_indices = sp.signal.find_peaks(pred_extrema)[0]
 
-        sorted_pred_extrema = pred_extrema.sort_values(ascending=True)
-        return sorted_pred_extrema.iloc[
-            :n_pred_minima_values
-        ], sorted_pred_extrema.iloc[-n_pred_maxima_values:]
+        return pred_extrema.iloc[minima_indices], pred_extrema.iloc[maxima_indices]
 
     @staticmethod
     def soft_extremum_min_max(
-        pred_extrema: pd.Series, ratio: float, alpha: float
+        pred_extrema: pd.Series, alpha: float
     ) -> tuple[float, float]:
         pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
-            pred_extrema, ratio
+            pred_extrema
         )
         return soft_extremum(pred_minima, alpha=-alpha), soft_extremum(
             pred_maxima, alpha=alpha
         )
 
     @staticmethod
-    def skimage_min_max(
-        pred_extrema: pd.Series, ratio: float, method: str
-    ) -> tuple[float, float]:
+    def skimage_min_max(pred_extrema: pd.Series, method: str) -> tuple[float, float]:
         pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
-            pred_extrema, ratio
+            pred_extrema
         )
 
         method_functions = {
