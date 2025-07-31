@@ -288,7 +288,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 namespace="hp",
                 objective=lambda trial: hp_objective(
                     trial,
-                    self.freqai_info.get("regressor", "xgboost"),
+                    str(self.freqai_info.get("regressor", "xgboost")),
                     X,
                     y,
                     train_weights,
@@ -314,7 +314,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 namespace="train",
                 objective=lambda trial: train_objective(
                     trial,
-                    self.freqai_info.get("regressor", "xgboost"),
+                    str(self.freqai_info.get("regressor", "xgboost")),
                     X,
                     y,
                     train_weights,
@@ -348,7 +348,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
         model = fit_regressor(
-            regressor=self.freqai_info.get("regressor", "xgboost"),
+            regressor=str(self.freqai_info.get("regressor", "xgboost")),
             X=X,
             y=y,
             train_weights=train_weights,

@@ -1000,9 +1000,9 @@ class QuickAdapterV3(IStrategy):
         series: Series,
         window: int,
     ) -> Series:
-        extrema_smoothing = self.freqai_info.get("extrema_smoothing", "gaussian")
-        extrema_smoothing_zero_phase = self.freqai_info.get(
-            "extrema_smoothing_zero_phase", True
+        extrema_smoothing = str(self.freqai_info.get("extrema_smoothing", "gaussian"))
+        extrema_smoothing_zero_phase = bool(
+            self.freqai_info.get("extrema_smoothing_zero_phase", True)
         )
         std = derive_gaussian_std_from_window(window)
         extrema_smoothing_beta = float(
