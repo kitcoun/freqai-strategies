@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.116"
+        return "3.3.117"
 
     timeframe = "5m"
 
@@ -802,11 +802,8 @@ class QuickAdapterV3(IStrategy):
         take_profit_price = (
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
         )
-        previous_take_profit_price = trade.get_custom_data("take_profit_price", None)
-        if (
-            previous_take_profit_price is None
-            or previous_take_profit_price != take_profit_price
-        ):
+        previous_take_profit_price = trade.get_custom_data("take_profit_price")
+        if previous_take_profit_price != take_profit_price:
             trade.set_custom_data(key="take_profit_price", value=take_profit_price)
 
         return take_profit_price
@@ -884,19 +881,27 @@ class QuickAdapterV3(IStrategy):
         if last_candle.get("do_predict") == 2:
             return "model_expired"
         if last_candle.get("DI_catch") == 0:
-            return "outlier_detected"
+            last_candle_date = last_candle.get("date")
+            last_outlier_date = trade.get_custom_data("last_outlier_date")
+            if last_outlier_date != last_candle_date:
+                n_outliers = trade.get_custom_data("n_outliers", 0)
+                n_outliers += 1
+                trade.set_custom_data("n_outliers", n_outliers)
+                trade.set_custom_data("last_outlier_date", last_candle_date)
 
         entry_tag = trade.enter_tag
 
         if (
             entry_tag == "short"
             and last_candle.get("do_predict") == 1
+            and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) < last_candle.get("minima_threshold")
         ):
             return "minima_detected_short"
         if (
             entry_tag == "long"
             and last_candle.get("do_predict") == 1
+            and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) > last_candle.get("maxima_threshold")
         ):
             return "maxima_detected_long"
