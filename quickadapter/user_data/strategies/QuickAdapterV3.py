@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.123"
+        return "3.3.124"
 
     timeframe = "5m"
 
@@ -969,14 +969,37 @@ class QuickAdapterV3(IStrategy):
         last_candle_natr = last_candle.get("natr_label_period_candles")
         if isna(last_candle_natr) or last_candle_natr < 0:
             return False
+        natr_values = df.get("natr_label_period_candles").to_numpy()
+        label_period_candles = self.get_label_period_candles(pair)
+        last_candle_natr_quantile = calculate_quantile(
+            natr_values[-label_period_candles:], last_candle_natr
+        )
+        if isna(last_candle_natr_quantile):
+            last_candle_natr_quantile = 0.5
+        unfavorable_deviation_min_natr_ratio_percent = 0.0025
+        unfavorable_deviation_max_natr_ratio_percent = 0.005
+        unfavorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
+            pair,
+            unfavorable_deviation_min_natr_ratio_percent
+            + (
+                unfavorable_deviation_max_natr_ratio_percent
+                - unfavorable_deviation_min_natr_ratio_percent
+            )
+            * last_candle_natr_quantile,
+        )
+        favorable_deviation_min_natr_ratio_percent = 0.01
+        favorable_deviation_max_natr_ratio_percent = 0.025
+        favorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
+            pair,
+            favorable_deviation_min_natr_ratio_percent
+            + (
+                favorable_deviation_max_natr_ratio_percent
+                - favorable_deviation_min_natr_ratio_percent
+            )
+            * last_candle_natr_quantile,
+        )
         lower_bound = 0
         upper_bound = 0
-        unfavorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
-            pair, 0.005
-        )
-        favorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
-            pair, 0.025
-        )
         if side == "long":
             lower_bound = last_candle_weighted_close * (1 - favorable_deviation)
             upper_bound = last_candle_weighted_close * (1 + unfavorable_deviation)
