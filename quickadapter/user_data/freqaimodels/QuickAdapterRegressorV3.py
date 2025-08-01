@@ -615,8 +615,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     ) -> float:
         values = series.to_numpy()
 
-        if values.size < 2 or np.all(np.isclose(values, values[0])):
-            return values.mean() if values.size > 0 else np.nan
+        if values.size == 0:
+            return np.nan
+        if values.size == 1 or np.all(np.isclose(values, values[0])):
+            return values.mean()
         try:
             return threshold_func(values)
         except Exception:

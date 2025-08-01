@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.120"
+        return "3.3.121"
 
     timeframe = "5m"
 
@@ -971,15 +971,18 @@ class QuickAdapterV3(IStrategy):
             return False
         lower_bound = 0
         upper_bound = 0
-        price_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
-            pair, 0.00075
+        unfavorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
+            pair, 0.00125
+        )
+        favorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
+            pair, 0.00225
         )
         if side == "long":
-            lower_bound = last_candle_weighted_close * (1 - 2 * price_deviation)
-            upper_bound = last_candle_weighted_close * (1 + price_deviation)
+            lower_bound = last_candle_weighted_close * (1 - favorable_deviation)
+            upper_bound = last_candle_weighted_close * (1 + unfavorable_deviation)
         elif side == "short":
-            lower_bound = last_candle_weighted_close * (1 - price_deviation)
-            upper_bound = last_candle_weighted_close * (1 + 2 * price_deviation)
+            lower_bound = last_candle_weighted_close * (1 - unfavorable_deviation)
+            upper_bound = last_candle_weighted_close * (1 + favorable_deviation)
         if lower_bound < 0:
             logger.info(
                 f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
