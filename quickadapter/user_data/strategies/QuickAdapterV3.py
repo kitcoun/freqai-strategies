@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.121"
+        return "3.3.122"
 
     timeframe = "5m"
 
@@ -972,10 +972,10 @@ class QuickAdapterV3(IStrategy):
         lower_bound = 0
         upper_bound = 0
         unfavorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
-            pair, 0.00125
+            pair, 0.0025
         )
         favorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
-            pair, 0.00225
+            pair, 0.0075
         )
         if side == "long":
             lower_bound = last_candle_weighted_close * (1 - favorable_deviation)
