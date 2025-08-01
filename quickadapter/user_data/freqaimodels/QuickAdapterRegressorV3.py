@@ -558,10 +558,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     @staticmethod
     def get_pred_min_max(pred_extrema: pd.Series) -> tuple[pd.Series, pd.Series]:
-        minima_indices = sp.signal.find_peaks(-pred_extrema)[0]
-        maxima_indices = sp.signal.find_peaks(pred_extrema)[0]
+        n_pred_minima = max(1, sp.signal.find_peaks(-pred_extrema)[0].size)
+        n_pred_maxima = max(1, sp.signal.find_peaks(pred_extrema)[0].size)
 
-        return pred_extrema.iloc[minima_indices], pred_extrema.iloc[maxima_indices]
+        sorted_pred_extrema = pred_extrema.sort_values(ascending=True)
+        return sorted_pred_extrema.iloc[:n_pred_minima], sorted_pred_extrema.iloc[
+            -n_pred_maxima:
+        ]
 
     @staticmethod
     def soft_extremum_min_max(
