@@ -30,9 +30,8 @@ from Utils import (
     vwapb,
     top_change_percent,
     get_distance,
-    get_gaussian_window,
     get_odd_window,
-    derive_gaussian_std_from_window,
+    get_gaussian_std_from_window,
     zlema,
 )
 
@@ -65,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.126"
+        return "3.3.127"
 
     timeframe = "5m"
 
@@ -135,11 +134,11 @@ class QuickAdapterV3(IStrategy):
             "fit_live_predictions_candles", 100
         )
         return [
-            {"method": "CooldownPeriod", "stop_duration_candles": 2},
+            {"method": "CooldownPeriod", "stop_duration_candles": 4},
             {
                 "method": "MaxDrawdown",
                 "lookback_period_candles": fit_live_predictions_candles,
-                "trade_limit": self.config.get("max_open_trades"),
+                "trade_limit": 2 * self.config.get("max_open_trades"),
                 "stop_duration_candles": fit_live_predictions_candles,
                 "max_allowed_drawdown": 0.2,
             },
@@ -974,27 +973,27 @@ class QuickAdapterV3(IStrategy):
         )
         if isna(last_candle_natr_quantile):
             last_candle_natr_quantile = 0.5
-        unfavorable_deviation_min_natr_ratio_percent = 0.0025
+        unfavorable_deviation_min_natr_ratio_percent = 0.001
         unfavorable_deviation_max_natr_ratio_percent = 0.005
         unfavorable_deviation = (
             last_candle_natr / 100.0
         ) * self.get_label_natr_ratio_percent(
             pair,
-            unfavorable_deviation_min_natr_ratio_percent
-            + (
+            unfavorable_deviation_max_natr_ratio_percent
+            - (
                 unfavorable_deviation_max_natr_ratio_percent
                 - unfavorable_deviation_min_natr_ratio_percent
             )
             * last_candle_natr_quantile,
         )
         favorable_deviation_min_natr_ratio_percent = 0.01
-        favorable_deviation_max_natr_ratio_percent = 0.025
+        favorable_deviation_max_natr_ratio_percent = 0.05
         favorable_deviation = (
             last_candle_natr / 100.0
         ) * self.get_label_natr_ratio_percent(
             pair,
-            favorable_deviation_min_natr_ratio_percent
-            + (
+            favorable_deviation_max_natr_ratio_percent
+            - (
                 favorable_deviation_max_natr_ratio_percent
                 - favorable_deviation_min_natr_ratio_percent
             )
@@ -1036,18 +1035,14 @@ class QuickAdapterV3(IStrategy):
         window: int,
     ) -> Series:
         extrema_smoothing = str(self.freqai_info.get("extrema_smoothing", "gaussian"))
-        extrema_smoothing_zero_phase = bool(
-            self.freqai_info.get("extrema_smoothing_zero_phase", True)
-        )
-        std = derive_gaussian_std_from_window(window)
+        std = get_gaussian_std_from_window(window)
         extrema_smoothing_beta = float(
             self.freqai_info.get("extrema_smoothing_beta", 8.0)
         )
         if debug:
             logger.info(
-                f"{extrema_smoothing=}, {extrema_smoothing_zero_phase=}, {window=}, {std=}, {extrema_smoothing_beta=}"
+                f"{extrema_smoothing=}, {window=}, {std=}, {extrema_smoothing_beta=}"
             )
-        gaussian_window = get_gaussian_window(std, True)
         odd_window = get_odd_window(window)
         smoothing_methods: dict[str, Series] = {
             "gaussian": zero_phase(
@@ -1056,37 +1051,21 @@ class QuickAdapterV3(IStrategy):
                 win_type="gaussian",
                 std=std,
                 beta=extrema_smoothing_beta,
-            )
-            if extrema_smoothing_zero_phase
-            else series.rolling(
-                window=gaussian_window,
-                win_type="gaussian",
-                center=True,
-            ).mean(std=std),
+            ),
             "kaiser": zero_phase(
                 series=series,
                 window=window,
                 win_type="kaiser",
                 std=std,
                 beta=extrema_smoothing_beta,
-            )
-            if extrema_smoothing_zero_phase
-            else series.rolling(
-                window=odd_window,
-                win_type="kaiser",
-                center=True,
-            ).mean(beta=extrema_smoothing_beta),
+            ),
             "triang": zero_phase(
                 series=series,
                 window=window,
                 win_type="triang",
                 std=std,
                 beta=extrema_smoothing_beta,
-            )
-            if extrema_smoothing_zero_phase
-            else series.rolling(
-                window=odd_window, win_type="triang", center=True
-            ).mean(),
+            ),
             "smm": series.rolling(window=odd_window, center=True).median(),
             "sma": series.rolling(window=odd_window, center=True).mean(),
         }

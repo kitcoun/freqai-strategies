@@ -41,11 +41,11 @@ class RLAgentStrategy(IStrategy):
     #         "fit_live_predictions_candles", 100
     #     )
     #     return [
-    #         {"method": "CooldownPeriod", "stop_duration_candles": 2},
+    #         {"method": "CooldownPeriod", "stop_duration_candles": 4},
     #         {
     #             "method": "MaxDrawdown",
     #             "lookback_period_candles": fit_live_predictions_candles,
-    #             "trade_limit": self.config.get("max_open_trades"),
+    #             "trade_limit": 2 * self.config.get("max_open_trades"),
     #             "stop_duration_candles": fit_live_predictions_candles,
     #             "max_allowed_drawdown": 0.2,
     #         },
