@@ -405,13 +405,7 @@ class QuickAdapterV3(IStrategy):
         if isinstance(label_natr_ratio, float) and np.isfinite(label_natr_ratio):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
-    def get_entry_natr_ratio(self, pair: str, percent: float) -> float:
-        return self.get_label_natr_ratio(pair) * percent
-
-    def get_stoploss_natr_ratio(self, pair: str, percent: float) -> float:
-        return self.get_label_natr_ratio(pair) * percent
-
-    def get_take_profit_natr_ratio(self, pair: str, percent: float) -> float:
+    def get_label_natr_ratio_percent(self, pair: str, percent: float) -> float:
         return self.get_label_natr_ratio(pair) * percent
 
     @staticmethod
@@ -715,7 +709,7 @@ class QuickAdapterV3(IStrategy):
         return (
             current_rate
             * (trade_natr / 100.0)
-            * self.get_stoploss_natr_ratio(trade.pair, natr_ratio_percent)
+            * self.get_label_natr_ratio_percent(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_stoploss_log_factor(
                 trade_duration_candles + int(round(trade_exit_stage ** (1.5)))
             )
@@ -738,7 +732,7 @@ class QuickAdapterV3(IStrategy):
         return (
             trade.open_rate
             * (trade_natr / 100.0)
-            * self.get_take_profit_natr_ratio(trade.pair, natr_ratio_percent)
+            * self.get_label_natr_ratio_percent(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_take_profit_log_factor(trade_duration_candles)
         )
 
@@ -978,7 +972,9 @@ class QuickAdapterV3(IStrategy):
             last_candle_natr_quantile = 0.5
         unfavorable_deviation_min_natr_ratio_percent = 0.0025
         unfavorable_deviation_max_natr_ratio_percent = 0.005
-        unfavorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
+        unfavorable_deviation = (
+            last_candle_natr / 100.0
+        ) * self.get_label_natr_ratio_percent(
             pair,
             unfavorable_deviation_min_natr_ratio_percent
             + (
@@ -989,7 +985,9 @@ class QuickAdapterV3(IStrategy):
         )
         favorable_deviation_min_natr_ratio_percent = 0.01
         favorable_deviation_max_natr_ratio_percent = 0.025
-        favorable_deviation = (last_candle_natr / 100.0) * self.get_entry_natr_ratio(
+        favorable_deviation = (
+            last_candle_natr / 100.0
+        ) * self.get_label_natr_ratio_percent(
             pair,
             favorable_deviation_min_natr_ratio_percent
             + (
