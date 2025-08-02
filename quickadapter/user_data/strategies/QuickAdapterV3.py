@@ -406,6 +406,10 @@ class QuickAdapterV3(IStrategy):
             self._label_params[pair]["label_natr_ratio"] = label_natr_ratio
 
     def get_label_natr_ratio_percent(self, pair: str, percent: float) -> float:
+        if not isinstance(percent, float) or not (0.0 <= percent <= 1.0):
+            raise ValueError(
+                f"Invalid percent value: {percent}. It should be a float between 0 and 1"
+            )
         return self.get_label_natr_ratio(pair) * percent
 
     @staticmethod

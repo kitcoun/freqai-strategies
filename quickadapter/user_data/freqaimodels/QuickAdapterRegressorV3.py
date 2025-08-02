@@ -572,6 +572,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def soft_extremum_min_max(
         pred_extrema: pd.Series, alpha: float
     ) -> tuple[float, float]:
+        if alpha < 0:
+            raise ValueError("alpha must be non-negative")
         pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
             pred_extrema
         )
@@ -1791,11 +1793,11 @@ def soft_extremum(series: pd.Series, alpha: float) -> float:
         return np.nan
     if np.isclose(alpha, 0):
         return np.mean(np_array)
-    scaled_data = alpha * np_array
-    max_scaled_data = np.max(scaled_data)
-    if np.isinf(max_scaled_data):
-        return np_array[np.argmax(scaled_data)]
-    shifted_exponentials = np.exp(scaled_data - max_scaled_data)
+    scaled_np_array = alpha * np_array
+    max_scaled_np_array = np.max(scaled_np_array)
+    if np.isinf(max_scaled_np_array):
+        return np_array[np.argmax(scaled_np_array)]
+    shifted_exponentials = np.exp(scaled_np_array - max_scaled_np_array)
     numerator = np.sum(np_array * shifted_exponentials)
     denominator = np.sum(shifted_exponentials)
     if denominator == 0:
