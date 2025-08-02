@@ -69,7 +69,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "timeout": 7200,
             "label_candles_step": 2,
             "train_candles_step": 10,
-            "expansion_factor": 0.4,
+            "expansion_ratio": 0.4,
             "seed": 1,
         }
         return {
@@ -297,7 +297,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     test_weights,
                     self.get_optuna_params(dk.pair, "hp"),
                     model_training_parameters,
-                    self._optuna_config.get("expansion_factor"),
+                    self._optuna_config.get("expansion_ratio"),
                 ),
                 direction=optuna.study.StudyDirection.MINIMIZE,
             )
@@ -530,8 +530,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         thresholds_smoothing = str(
             self.freqai_info.get("prediction_thresholds_smoothing", "mean")
         )
-        thresholds_smoothing_methods = {
-            "soft_extremum",
+        skimage_thresholds_smoothing_methods = {
             "isodata",
             "li",
             "mean",
@@ -540,14 +539,17 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "triangle",
             "yen",
         }
+        thresholds_smoothing_methods = skimage_thresholds_smoothing_methods.union(
+            {"soft_extremum"}
+        )
         if thresholds_smoothing == "soft_extremum":
             thresholds_alpha = float(
-                self.freqai_info.get("prediction_thresholds_alpha", 10.0)
+                self.freqai_info.get("prediction_thresholds_alpha", 12.0)
             )
             return QuickAdapterRegressorV3.soft_extremum_min_max(
                 pred_extrema, thresholds_alpha
             )
-        elif thresholds_smoothing in thresholds_smoothing_methods:
+        elif thresholds_smoothing in skimage_thresholds_smoothing_methods:
             return QuickAdapterRegressorV3.skimage_min_max(
                 pred_extrema, thresholds_smoothing
             )
@@ -1310,7 +1312,7 @@ def get_optuna_study_model_parameters(
     trial: optuna.trial.Trial,
     regressor: str,
     model_training_best_parameters: dict[str, Any],
-    expansion_factor: float,
+    expansion_ratio: float,
 ) -> dict[str, Any]:
     if regressor not in regressors:
         raise ValueError(
@@ -1353,10 +1355,10 @@ def get_optuna_study_model_parameters(
                 continue
 
             if param in log_scaled_params:
-                new_min = center_value / (1 + expansion_factor)
-                new_max = center_value * (1 + expansion_factor)
+                new_min = center_value / (1 + expansion_ratio)
+                new_max = center_value * (1 + expansion_ratio)
             else:
-                margin = (default_max - default_min) * expansion_factor / 2
+                margin = (default_max - default_min) * expansion_ratio / 2
                 new_min = center_value - margin
                 new_max = center_value + margin
 
@@ -1447,10 +1449,10 @@ def hp_objective(
     test_weights: np.ndarray,
     model_training_best_parameters: dict[str, Any],
     model_training_parameters: dict[str, Any],
-    expansion_factor: float,
+    expansion_ratio: float,
 ) -> float:
     study_model_parameters = get_optuna_study_model_parameters(
-        trial, regressor, model_training_best_parameters, expansion_factor
+        trial, regressor, model_training_best_parameters, expansion_ratio
     )
     model_training_parameters = {**model_training_parameters, **study_model_parameters}
 
