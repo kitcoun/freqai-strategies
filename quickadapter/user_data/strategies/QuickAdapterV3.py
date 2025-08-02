@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.125"
+        return "3.3.126"
 
     timeframe = "5m"
 
@@ -143,13 +143,13 @@ class QuickAdapterV3(IStrategy):
                 "stop_duration_candles": fit_live_predictions_candles,
                 "max_allowed_drawdown": 0.2,
             },
-            {
-                "method": "StoplossGuard",
-                "lookback_period_candles": int(fit_live_predictions_candles / 2),
-                "trade_limit": 1,
-                "stop_duration_candles": int(fit_live_predictions_candles / 2),
-                "only_per_pair": True,
-            },
+            # {
+            #     "method": "StoplossGuard",
+            #     "lookback_period_candles": int(fit_live_predictions_candles / 2),
+            #     "trade_limit": 1,
+            #     "stop_duration_candles": int(fit_live_predictions_candles / 2),
+            #     "only_per_pair": True,
+            # },
         ]
 
     use_exit_signal = True
