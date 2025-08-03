@@ -309,7 +309,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     **optuna_hp_params,
                 }
 
-            self.optuna_optimize(
+            train_study = self.optuna_optimize(
                 pair=dk.pair,
                 namespace="train",
                 objective=lambda trial: train_objective(
@@ -330,20 +330,20 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
 
             optuna_train_params = self.get_optuna_params(dk.pair, "train")
-            if optuna_train_params:
-                value: float = optuna_train_params.get("value")
-                if isinstance(value, float) and np.isfinite(value):
-                    train_window = optuna_train_params.get("train_period_candles")
-                    if isinstance(train_window, int) and train_window > 0:
-                        X = X.iloc[-train_window:]
-                        y = y.iloc[-train_window:]
-                        train_weights = train_weights[-train_window:]
+            if optuna_train_params and self.optuna_params_valid(
+                dk.pair, "train", train_study
+            ):
+                train_period_candles = optuna_train_params.get("train_period_candles")
+                if isinstance(train_period_candles, int) and train_period_candles > 0:
+                    X = X.iloc[-train_period_candles:]
+                    y = y.iloc[-train_period_candles:]
+                    train_weights = train_weights[-train_period_candles:]
 
-                    test_window = optuna_train_params.get("test_period_candles")
-                    if isinstance(test_window, int) and test_window > 0:
-                        X_test = X_test.iloc[-test_window:]
-                        y_test = y_test.iloc[-test_window:]
-                        test_weights = test_weights[-test_window:]
+                test_period_candles = optuna_train_params.get("test_period_candles")
+                if isinstance(test_period_candles, int) and test_period_candles > 0:
+                    X_test = X_test.iloc[-test_period_candles:]
+                    y_test = y_test.iloc[-test_period_candles:]
+                    test_weights = test_weights[-test_period_candles:]
 
         eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
 
@@ -687,7 +687,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             trial
             for trial in study.best_trials
             if (
-                trial.values is not None
+                isinstance(trial.values, list)
                 and len(trial.values) == n_objectives
                 and all(
                     isinstance(value, (int, float)) and not np.isnan(value)
@@ -908,7 +908,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         objective: Callable[[optuna.trial.Trial], float],
         direction: Optional[optuna.study.StudyDirection] = None,
         directions: Optional[list[optuna.study.StudyDirection]] = None,
-    ) -> None:
+    ) -> Optional[optuna.study.Study]:
         is_study_single_objective = direction is not None and directions is None
         if not is_study_single_objective and len(directions) < 2:
             raise ValueError(
@@ -960,7 +960,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 return
             self.set_optuna_value(pair, namespace, study.best_value)
             self.set_optuna_params(pair, namespace, study.best_params)
-            study_results = {
+            study_best_results = {
                 "value": self.get_optuna_value(pair, namespace),
                 **self.get_optuna_params(pair, namespace),
             }
@@ -974,21 +974,26 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 return
             self.set_optuna_values(pair, namespace, best_trial.values)
             self.set_optuna_params(pair, namespace, best_trial.params)
-            study_results = {
+            study_best_results = {
                 "values": self.get_optuna_values(pair, namespace),
                 **self.get_optuna_params(pair, namespace),
             }
             metric_log_msg = (
                 f" using {self.ft_params.get('label_metric', 'seuclidean')} metric"
             )
+        if not self.optuna_params_valid(pair, namespace, study):
+            logger.warning(
+                f"Optuna {pair} {namespace} {objective_type} objective best params found has invalid optimization target value(s)"
+            )
         logger.info(
             f"Optuna {pair} {namespace} {objective_type} objective done{metric_log_msg} ({time_spent:.2f} secs)"
         )
-        for key, value in study_results.items():
+        for key, value in study_best_results.items():
             logger.info(
                 f"Optuna {pair} {namespace} {objective_type} objective hyperopt | {key:>20s} : {value}"
             )
         self.optuna_save_best_params(pair, namespace)
+        return study
 
     def optuna_storage(self, pair: str) -> optuna.storages.BaseStorage:
         storage_dir = self.full_path
@@ -1057,16 +1062,32 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
             return None
 
+    def optuna_params_valid(
+        self, pair: str, namespace: str, study: Optional[optuna.study.Study]
+    ) -> bool:
+        if not study:
+            return False
+        n_objectives = len(study.directions)
+        if n_objectives > 1:
+            best_values = self.get_optuna_values(pair, namespace)
+            return (
+                isinstance(best_values, list)
+                and len(best_values) == n_objectives
+                and all(
+                    isinstance(value, (int, float)) and np.isfinite(value)
+                    for value in best_values
+                )
+            )
+        else:
+            best_value = self.get_optuna_value(pair, namespace)
+            return isinstance(best_value, (int, float)) and np.isfinite(best_value)
+
     def optuna_enqueue_previous_best_params(
-        self, pair: str, namespace: str, study: optuna.study.Study
+        self, pair: str, namespace: str, study: Optional[optuna.study.Study]
     ) -> None:
         best_params = self.get_optuna_params(pair, namespace)
-        if best_params:
+        if best_params and self.optuna_params_valid(pair, namespace, study):
             study.enqueue_trial(best_params)
-        else:
-            best_params = self.optuna_load_best_params(pair, namespace)
-            if best_params:
-                study.enqueue_trial(best_params)
 
     def optuna_save_best_params(self, pair: str, namespace: str) -> None:
         best_params_path = Path(
@@ -1114,7 +1135,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     @staticmethod
     def optuna_study_has_best_trial(study: Optional[optuna.study.Study]) -> bool:
-        if study is None:
+        if not study:
             return False
         try:
             _ = study.best_trial
@@ -1124,7 +1145,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     @staticmethod
     def optuna_study_has_best_trials(study: Optional[optuna.study.Study]) -> bool:
-        if study is None:
+        if not study:
             return False
         try:
             _ = study.best_trials
