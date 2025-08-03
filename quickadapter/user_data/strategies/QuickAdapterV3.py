@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.129"
+        return "3.3.130"
 
     timeframe = "5m"
 
@@ -879,14 +879,14 @@ class QuickAdapterV3(IStrategy):
     def weighted_close(series: Series) -> float:
         return (series.get("high") + series.get("low") + 2 * series.get("close")) / 4.0
 
-    def calculate_deviation(
+    def calculate_current_deviation(
         self,
         pair: str,
         df: DataFrame,
-        min_deviation: float,
-        max_deviation: float,
+        min_natr_ratio_percent: float,
+        max_natr_ratio_percent: float,
         interpolation_direction: Literal["direct", "inverse"] = "direct",
-    ) -> float:
+    ) -> Optional[float]:
         label_natr_values = df.get("natr_label_period_candles").to_numpy()
         last_label_natr_value = label_natr_values[-1]
         label_period_candles = self.get_label_period_candles(pair)
@@ -897,22 +897,48 @@ class QuickAdapterV3(IStrategy):
             last_label_natr_value_quantile = 0.5
         if interpolation_direction == "direct":
             natr_ratio_percent = (
-                min_deviation
-                + (max_deviation - min_deviation) * last_label_natr_value_quantile
+                min_natr_ratio_percent
+                + (max_natr_ratio_percent - min_natr_ratio_percent)
+                * last_label_natr_value_quantile
             )
         elif interpolation_direction == "inverse":
             natr_ratio_percent = (
-                max_deviation
-                - (max_deviation - min_deviation) * last_label_natr_value_quantile
+                max_natr_ratio_percent
+                - (max_natr_ratio_percent - min_natr_ratio_percent)
+                * last_label_natr_value_quantile
             )
         else:
             raise ValueError(
-                f"Invalid interpolation_direction: {interpolation_direction}. Expected 'direct' or 'inverse'."
+                f"Invalid interpolation_direction: {interpolation_direction}. Expected 'direct' or 'inverse'"
             )
-        deviation = (last_label_natr_value / 100.0) * self.get_label_natr_ratio_percent(
+        return (last_label_natr_value / 100.0) * self.get_label_natr_ratio_percent(
             pair, natr_ratio_percent
         )
-        return deviation
+
+    def calculate_current_threshold(
+        self, side: str, last_candle: Series, deviation: float
+    ) -> float:
+        last_candle_close = last_candle.get("close")
+        last_candle_open = last_candle.get("open")
+        is_last_candle_bullish = last_candle_close > last_candle_open
+        is_last_candle_bearish = last_candle_close < last_candle_open
+
+        if side == "long":
+            base_price = (
+                QuickAdapterV3.weighted_close(last_candle)
+                if is_last_candle_bearish
+                else last_candle_close
+            )
+            return base_price * (1 + deviation)
+        elif side == "short":
+            base_price = (
+                QuickAdapterV3.weighted_close(last_candle)
+                if is_last_candle_bullish
+                else last_candle_close
+            )
+            return base_price * (1 - deviation)
+
+        raise ValueError(f"Invalid side: {side}. Expected 'long' or 'short'")
 
     def custom_exit(
         self,
@@ -942,20 +968,22 @@ class QuickAdapterV3(IStrategy):
                 trade.set_custom_data("last_outlier_date", last_candle_date)
 
         entry_tag = trade.enter_tag
-        last_candle_weighted_close = QuickAdapterV3.weighted_close(last_candle)
-        deviation = self.calculate_deviation(
+        current_deviation = self.calculate_current_deviation(
             pair,
             df,
-            min_deviation=0.01,
-            max_deviation=0.05,
+            min_natr_ratio_percent=0.01,
+            max_natr_ratio_percent=0.1,
             interpolation_direction="direct",
         )
+        if isna(current_deviation):
+            return None
         if (
             entry_tag == "short"
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) < last_candle.get("minima_threshold")
-            and current_rate > last_candle_weighted_close * (1 + deviation)
+            and current_rate
+            > self.calculate_current_threshold("long", last_candle, current_deviation)
         ):
             return "minima_detected_short"
         if (
@@ -963,7 +991,8 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) > last_candle.get("maxima_threshold")
-            and current_rate < last_candle_weighted_close * (1 - deviation)
+            and current_rate
+            < self.calculate_current_threshold("short", last_candle, current_deviation)
         ):
             return "maxima_detected_long"
 
@@ -1022,27 +1051,24 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return False
         last_candle = df.iloc[-1]
-        last_candle_weighted_close = QuickAdapterV3.weighted_close(last_candle)
-        deviation = self.calculate_deviation(
+        current_deviation = self.calculate_current_deviation(
             pair,
             df,
-            min_deviation=0.01,
-            max_deviation=0.05,
+            min_natr_ratio_percent=0.01,
+            max_natr_ratio_percent=0.1,
             interpolation_direction="direct",
         )
-        threshold = 0.0
-        is_long = side == "long"
-        is_short = side == "short"
-        if is_long:
-            threshold = last_candle_weighted_close * (1 + deviation)
-            if rate > threshold:
-                return True
-        elif is_short:
-            threshold = last_candle_weighted_close * (1 - deviation)
-            if rate < threshold:
-                return True
+        if isna(current_deviation):
+            return False
+        current_threshold = self.calculate_current_threshold(
+            side, last_candle, current_deviation
+        )
+        if (side == "long" and rate > current_threshold) or (
+            side == "short" and rate < current_threshold
+        ):
+            return True
         logger.info(
-            f"User denied {side} entry for {pair}: rate {rate} did not break threshold {threshold}"
+            f"User denied {side} entry for {pair}: rate {rate} did not break threshold {current_threshold}"
         )
         return False
 
