@@ -915,8 +915,9 @@ class QuickAdapterV3(IStrategy):
             pair, natr_ratio_percent
         )
 
+    @staticmethod
     def calculate_current_threshold(
-        self, side: str, last_candle: Series, deviation: float
+        side: str, last_candle: Series, deviation: float
     ) -> float:
         last_candle_close = last_candle.get("close")
         last_candle_open = last_candle.get("open")
@@ -983,7 +984,9 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) < last_candle.get("minima_threshold")
             and current_rate
-            > self.calculate_current_threshold("long", last_candle, current_deviation)
+            > QuickAdapterV3.calculate_current_threshold(
+                "long", last_candle, current_deviation
+            )
         ):
             return "minima_detected_short"
         if (
@@ -992,7 +995,9 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) > last_candle.get("maxima_threshold")
             and current_rate
-            < self.calculate_current_threshold("short", last_candle, current_deviation)
+            < QuickAdapterV3.calculate_current_threshold(
+                "short", last_candle, current_deviation
+            )
         ):
             return "maxima_detected_long"
 
@@ -1060,7 +1065,7 @@ class QuickAdapterV3(IStrategy):
         )
         if isna(current_deviation):
             return False
-        current_threshold = self.calculate_current_threshold(
+        current_threshold = QuickAdapterV3.calculate_current_threshold(
             side, last_candle, current_deviation
         )
         if (side == "long" and rate > current_threshold) or (
