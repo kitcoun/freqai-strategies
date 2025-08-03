@@ -37,8 +37,24 @@ class RLAgentStrategy(IStrategy):
 
     # @cached_property
     # def protections(self) -> list[dict[str, Any]]:
-    #     fit_live_predictions_candles = self.freqai_info.get(
-    #         "fit_live_predictions_candles", 100
+    #     fit_live_predictions_candles = int(
+    #         self.freqai_info.get("fit_live_predictions_candles", 100)
+    #     )
+    #     estimated_trade_duration_candles = int(
+    #         self.config.get("estimated_trade_duration_candles", 36)
+    #     )
+    #     stoploss_guard_lookback_period_candles = int(fit_live_predictions_candles / 2)
+    #     stoploss_guard_trade_limit = max(
+    #         1,
+    #         int(
+    #             round(
+    #                 (
+    #                     stoploss_guard_lookback_period_candles
+    #                     / estimated_trade_duration_candles
+    #                 )
+    #                 * 0.75
+    #             )
+    #         ),
     #     )
     #     return [
     #         {"method": "CooldownPeriod", "stop_duration_candles": 4},
@@ -51,9 +67,9 @@ class RLAgentStrategy(IStrategy):
     #         },
     #         {
     #             "method": "StoplossGuard",
-    #             "lookback_period_candles": int(fit_live_predictions_candles / 2),
-    #             "trade_limit": 1,
-    #             "stop_duration_candles": int(fit_live_predictions_candles / 2),
+    #             "lookback_period_candles": stoploss_guard_lookback_period_candles,
+    #             "trade_limit": stoploss_guard_trade_limit,
+    #             "stop_duration_candles": stoploss_guard_lookback_period_candles,
     #             "only_per_pair": True,
     #         },
     #     ]

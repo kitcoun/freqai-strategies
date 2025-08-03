@@ -30,7 +30,7 @@ def get_odd_window(window: int) -> int:
 
 
 @lru_cache(maxsize=8)
-def get_gaussian_std_from_window(window: int) -> float:
+def get_gaussian_std(window: int) -> float:
     # Assuming window = 6 * std + 1 => std = (window - 1) / 6
     return (window - 1) / 6.0 if window > 1 else 0.5
 

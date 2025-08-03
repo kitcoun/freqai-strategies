@@ -31,7 +31,7 @@ from Utils import (
     top_change_percent,
     get_distance,
     get_odd_window,
-    get_gaussian_std_from_window,
+    get_gaussian_std,
     zlema,
 )
 
@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.127"
+        return "3.3.128"
 
     timeframe = "5m"
 
@@ -130,8 +130,24 @@ class QuickAdapterV3(IStrategy):
 
     @cached_property
     def protections(self) -> list[dict[str, Any]]:
-        fit_live_predictions_candles = self.freqai_info.get(
-            "fit_live_predictions_candles", 100
+        fit_live_predictions_candles = int(
+            self.freqai_info.get("fit_live_predictions_candles", 100)
+        )
+        estimated_trade_duration_candles = int(
+            self.config.get("estimated_trade_duration_candles", 36)
+        )
+        stoploss_guard_lookback_period_candles = int(fit_live_predictions_candles / 2)
+        stoploss_guard_trade_limit = max(
+            1,
+            int(
+                round(
+                    (
+                        stoploss_guard_lookback_period_candles
+                        / estimated_trade_duration_candles
+                    )
+                    * 0.75
+                )
+            ),
         )
         return [
             {"method": "CooldownPeriod", "stop_duration_candles": 4},
@@ -142,13 +158,13 @@ class QuickAdapterV3(IStrategy):
                 "stop_duration_candles": fit_live_predictions_candles,
                 "max_allowed_drawdown": 0.2,
             },
-            # {
-            #     "method": "StoplossGuard",
-            #     "lookback_period_candles": int(fit_live_predictions_candles / 2),
-            #     "trade_limit": 1,
-            #     "stop_duration_candles": int(fit_live_predictions_candles / 2),
-            #     "only_per_pair": True,
-            # },
+            {
+                "method": "StoplossGuard",
+                "lookback_period_candles": stoploss_guard_lookback_period_candles,
+                "trade_limit": stoploss_guard_trade_limit,
+                "stop_duration_candles": stoploss_guard_lookback_period_candles,
+                "only_per_pair": True,
+            },
         ]
 
     use_exit_signal = True
@@ -1035,7 +1051,7 @@ class QuickAdapterV3(IStrategy):
         window: int,
     ) -> Series:
         extrema_smoothing = str(self.freqai_info.get("extrema_smoothing", "gaussian"))
-        std = get_gaussian_std_from_window(window)
+        std = get_gaussian_std(window)
         extrema_smoothing_beta = float(
             self.freqai_info.get("extrema_smoothing_beta", 8.0)
         )
