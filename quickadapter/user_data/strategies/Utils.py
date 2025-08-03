@@ -64,10 +64,10 @@ def zero_phase(
         return series
     if len(series) < window:
         raise ValueError("Series length must be greater than or equal to window size")
-    series_values = series.to_numpy()
+    values = series.to_numpy()
     b = _calculate_coeffs(window=window, win_type=win_type, std=std, beta=beta)
     a = 1.0
-    filtered_values = sp.signal.filtfilt(b, a, series_values)
+    filtered_values = sp.signal.filtfilt(b, a, values)
     return pd.Series(filtered_values, index=series.index)
 
 

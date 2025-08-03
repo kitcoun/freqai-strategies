@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 import talib.abstract as ta
 from pandas import DataFrame, Series, isna
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
 from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
 from freqtrade.strategy.interface import IStrategy
 from freqtrade.strategy import stoploss_from_absolute
@@ -817,7 +817,7 @@ class QuickAdapterV3(IStrategy):
         )
         previous_take_profit_price = trade.get_custom_data("take_profit_price")
         if previous_take_profit_price != take_profit_price:
-            trade.set_custom_data(key="take_profit_price", value=take_profit_price)
+            trade.set_custom_data("take_profit_price", take_profit_price)
 
         return take_profit_price
 
@@ -867,13 +867,52 @@ class QuickAdapterV3(IStrategy):
             )
         if trade_partial_exit:
             trade_partial_stake_amount = trade.stake_amount * stake_percent
-            trade.set_custom_data(key="exit_stage", value=exit_stage + 1)
+            trade.set_custom_data("exit_stage", exit_stage + 1)
             return (
                 -trade_partial_stake_amount,
                 f"take_profit_{trade.trade_direction}_{exit_stage}",
             )
 
         return None
+
+    @staticmethod
+    def weighted_close(series: Series) -> float:
+        return (series.get("high") + series.get("low") + 2 * series.get("close")) / 4.0
+
+    def calculate_deviation(
+        self,
+        pair: str,
+        df: DataFrame,
+        min_deviation: float,
+        max_deviation: float,
+        interpolation_direction: Literal["direct", "inverse"] = "direct",
+    ) -> float:
+        label_natr_values = df.get("natr_label_period_candles").to_numpy()
+        last_label_natr_value = label_natr_values[-1]
+        label_period_candles = self.get_label_period_candles(pair)
+        last_label_natr_value_quantile = calculate_quantile(
+            label_natr_values[-label_period_candles:], last_label_natr_value
+        )
+        if isna(last_label_natr_value_quantile):
+            last_label_natr_value_quantile = 0.5
+        if interpolation_direction == "direct":
+            natr_ratio_percent = (
+                min_deviation
+                + (max_deviation - min_deviation) * last_label_natr_value_quantile
+            )
+        elif interpolation_direction == "inverse":
+            natr_ratio_percent = (
+                max_deviation
+                - (max_deviation - min_deviation) * last_label_natr_value_quantile
+            )
+        else:
+            raise ValueError(
+                f"Invalid interpolation_direction: {interpolation_direction}. Expected 'direct' or 'inverse'."
+            )
+        deviation = (last_label_natr_value / 100.0) * self.get_label_natr_ratio_percent(
+            pair, natr_ratio_percent
+        )
+        return deviation
 
     def custom_exit(
         self,
@@ -903,12 +942,20 @@ class QuickAdapterV3(IStrategy):
                 trade.set_custom_data("last_outlier_date", last_candle_date)
 
         entry_tag = trade.enter_tag
-
+        last_candle_weighted_close = QuickAdapterV3.weighted_close(last_candle)
+        deviation = self.calculate_deviation(
+            pair,
+            df,
+            min_deviation=0.01,
+            max_deviation=0.05,
+            interpolation_direction="direct",
+        )
         if (
             entry_tag == "short"
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) < last_candle.get("minima_threshold")
+            and current_rate > last_candle_weighted_close * (1 + deviation)
         ):
             return "minima_detected_short"
         if (
@@ -916,6 +963,7 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) > last_candle.get("maxima_threshold")
+            and current_rate < last_candle_weighted_close * (1 - deviation)
         ):
             return "maxima_detected_long"
 
@@ -942,7 +990,7 @@ class QuickAdapterV3(IStrategy):
             )
         if trade_exit:
             if exit_stage in self.partial_exit_stages:
-                trade.set_custom_data(key="exit_stage", value=final_exit_stage)
+                trade.set_custom_data("exit_stage", final_exit_stage)
             return f"take_profit_{trade.trade_direction}_{final_exit_stage}"
 
         return None
@@ -974,66 +1022,28 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return False
         last_candle = df.iloc[-1]
-        last_candle_weighted_close = (
-            last_candle.get("high")
-            + last_candle.get("low")
-            + 2 * last_candle.get("close")
-        ) / 4.0
-        last_candle_natr = last_candle.get("natr_label_period_candles")
-        if isna(last_candle_natr) or last_candle_natr < 0:
-            return False
-        natr_values = df.get("natr_label_period_candles").to_numpy()
-        label_period_candles = self.get_label_period_candles(pair)
-        last_candle_natr_quantile = calculate_quantile(
-            natr_values[-label_period_candles:], last_candle_natr
-        )
-        if isna(last_candle_natr_quantile):
-            last_candle_natr_quantile = 0.5
-        unfavorable_deviation_min_natr_ratio_percent = 0.001
-        unfavorable_deviation_max_natr_ratio_percent = 0.005
-        unfavorable_deviation = (
-            last_candle_natr / 100.0
-        ) * self.get_label_natr_ratio_percent(
+        last_candle_weighted_close = QuickAdapterV3.weighted_close(last_candle)
+        deviation = self.calculate_deviation(
             pair,
-            unfavorable_deviation_max_natr_ratio_percent
-            - (
-                unfavorable_deviation_max_natr_ratio_percent
-                - unfavorable_deviation_min_natr_ratio_percent
-            )
-            * last_candle_natr_quantile,
+            df,
+            min_deviation=0.01,
+            max_deviation=0.05,
+            interpolation_direction="direct",
         )
-        favorable_deviation_min_natr_ratio_percent = 0.01
-        favorable_deviation_max_natr_ratio_percent = 0.05
-        favorable_deviation = (
-            last_candle_natr / 100.0
-        ) * self.get_label_natr_ratio_percent(
-            pair,
-            favorable_deviation_max_natr_ratio_percent
-            - (
-                favorable_deviation_max_natr_ratio_percent
-                - favorable_deviation_min_natr_ratio_percent
-            )
-            * last_candle_natr_quantile,
+        threshold = 0.0
+        is_long = side == "long"
+        is_short = side == "short"
+        if is_long:
+            threshold = last_candle_weighted_close * (1 + deviation)
+            if rate > threshold:
+                return True
+        elif is_short:
+            threshold = last_candle_weighted_close * (1 - deviation)
+            if rate < threshold:
+                return True
+        logger.info(
+            f"User denied {side} entry for {pair}: rate {rate} did not break threshold {threshold}"
         )
-        lower_bound = 0
-        upper_bound = 0
-        if side == "long":
-            lower_bound = last_candle_weighted_close * (1 - favorable_deviation)
-            upper_bound = last_candle_weighted_close * (1 + unfavorable_deviation)
-        elif side == "short":
-            lower_bound = last_candle_weighted_close * (1 - unfavorable_deviation)
-            upper_bound = last_candle_weighted_close * (1 + favorable_deviation)
-        if lower_bound < 0:
-            logger.info(
-                f"User denied {side} entry for {pair}: calculated lower bound {lower_bound} is below zero"
-            )
-            return False
-        if lower_bound <= rate <= upper_bound:
-            return True
-        else:
-            logger.info(
-                f"User denied {side} entry for {pair}: rate {rate} outside bounds [{lower_bound}, {upper_bound}]"
-            )
         return False
 
     def is_short_allowed(self) -> bool:
