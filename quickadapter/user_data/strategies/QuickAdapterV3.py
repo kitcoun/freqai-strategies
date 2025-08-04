@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.131"
+        return "3.3.132"
 
     timeframe = "5m"
 
@@ -605,12 +605,13 @@ class QuickAdapterV3(IStrategy):
             quantile: float,
             min_weight: float = 0.0,
             max_weight: float = 1.0,
-            steepness: float = 1.5,
+            weighting_exponent: float = 1.5,
         ) -> float:
             normalized_distance_from_center = abs(quantile - 0.5) * 2.0
             return (
                 min_weight
-                + (max_weight - min_weight) * normalized_distance_from_center**steepness
+                + (max_weight - min_weight)
+                * normalized_distance_from_center**weighting_exponent
             )
 
         entry_weight = calculate_weight(entry_quantile)
@@ -886,6 +887,7 @@ class QuickAdapterV3(IStrategy):
         min_natr_ratio_percent: float,
         max_natr_ratio_percent: float,
         interpolation_direction: Literal["direct", "inverse"] = "direct",
+        quantile_exponent: float = 1.5,
     ) -> Optional[float]:
         label_natr_values = df.get("natr_label_period_candles").to_numpy()
         last_label_natr_value = label_natr_values[-1]
@@ -899,13 +901,13 @@ class QuickAdapterV3(IStrategy):
             natr_ratio_percent = (
                 min_natr_ratio_percent
                 + (max_natr_ratio_percent - min_natr_ratio_percent)
-                * last_label_natr_value_quantile
+                * last_label_natr_value_quantile**quantile_exponent
             )
         elif interpolation_direction == "inverse":
             natr_ratio_percent = (
                 max_natr_ratio_percent
                 - (max_natr_ratio_percent - min_natr_ratio_percent)
-                * last_label_natr_value_quantile
+                * last_label_natr_value_quantile**quantile_exponent
             )
         else:
             raise ValueError(
@@ -972,8 +974,8 @@ class QuickAdapterV3(IStrategy):
         current_deviation = self.calculate_current_deviation(
             pair,
             df,
-            min_natr_ratio_percent=0.01,
-            max_natr_ratio_percent=0.2,
+            min_natr_ratio_percent=0.0075,
+            max_natr_ratio_percent=0.125,
             interpolation_direction="direct",
         )
         if isna(current_deviation):
@@ -1059,8 +1061,8 @@ class QuickAdapterV3(IStrategy):
         current_deviation = self.calculate_current_deviation(
             pair,
             df,
-            min_natr_ratio_percent=0.01,
-            max_natr_ratio_percent=0.2,
+            min_natr_ratio_percent=0.0075,
+            max_natr_ratio_percent=0.125,
             interpolation_direction="direct",
         )
         if isna(current_deviation):
