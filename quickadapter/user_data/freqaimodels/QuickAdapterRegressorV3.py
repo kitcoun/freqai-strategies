@@ -910,7 +910,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         directions: Optional[list[optuna.study.StudyDirection]] = None,
     ) -> Optional[optuna.study.Study]:
         is_study_single_objective = direction is not None and directions is None
-        if not is_study_single_objective and len(directions) < 2:
+        if (
+            not is_study_single_objective
+            and isinstance(directions, list)
+            and len(directions) < 2
+        ):
             raise ValueError(
                 "Multi-objective study must have at least 2 directions specified"
             )
@@ -981,16 +985,16 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             metric_log_msg = (
                 f" using {self.ft_params.get('label_metric', 'seuclidean')} metric"
             )
-        if not self.optuna_params_valid(pair, namespace, study):
-            logger.warning(
-                f"Optuna {pair} {namespace} {objective_type} objective best params found has invalid optimization target value(s)"
-            )
         logger.info(
             f"Optuna {pair} {namespace} {objective_type} objective done{metric_log_msg} ({time_spent:.2f} secs)"
         )
         for key, value in study_best_results.items():
             logger.info(
                 f"Optuna {pair} {namespace} {objective_type} objective hyperopt | {key:>20s} : {value}"
+            )
+        if not self.optuna_params_valid(pair, namespace, study):
+            logger.warning(
+                f"Optuna {pair} {namespace} {objective_type} objective best params found has invalid optimization target value(s)"
             )
         self.optuna_save_best_params(pair, namespace)
         return study
@@ -1256,28 +1260,33 @@ def train_objective(
             test_length, fit_live_predictions_candles
         )
         logger.info(f"{test_length=}, {n_test_extrema=}, {min_test_extrema=}")
-    min_test_window: int = fit_live_predictions_candles * 2
-    if test_length < min_test_window:
-        logger.warning(f"Insufficient test data: {test_length} < {min_test_window}")
+    min_test_period_candles: int = fit_live_predictions_candles * 2
+    if test_length < min_test_period_candles:
+        logger.warning(
+            f"Insufficient test data: {test_length} < {min_test_period_candles}"
+        )
         test_ok = False
-    max_test_window: int = test_length
-    test_window: int = trial.suggest_int(
-        "test_period_candles", min_test_window, max_test_window, step=candles_step
+    max_test_period_candles: int = test_length
+    test_period_candles: int = trial.suggest_int(
+        "test_period_candles",
+        min_test_period_candles,
+        max_test_period_candles,
+        step=candles_step,
     )
-    X_test = X_test.iloc[-test_window:]
-    y_test = y_test.iloc[-test_window:]
+    X_test = X_test.iloc[-test_period_candles:]
+    y_test = y_test.iloc[-test_period_candles:]
     test_extrema = y_test.get(EXTREMA_COLUMN)
     n_test_extrema: int = calculate_n_extrema(test_extrema)
     min_test_extrema: int = calculate_min_extrema(
-        test_window, fit_live_predictions_candles
+        test_period_candles, fit_live_predictions_candles
     )
     if n_test_extrema < min_test_extrema:
         if debug:
             logger.warning(
-                f"Insufficient extrema in test data with {test_window=}: {n_test_extrema=} < {min_test_extrema=}"
+                f"Insufficient extrema in test data with {test_period_candles=}: {n_test_extrema=} < {min_test_extrema=}"
             )
         test_ok = False
-    test_weights = test_weights[-test_window:]
+    test_weights = test_weights[-test_period_candles:]
 
     train_ok = True
     train_length = len(X)
@@ -1288,28 +1297,35 @@ def train_objective(
             train_length, fit_live_predictions_candles
         )
         logger.info(f"{train_length=}, {n_train_extrema=}, {min_train_extrema=}")
-    min_train_window: int = min_test_window * int(round(1 / test_size - 1))
-    if train_length < min_train_window:
-        logger.warning(f"Insufficient train data: {train_length} < {min_train_window}")
-        train_ok = False
-    max_train_window: int = train_length
-    train_window: int = trial.suggest_int(
-        "train_period_candles", min_train_window, max_train_window, step=candles_step
+    min_train_period_candles: int = min_test_period_candles * int(
+        round(1 / test_size - 1)
     )
-    X = X.iloc[-train_window:]
-    y = y.iloc[-train_window:]
+    if train_length < min_train_period_candles:
+        logger.warning(
+            f"Insufficient train data: {train_length} < {min_train_period_candles}"
+        )
+        train_ok = False
+    max_train_period_candles: int = train_length
+    train_period_candles: int = trial.suggest_int(
+        "train_period_candles",
+        min_train_period_candles,
+        max_train_period_candles,
+        step=candles_step,
+    )
+    X = X.iloc[-train_period_candles:]
+    y = y.iloc[-train_period_candles:]
     train_extrema = y.get(EXTREMA_COLUMN)
     n_train_extrema: int = calculate_n_extrema(train_extrema)
     min_train_extrema: int = calculate_min_extrema(
-        train_window, fit_live_predictions_candles
+        train_period_candles, fit_live_predictions_candles
     )
     if n_train_extrema < min_train_extrema:
         if debug:
             logger.warning(
-                f"Insufficient extrema in train data with {train_window=}: {n_train_extrema=} < {min_train_extrema=}"
+                f"Insufficient extrema in train data with {train_period_candles=}: {n_train_extrema=} < {min_train_extrema=}"
             )
         train_ok = False
-    train_weights = train_weights[-train_window:]
+    train_weights = train_weights[-train_period_candles:]
 
     if not test_ok or not train_ok:
         return np.inf
