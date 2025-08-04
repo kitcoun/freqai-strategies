@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.132"
+        return "3.3.133"
 
     timeframe = "5m"
 
@@ -976,7 +976,7 @@ class QuickAdapterV3(IStrategy):
             pair,
             df,
             min_natr_ratio_percent=0.0075,
-            max_natr_ratio_percent=0.125,
+            max_natr_ratio_percent=0.075,
             interpolation_direction="direct",
         )
         if isna(current_deviation):
@@ -1063,7 +1063,7 @@ class QuickAdapterV3(IStrategy):
             pair,
             df,
             min_natr_ratio_percent=0.0075,
-            max_natr_ratio_percent=0.125,
+            max_natr_ratio_percent=0.075,
             interpolation_direction="direct",
         )
         if isna(current_deviation):
