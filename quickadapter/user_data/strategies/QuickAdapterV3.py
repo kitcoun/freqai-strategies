@@ -683,8 +683,9 @@ class QuickAdapterV3(IStrategy):
                 if trade_kama_natr_values.size > 0:
                     return trade_kama_natr_values[-1]
             except Exception as e:
-                logger.error(
-                    f"Failed to calculate KAMA for pair {pair}: {str(e)}", exc_info=True
+                logger.warning(
+                    f"Failed to calculate trade NATR KAMA for pair {pair}: {str(e)}. Falling back to last trade NATR value",
+                    exc_info=True,
                 )
         return label_natr.iloc[-1]
 

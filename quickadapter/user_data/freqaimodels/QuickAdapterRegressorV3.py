@@ -625,7 +625,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return values.mean()
         try:
             return threshold_func(values)
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                f"Failed to apply skimage threshold function {threshold_func.__name__} on series {series.name}: {str(e)}. Falling back to median",
+                exc_info=True,
+            )
             return np.median(values)
 
     def get_multi_objective_study_best_trial(
