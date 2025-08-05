@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.135"
+        return "3.3.136"
 
     timeframe = "5m"
 
@@ -232,7 +232,7 @@ class QuickAdapterV3(IStrategy):
                 )
             ),
         )
-        self._max_pnl_history_size = int(8 * 60 * 60 / process_throttle_secs)
+        self._max_pnl_history_size = int(12 * 60 * 60 / process_throttle_secs)
 
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict[str, Any], **kwargs
@@ -937,16 +937,16 @@ class QuickAdapterV3(IStrategy):
 
     def calculate_current_deviation(
         self,
-        pair: str,
         df: DataFrame,
+        pair: str,
         min_natr_ratio_percent: float,
         max_natr_ratio_percent: float,
         interpolation_direction: Literal["direct", "inverse"] = "direct",
         quantile_exponent: float = 1.5,
     ) -> Optional[float]:
         label_natr_values = df.get("natr_label_period_candles").to_numpy()
-        last_label_natr_value = label_natr_values[-1]
         label_period_candles = self.get_label_period_candles(pair)
+        last_label_natr_value = label_natr_values[-1]
         last_label_natr_value_quantile = calculate_quantile(
             label_natr_values[-label_period_candles:], last_label_natr_value
         )
@@ -998,8 +998,37 @@ class QuickAdapterV3(IStrategy):
 
         raise ValueError(f"Invalid side: {side}. Expected 'long' or 'short'")
 
-    def get_trade_pnl_momentum(self, trade: Trade):
+    def get_trade_pnl_momentum(
+        self,
+        df: DataFrame,
+        trade: Trade,
+        min_history_window_secs: int = 3600,
+        max_history_windows_secs: int = 43200,
+    ) -> tuple[float, float]:
         unrealized_pnl_history = QuickAdapterV3.get_trade_unrealized_pnl_history(trade)
+
+        label_natr_values = df.get("natr_label_period_candles").to_numpy()
+        label_period_candles = self.get_label_period_candles(trade.pair)
+        last_label_natr_value = label_natr_values[-1]
+        last_label_natr_value_quantile = calculate_quantile(
+            label_natr_values[-label_period_candles:], last_label_natr_value
+        )
+        if isna(last_label_natr_value_quantile):
+            last_label_natr_value_quantile = 0.5
+
+        history_window_secs = np.interp(
+            last_label_natr_value_quantile,
+            [0.0, 1.0],
+            [max_history_windows_secs, min_history_window_secs],
+        )
+
+        process_throttle_secs = self.config.get("internals", {}).get(
+            "process_throttle_secs", 5
+        )
+        history_size = int(history_window_secs / process_throttle_secs)
+
+        if len(unrealized_pnl_history) > history_size:
+            unrealized_pnl_history = unrealized_pnl_history[-history_size:]
 
         velocity = np.diff(unrealized_pnl_history)
         acceleration = np.diff(velocity)
@@ -1040,8 +1069,8 @@ class QuickAdapterV3(IStrategy):
 
         entry_tag = trade.enter_tag
         current_deviation = self.calculate_current_deviation(
-            pair,
             df,
+            pair,
             min_natr_ratio_percent=0.0095,
             max_natr_ratio_percent=0.085,
             interpolation_direction="direct",
@@ -1078,7 +1107,9 @@ class QuickAdapterV3(IStrategy):
         end_partial_exit_stage = list(self.partial_exit_stages.keys())[-1]
         final_exit_stage = end_partial_exit_stage + 1
 
-        trade_pnl_velocity, trade_pnl_acceleration = self.get_trade_pnl_momentum(trade)
+        trade_pnl_velocity, trade_pnl_acceleration = self.get_trade_pnl_momentum(
+            df, trade
+        )
         trade_pnl_momentum_decline = (
             trade_pnl_velocity <= np.finfo(float).eps
             and trade_pnl_acceleration < np.finfo(float).eps
