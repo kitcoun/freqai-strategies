@@ -1003,7 +1003,7 @@ class QuickAdapterV3(IStrategy):
         df: DataFrame,
         trade: Trade,
         min_history_window_secs: int = 3600,
-        max_history_windows_secs: int = 43200,
+        max_history_window_secs: int = 43200,
     ) -> tuple[float, float]:
         unrealized_pnl_history = QuickAdapterV3.get_trade_unrealized_pnl_history(trade)
 
@@ -1019,7 +1019,7 @@ class QuickAdapterV3(IStrategy):
         history_window_secs = np.interp(
             last_label_natr_value_quantile,
             [0.0, 1.0],
-            [max_history_windows_secs, min_history_window_secs],
+            [max_history_window_secs, min_history_window_secs],
         )
 
         process_throttle_secs = self.config.get("internals", {}).get(
