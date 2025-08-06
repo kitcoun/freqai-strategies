@@ -37,6 +37,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack, VecMoni
 
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 from freqtrade.freqai.RL.Base5ActionRLEnv import Actions, Base5ActionRLEnv, Positions
+from freqtrade.freqai.RL.BaseEnvironment import BaseEnvironment
 from freqtrade.freqai.RL.BaseReinforcementLearningModel import (
     BaseReinforcementLearningModel,
 )
