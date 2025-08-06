@@ -345,7 +345,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     y_test = y_test.iloc[-test_period_candles:]
                     test_weights = test_weights[-test_period_candles:]
 
-        eval_set, eval_weights = self.eval_set_and_weights(X_test, y_test, test_weights)
+        eval_set, eval_weights = QuickAdapterRegressorV3.eval_set_and_weights(
+            X_test,
+            y_test,
+            test_weights,
+            self.data_split_parameters.get("test_size", TEST_SIZE),
+        )
 
         model = fit_regressor(
             regressor=str(self.freqai_info.get("regressor", "xgboost")),
@@ -435,7 +440,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 )
                 warmed_up = False
 
-        pred_df_full = (
+        pred_df = (
             self.dd.historic_predictions[pair]
             .iloc[-fit_live_predictions_candles:]
             .reset_index(drop=True)
@@ -446,7 +451,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             dk.data["extra_returns_per_train"][MAXIMA_THRESHOLD_COLUMN] = 2
         else:
             min_pred, max_pred = self.min_max_pred(
-                pred_df_full,
+                pred_df,
                 fit_live_predictions_candles,
                 self.get_optuna_params(pair, "label").get("label_period_candles"),
             )
@@ -455,16 +460,16 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         dk.data["labels_mean"], dk.data["labels_std"] = {}, {}
         for label in dk.label_list + dk.unique_class_list:
-            pred_df_full_label = pred_df_full.get(label)
-            if pred_df_full_label is None or pred_df_full_label.dtype == object:
+            pred_df_label = pred_df.get(label)
+            if pred_df_label is None or pred_df_label.dtype == object:
                 continue
             if not warmed_up:
                 f = [0, 0]
             else:
-                f = sp.stats.norm.fit(pred_df_full_label)
+                f = sp.stats.norm.fit(pred_df_label)
             dk.data["labels_mean"][label], dk.data["labels_std"][label] = f[0], f[1]
 
-        di_values = pred_df_full.get("DI_values")
+        di_values = pred_df.get("DI_values")
 
         # fit the DI_threshold
         if not warmed_up:
@@ -499,12 +504,16 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             pair, "train"
         )
 
+    @staticmethod
     def eval_set_and_weights(
-        self, X_test: pd.DataFrame, y_test: pd.DataFrame, test_weights: np.ndarray
+        X_test: pd.DataFrame,
+        y_test: pd.DataFrame,
+        test_weights: np.ndarray,
+        test_size: float,
     ) -> tuple[
         Optional[list[tuple[pd.DataFrame, pd.DataFrame]]], Optional[list[np.ndarray]]
     ]:
-        if self.data_split_parameters.get("test_size", TEST_SIZE) == 0:
+        if test_size == 0:
             eval_set = None
             eval_weights = None
         else:

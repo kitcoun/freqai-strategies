@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.136"
+        return "3.3.137"
 
     timeframe = "5m"
 
@@ -835,7 +835,7 @@ class QuickAdapterV3(IStrategy):
             else None
         )
         if previous_take_profit_price != take_profit_price:
-            QuickAdapterV3.append_trade_take_profit_price(trade, take_profit_price)
+            self.append_trade_take_profit_price(trade, take_profit_price)
 
         if exit_stage not in self.partial_exit_stages:
             if not trade_take_profit_price_history:
@@ -872,8 +872,9 @@ class QuickAdapterV3(IStrategy):
             history["unrealized_pnl"] = pnl_history[-self._max_pnl_history_size :]
         trade.set_custom_data("history", history)
 
-    @staticmethod
-    def append_trade_take_profit_price(trade: Trade, take_profit_price: float) -> None:
+    def append_trade_take_profit_price(
+        self, trade: Trade, take_profit_price: float
+    ) -> None:
         history = QuickAdapterV3._get_trade_history(trade)
         history.setdefault("take_profit_price", []).append(take_profit_price)
         trade.set_custom_data("history", history)
@@ -935,7 +936,7 @@ class QuickAdapterV3(IStrategy):
     def weighted_close(series: Series) -> float:
         return (series.get("high") + series.get("low") + 2 * series.get("close")) / 4.0
 
-    def calculate_current_deviation(
+    def _calculate_current_deviation(
         self,
         df: DataFrame,
         pair: str,
@@ -972,10 +973,18 @@ class QuickAdapterV3(IStrategy):
             pair, natr_ratio_percent
         )
 
-    @staticmethod
-    def calculate_current_threshold(
-        side: str, last_candle: Series, deviation: float
-    ) -> float:
+    def calculate_current_threshold(self, df: DataFrame, pair: str, side: str) -> float:
+        current_deviation = self._calculate_current_deviation(
+            df,
+            pair,
+            min_natr_ratio_percent=0.0095,
+            max_natr_ratio_percent=0.095,
+            interpolation_direction="direct",
+        )
+        if isna(current_deviation):
+            return np.inf if side == "short" else -np.inf
+
+        last_candle = df.iloc[-1]
         last_candle_close = last_candle.get("close")
         last_candle_open = last_candle.get("open")
         is_last_candle_bullish = last_candle_close > last_candle_open
@@ -987,14 +996,14 @@ class QuickAdapterV3(IStrategy):
                 if is_last_candle_bearish
                 else last_candle_close
             )
-            return base_price * (1 + deviation)
+            return base_price * (1 + current_deviation)
         elif side == "short":
             base_price = (
                 QuickAdapterV3.weighted_close(last_candle)
                 if is_last_candle_bullish
                 else last_candle_close
             )
-            return base_price * (1 - deviation)
+            return base_price * (1 - current_deviation)
 
         raise ValueError(f"Invalid side: {side}. Expected 'long' or 'short'")
 
@@ -1068,24 +1077,12 @@ class QuickAdapterV3(IStrategy):
                 trade.set_custom_data("last_outlier_date", last_candle_date)
 
         entry_tag = trade.enter_tag
-        current_deviation = self.calculate_current_deviation(
-            df,
-            pair,
-            min_natr_ratio_percent=0.0095,
-            max_natr_ratio_percent=0.085,
-            interpolation_direction="direct",
-        )
-        if isna(current_deviation):
-            return None
         if (
             entry_tag == "short"
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) < last_candle.get("minima_threshold")
-            and current_rate
-            > QuickAdapterV3.calculate_current_threshold(
-                "long", last_candle, current_deviation
-            )
+            and current_rate > self.calculate_current_threshold(df, pair, "long")
         ):
             return "minima_detected_short"
         if (
@@ -1093,10 +1090,7 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) > last_candle.get("maxima_threshold")
-            and current_rate
-            < QuickAdapterV3.calculate_current_threshold(
-                "short", last_candle, current_deviation
-            )
+            and current_rate < self.calculate_current_threshold(df, pair, "short")
         ):
             return "maxima_detected_long"
 
@@ -1164,19 +1158,7 @@ class QuickAdapterV3(IStrategy):
         )
         if df.empty:
             return False
-        last_candle = df.iloc[-1]
-        current_deviation = self.calculate_current_deviation(
-            pair,
-            df,
-            min_natr_ratio_percent=0.0095,
-            max_natr_ratio_percent=0.085,
-            interpolation_direction="direct",
-        )
-        if isna(current_deviation):
-            return False
-        current_threshold = QuickAdapterV3.calculate_current_threshold(
-            side, last_candle, current_deviation
-        )
+        current_threshold = self.calculate_current_threshold(df, pair, side)
         if (side == "long" and rate > current_threshold) or (
             side == "short" and rate < current_threshold
         ):
