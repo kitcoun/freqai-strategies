@@ -13,7 +13,6 @@ import talib.abstract as ta
 
 from technical import qtpylib
 
-
 T = TypeVar("T", pd.Series, float)
 
 
@@ -631,7 +630,7 @@ def zigzag(
 regressors = {"xgboost", "lightgbm"}
 
 
-def get_callbacks(trial: optuna.trial.Trial, regressor: str) -> list[Callable]:
+def get_optuna_callbacks(trial: optuna.trial.Trial, regressor: str) -> list[Callable]:
     if regressor == "xgboost":
         callbacks = [
             optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")

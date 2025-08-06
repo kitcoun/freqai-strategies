@@ -7,7 +7,6 @@ from pandas import DataFrame
 
 from freqtrade.strategy import IStrategy
 
-
 logger = logging.getLogger(__name__)
 
 ACTION_COLUMN = "&-action"

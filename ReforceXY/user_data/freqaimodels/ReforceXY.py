@@ -43,7 +43,6 @@ from freqtrade.freqai.RL.BaseReinforcementLearningModel import (
 from freqtrade.freqai.tensorboard.TensorboardCallback import TensorboardCallback
 from freqtrade.strategy import timeframe_to_minutes
 
-
 matplotlib.use("Agg")
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)

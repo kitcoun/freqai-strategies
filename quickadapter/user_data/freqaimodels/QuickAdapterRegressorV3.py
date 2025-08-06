@@ -21,7 +21,7 @@ from Utils import (
     calculate_min_extrema,
     calculate_n_extrema,
     fit_regressor,
-    get_callbacks,
+    get_optuna_callbacks,
     get_optuna_study_model_parameters,
     largest_divisor,
     round_to_nearest_int,
@@ -1279,7 +1279,7 @@ def train_objective(
         eval_set=[(X_test, y_test)],
         eval_weights=[test_weights],
         model_training_parameters=model_training_parameters,
-        callbacks=get_callbacks(trial, regressor),
+        callbacks=get_optuna_callbacks(trial, regressor),
     )
     y_pred = model.predict(X_test)
 
@@ -1314,7 +1314,7 @@ def hp_objective(
         eval_set=[(X_test, y_test)],
         eval_weights=[test_weights],
         model_training_parameters=model_training_parameters,
-        callbacks=get_callbacks(trial, regressor),
+        callbacks=get_optuna_callbacks(trial, regressor),
     )
     y_pred = model.predict(X_test)
 
