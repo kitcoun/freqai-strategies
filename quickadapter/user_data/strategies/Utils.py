@@ -1,12 +1,18 @@
+import copy
+import math
 from enum import IntEnum
 from functools import lru_cache
 from statistics import median
+from typing import Any, Callable, Literal, Optional, TypeVar
+
 import numpy as np
+import optuna
 import pandas as pd
 import scipy as sp
 import talib.abstract as ta
-from typing import Callable, Literal, TypeVar
+
 from technical import qtpylib
+
 
 T = TypeVar("T", pd.Series, float)
 
@@ -71,10 +77,15 @@ def zero_phase(
     return pd.Series(filtered_values, index=series.index)
 
 
-def calculate_n_extrema(extrema: pd.Series) -> int:
-    return (
-        sp.signal.find_peaks(-extrema)[0].size + sp.signal.find_peaks(extrema)[0].size
-    )
+@lru_cache(maxsize=128)
+def calculate_min_extrema(
+    size: int, fit_live_predictions_candles: int, min_extrema: int = 4
+) -> int:
+    return int(round(size / fit_live_predictions_candles) * min_extrema)
+
+
+def calculate_n_extrema(series: pd.Series) -> int:
+    return sp.signal.find_peaks(-series)[0].size + sp.signal.find_peaks(series)[0].size
 
 
 def top_change_percent(dataframe: pd.DataFrame, period: int) -> pd.Series:
@@ -615,3 +626,250 @@ def zigzag(
                 state = TrendDirection.UP
 
     return pivots_indices, pivots_values, pivots_directions, pivots_thresholds
+
+
+regressors = {"xgboost", "lightgbm"}
+
+
+def get_callbacks(trial: optuna.trial.Trial, regressor: str) -> list[Callable]:
+    if regressor == "xgboost":
+        callbacks = [
+            optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
+        ]
+    elif regressor == "lightgbm":
+        callbacks = [optuna.integration.LightGBMPruningCallback(trial, "rmse")]
+    else:
+        raise ValueError(
+            f"Unsupported regressor model: {regressor} (supported: {', '.join(regressors)})"
+        )
+    return callbacks
+
+
+def fit_regressor(
+    regressor: str,
+    X: pd.DataFrame,
+    y: pd.DataFrame,
+    train_weights: np.ndarray,
+    eval_set: Optional[list[tuple[pd.DataFrame, pd.DataFrame]]],
+    eval_weights: Optional[list[np.ndarray]],
+    model_training_parameters: dict[str, Any],
+    init_model: Any = None,
+    callbacks: Optional[list[Callable]] = None,
+) -> Any:
+    if regressor == "xgboost":
+        from xgboost import XGBRegressor
+
+        model = XGBRegressor(
+            objective="reg:squarederror",
+            eval_metric="rmse",
+            callbacks=callbacks,
+            **model_training_parameters,
+        )
+        model.fit(
+            X=X,
+            y=y,
+            sample_weight=train_weights,
+            eval_set=eval_set,
+            sample_weight_eval_set=eval_weights,
+            xgb_model=init_model,
+        )
+    elif regressor == "lightgbm":
+        from lightgbm import LGBMRegressor
+
+        model = LGBMRegressor(objective="regression", **model_training_parameters)
+        model.fit(
+            X=X,
+            y=y,
+            sample_weight=train_weights,
+            eval_set=eval_set,
+            eval_sample_weight=eval_weights,
+            eval_metric="rmse",
+            init_model=init_model,
+            callbacks=callbacks,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported regressor model: {regressor} (supported: {', '.join(regressors)})"
+        )
+    return model
+
+
+def get_optuna_study_model_parameters(
+    trial: optuna.trial.Trial,
+    regressor: str,
+    model_training_best_parameters: dict[str, Any],
+    expansion_ratio: float,
+) -> dict[str, Any]:
+    if regressor not in regressors:
+        raise ValueError(
+            f"Unsupported regressor model: {regressor} (supported: {', '.join(regressors)})"
+        )
+    default_ranges = {
+        "n_estimators": (100, 2000),
+        "learning_rate": (1e-3, 0.5),
+        "min_child_weight": (1e-8, 100.0),
+        "subsample": (0.5, 1.0),
+        "colsample_bytree": (0.5, 1.0),
+        "reg_alpha": (1e-8, 100.0),
+        "reg_lambda": (1e-8, 100.0),
+        "max_depth": (3, 13),
+        "gamma": (1e-8, 10.0),
+        "num_leaves": (8, 256),
+        "min_split_gain": (1e-8, 10.0),
+        "min_child_samples": (10, 100),
+    }
+
+    log_scaled_params = {
+        "learning_rate",
+        "min_child_weight",
+        "reg_alpha",
+        "reg_lambda",
+        "gamma",
+        "min_split_gain",
+    }
+
+    ranges = copy.deepcopy(default_ranges)
+    if model_training_best_parameters:
+        for param, (default_min, default_max) in default_ranges.items():
+            center_value = model_training_best_parameters.get(param)
+
+            if (
+                center_value is None
+                or not isinstance(center_value, (int, float))
+                or not np.isfinite(center_value)
+            ):
+                continue
+
+            if param in log_scaled_params:
+                new_min = center_value / (1 + expansion_ratio)
+                new_max = center_value * (1 + expansion_ratio)
+            else:
+                margin = (default_max - default_min) * expansion_ratio / 2
+                new_min = center_value - margin
+                new_max = center_value + margin
+
+            param_min = max(default_min, new_min)
+            param_max = min(default_max, new_max)
+
+            if param_min < param_max:
+                ranges[param] = (param_min, param_max)
+
+    study_model_parameters = {
+        "n_estimators": trial.suggest_int(
+            "n_estimators",
+            int(ranges["n_estimators"][0]),
+            int(ranges["n_estimators"][1]),
+        ),
+        "learning_rate": trial.suggest_float(
+            "learning_rate",
+            ranges["learning_rate"][0],
+            ranges["learning_rate"][1],
+            log=True,
+        ),
+        "min_child_weight": trial.suggest_float(
+            "min_child_weight",
+            ranges["min_child_weight"][0],
+            ranges["min_child_weight"][1],
+            log=True,
+        ),
+        "subsample": trial.suggest_float(
+            "subsample", ranges["subsample"][0], ranges["subsample"][1]
+        ),
+        "colsample_bytree": trial.suggest_float(
+            "colsample_bytree",
+            ranges["colsample_bytree"][0],
+            ranges["colsample_bytree"][1],
+        ),
+        "reg_alpha": trial.suggest_float(
+            "reg_alpha", ranges["reg_alpha"][0], ranges["reg_alpha"][1], log=True
+        ),
+        "reg_lambda": trial.suggest_float(
+            "reg_lambda", ranges["reg_lambda"][0], ranges["reg_lambda"][1], log=True
+        ),
+    }
+    if regressor == "xgboost":
+        study_model_parameters.update(
+            {
+                "max_depth": trial.suggest_int(
+                    "max_depth",
+                    int(ranges["max_depth"][0]),
+                    int(ranges["max_depth"][1]),
+                ),
+                "gamma": trial.suggest_float(
+                    "gamma", ranges["gamma"][0], ranges["gamma"][1], log=True
+                ),
+            }
+        )
+    elif regressor == "lightgbm":
+        study_model_parameters.update(
+            {
+                "num_leaves": trial.suggest_int(
+                    "num_leaves",
+                    int(ranges["num_leaves"][0]),
+                    int(ranges["num_leaves"][1]),
+                ),
+                "min_split_gain": trial.suggest_float(
+                    "min_split_gain",
+                    ranges["min_split_gain"][0],
+                    ranges["min_split_gain"][1],
+                    log=True,
+                ),
+                "min_child_samples": trial.suggest_int(
+                    "min_child_samples",
+                    int(ranges["min_child_samples"][0]),
+                    int(ranges["min_child_samples"][1]),
+                ),
+            }
+        )
+    return study_model_parameters
+
+
+@lru_cache(maxsize=8)
+def largest_divisor(integer: int, step: int) -> Optional[int]:
+    if not isinstance(integer, int) or integer <= 0:
+        raise ValueError("integer must be a positive integer")
+    if not isinstance(step, int) or step <= 0:
+        raise ValueError("step must be a positive integer")
+
+    q_start = math.floor(0.5 * step) + 1
+    q_end = math.ceil(1.5 * step) - 1
+
+    if q_start > q_end:
+        return None
+
+    for q in range(q_start, q_end + 1):
+        if integer % q == 0:
+            return int(integer / q)
+
+    return None
+
+
+def soft_extremum(series: pd.Series, alpha: float) -> float:
+    np_array = series.to_numpy()
+    if np_array.size == 0:
+        return np.nan
+    if np.isclose(alpha, 0):
+        return np.mean(np_array)
+    scaled_np_array = alpha * np_array
+    max_scaled_np_array = np.max(scaled_np_array)
+    if np.isinf(max_scaled_np_array):
+        return np_array[np.argmax(scaled_np_array)]
+    shifted_exponentials = np.exp(scaled_np_array - max_scaled_np_array)
+    numerator = np.sum(np_array * shifted_exponentials)
+    denominator = np.sum(shifted_exponentials)
+    if denominator == 0:
+        return np.max(np_array)
+    return numerator / denominator
+
+
+def round_to_nearest_int(value: float, step: int) -> int:
+    """
+    Round a value to the nearest multiple of a given step.
+    :param value: The value to round.
+    :param step: The step size to round to (must be non-zero).
+    :return: The rounded value.
+    :raises ValueError: If step is zero.
+    """
+    if not isinstance(step, int) or step <= 0:
+        raise ValueError("step must be a positive integer")
+    return int(round(value / step) * step)

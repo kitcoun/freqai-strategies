@@ -1,13 +1,13 @@
 import copy
-from functools import lru_cache
 import gc
 import json
 import logging
-import warnings
 import time
+import warnings
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Type, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, Type
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -20,9 +20,9 @@ from optuna import Trial, TrialPruned, create_study
 from optuna.exceptions import ExperimentalWarning
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
-from optuna.study import Study, StudyDirection
 from optuna.storages import BaseStorage, JournalStorage, RDBStorage
 from optuna.storages.journal import JournalFileBackend
+from optuna.study import Study, StudyDirection
 from pandas import DataFrame, concat, merge
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
 from stable_baselines3.common.callbacks import (
@@ -37,7 +37,6 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack, VecMoni
 
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 from freqtrade.freqai.RL.Base5ActionRLEnv import Actions, Base5ActionRLEnv, Positions
-from freqtrade.freqai.RL.BaseEnvironment import BaseEnvironment
 from freqtrade.freqai.RL.BaseReinforcementLearningModel import (
     BaseReinforcementLearningModel,
 )

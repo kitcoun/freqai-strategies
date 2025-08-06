@@ -1,19 +1,20 @@
+import datetime
 import json
 import logging
-from functools import lru_cache, reduce, cached_property
-import datetime
 import math
+from functools import cached_property, lru_cache, reduce
 from pathlib import Path
-import talib.abstract as ta
-from pandas import DataFrame, Series, isna
 from typing import Any, Callable, Literal, Optional
-from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
-from freqtrade.strategy.interface import IStrategy
-from freqtrade.strategy import stoploss_from_absolute
-from technical.pivots_points import pivots_points
-from freqtrade.persistence import Trade
+
 import numpy as np
 import pandas_ta as pta
+import talib.abstract as ta
+from freqtrade.exchange import timeframe_to_minutes, timeframe_to_prev_date
+from freqtrade.persistence import Trade
+from freqtrade.strategy import stoploss_from_absolute
+from freqtrade.strategy.interface import IStrategy
+from pandas import DataFrame, Series, isna
+from technical.pivots_points import pivots_points
 
 from Utils import (
     TrendDirection,
@@ -21,17 +22,17 @@ from Utils import (
     bottom_change_percent,
     calculate_n_extrema,
     calculate_quantile,
-    get_zl_ma_fn,
-    zero_phase,
-    zigzag,
     ewo,
+    get_distance,
+    get_gaussian_std,
+    get_odd_window,
+    get_zl_ma_fn,
     non_zero_diff,
     price_retracement_percent,
-    vwapb,
     top_change_percent,
-    get_distance,
-    get_odd_window,
-    get_gaussian_std,
+    vwapb,
+    zero_phase,
+    zigzag,
     zlema,
 )
 
@@ -64,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.138"
+        return "3.3.139"
 
     timeframe = "5m"
 
