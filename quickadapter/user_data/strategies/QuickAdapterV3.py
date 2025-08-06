@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.137"
+        return "3.3.138"
 
     timeframe = "5m"
 
@@ -835,7 +835,9 @@ class QuickAdapterV3(IStrategy):
             else None
         )
         if previous_take_profit_price != take_profit_price:
-            self.append_trade_take_profit_price(trade, take_profit_price)
+            trade_take_profit_price_history = self.append_trade_take_profit_price(
+                trade, take_profit_price
+            )
 
         if exit_stage not in self.partial_exit_stages:
             if not trade_take_profit_price_history:
@@ -864,20 +866,24 @@ class QuickAdapterV3(IStrategy):
         history = QuickAdapterV3._get_trade_history(trade)
         return history.get("take_profit_price", [])
 
-    def append_trade_unrealized_pnl(self, trade: Trade, pnl: float) -> None:
+    def append_trade_unrealized_pnl(self, trade: Trade, pnl: float) -> list[float]:
         history = QuickAdapterV3._get_trade_history(trade)
         pnl_history = history.setdefault("unrealized_pnl", [])
         pnl_history.append(pnl)
         if len(pnl_history) > self._max_pnl_history_size:
-            history["unrealized_pnl"] = pnl_history[-self._max_pnl_history_size :]
+            pnl_history = pnl_history[-self._max_pnl_history_size :]
+            history["unrealized_pnl"] = pnl_history
         trade.set_custom_data("history", history)
+        return pnl_history
 
     def append_trade_take_profit_price(
         self, trade: Trade, take_profit_price: float
-    ) -> None:
+    ) -> list[float]:
         history = QuickAdapterV3._get_trade_history(trade)
-        history.setdefault("take_profit_price", []).append(take_profit_price)
+        price_history = history.setdefault("take_profit_price", [])
+        price_history.append(take_profit_price)
         trade.set_custom_data("history", history)
+        return price_history
 
     def adjust_trade_position(
         self,
@@ -1098,9 +1104,6 @@ class QuickAdapterV3(IStrategy):
         if exit_stage in self.partial_exit_stages:
             return None
 
-        end_partial_exit_stage = list(self.partial_exit_stages.keys())[-1]
-        final_exit_stage = end_partial_exit_stage + 1
-
         trade_pnl_velocity, trade_pnl_acceleration = self.get_trade_pnl_momentum(
             df, trade
         )
@@ -1109,7 +1112,7 @@ class QuickAdapterV3(IStrategy):
             and trade_pnl_acceleration < np.finfo(float).eps
         )
 
-        take_profit_price = self.get_take_profit_price(df, trade, final_exit_stage)
+        take_profit_price = self.get_take_profit_price(df, trade, exit_stage)
         if isna(take_profit_price):
             return None
         trade_take_profit_exit = QuickAdapterV3.can_take_profit(
@@ -1122,13 +1125,11 @@ class QuickAdapterV3(IStrategy):
                 pair=pair,
                 current_time=current_time,
                 callback=lambda: logger.info(
-                    f"Trade {trade.trade_direction} for {pair}: final exit stage {final_exit_stage}, open price {trade.open_rate}, current price {current_rate}, exit price {take_profit_price}, pnl velocity {trade_pnl_velocity}, pnl acceleration {trade_pnl_acceleration}"
+                    f"Trade {trade.trade_direction} for {pair}: final exit stage {exit_stage}, open price {trade.open_rate}, current price {current_rate}, exit price {take_profit_price}, pnl velocity {trade_pnl_velocity}, pnl acceleration {trade_pnl_acceleration}"
                 ),
             )
         if trade_exit:
-            if exit_stage in self.partial_exit_stages:
-                trade.set_custom_data("exit_stage", final_exit_stage)
-            return f"take_profit_{trade.trade_direction}_{final_exit_stage}"
+            return f"take_profit_{trade.trade_direction}_{exit_stage}"
 
         return None
 
