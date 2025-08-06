@@ -24,14 +24,12 @@ from Utils import (
     calculate_quantile,
     ewo,
     get_distance,
-    get_gaussian_std,
-    get_odd_window,
     get_zl_ma_fn,
     non_zero_diff,
     price_retracement_percent,
+    smooth_extrema,
     top_change_percent,
     vwapb,
-    zero_phase,
     zigzag,
     zlema,
 )
@@ -479,9 +477,11 @@ class QuickAdapterV3(IStrategy):
             logger.info(
                 f"{pair}: labeled {len(pivots_indices)} extrema (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / {label_natr_ratio=:.2f})"
             )
-        dataframe[EXTREMA_COLUMN] = self.smooth_extrema(
+        dataframe[EXTREMA_COLUMN] = smooth_extrema(
             dataframe[EXTREMA_COLUMN],
-            self.freqai_info.get("extrema_smoothing_window", 5),
+            str(self.freqai_info.get("extrema_smoothing", "gaussian")),
+            int(self.freqai_info.get("extrema_smoothing_window", 5)),
+            float(self.freqai_info.get("extrema_smoothing_beta", 8.0)),
         )
         if debug:
             extrema = dataframe[EXTREMA_COLUMN]
@@ -1178,51 +1178,6 @@ class QuickAdapterV3(IStrategy):
             return False
         else:
             raise ValueError(f"Invalid trading_mode: {trading_mode}")
-
-    def smooth_extrema(
-        self,
-        series: Series,
-        window: int,
-    ) -> Series:
-        extrema_smoothing = str(self.freqai_info.get("extrema_smoothing", "gaussian"))
-        std = get_gaussian_std(window)
-        extrema_smoothing_beta = float(
-            self.freqai_info.get("extrema_smoothing_beta", 8.0)
-        )
-        if debug:
-            logger.info(
-                f"{extrema_smoothing=}, {window=}, {std=}, {extrema_smoothing_beta=}"
-            )
-        odd_window = get_odd_window(window)
-        smoothing_methods: dict[str, Series] = {
-            "gaussian": zero_phase(
-                series=series,
-                window=window,
-                win_type="gaussian",
-                std=std,
-                beta=extrema_smoothing_beta,
-            ),
-            "kaiser": zero_phase(
-                series=series,
-                window=window,
-                win_type="kaiser",
-                std=std,
-                beta=extrema_smoothing_beta,
-            ),
-            "triang": zero_phase(
-                series=series,
-                window=window,
-                win_type="triang",
-                std=std,
-                beta=extrema_smoothing_beta,
-            ),
-            "smm": series.rolling(window=odd_window, center=True).median(),
-            "sma": series.rolling(window=odd_window, center=True).mean(),
-        }
-        return smoothing_methods.get(
-            extrema_smoothing,
-            smoothing_methods["gaussian"],
-        )
 
     def optuna_load_best_params(
         self, pair: str, namespace: str

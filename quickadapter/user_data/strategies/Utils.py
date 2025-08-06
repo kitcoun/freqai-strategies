@@ -76,6 +76,42 @@ def zero_phase(
     return pd.Series(filtered_values, index=series.index)
 
 
+def smooth_extrema(
+    series: pd.Series, method: str, window: int, beta: float
+) -> pd.Series:
+    std = get_gaussian_std(window)
+    odd_window = get_odd_window(window)
+    smoothing_methods: dict[str, pd.Series] = {
+        "gaussian": zero_phase(
+            series=series,
+            window=window,
+            win_type="gaussian",
+            std=std,
+            beta=beta,
+        ),
+        "kaiser": zero_phase(
+            series=series,
+            window=window,
+            win_type="kaiser",
+            std=std,
+            beta=beta,
+        ),
+        "triang": zero_phase(
+            series=series,
+            window=window,
+            win_type="triang",
+            std=std,
+            beta=beta,
+        ),
+        "smm": series.rolling(window=odd_window, center=True).median(),
+        "sma": series.rolling(window=odd_window, center=True).mean(),
+    }
+    return smoothing_methods.get(
+        method,
+        smoothing_methods["gaussian"],
+    )
+
+
 @lru_cache(maxsize=128)
 def calculate_min_extrema(
     size: int, fit_live_predictions_candles: int, min_extrema: int = 4
