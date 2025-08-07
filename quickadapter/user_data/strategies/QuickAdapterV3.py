@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.143"
+        return "3.3.144"
 
     timeframe = "5m"
 
@@ -1152,12 +1152,13 @@ class QuickAdapterV3(IStrategy):
             trade_recent_pnl_acceleration_std,
         ) = self.get_trade_pnl_momentum(trade)
         trade_pnl_momentum_declining = (
-            trade_pnl_velocity < -trade_pnl_velocity_std * 0.5
-            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.25
+            trade_pnl_velocity < -trade_pnl_velocity_std * 0.025
+            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.00625
         )
         trade_recent_pnl_spiking = (
-            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 1.5
-            and trade_recent_pnl_acceleration > trade_recent_pnl_acceleration_std * 0.75
+            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 0.075
+            and trade_recent_pnl_acceleration
+            > trade_recent_pnl_acceleration_std * 0.01875
         )
 
         trade_take_profit_price = self.get_take_profit_price(
@@ -1180,11 +1181,11 @@ class QuickAdapterV3(IStrategy):
                     f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
                     f"Take Profit: {format_number(trade_take_profit_price)}, Rate: {format_number(current_rate)} | "
                     f"Spiking: {trade_recent_pnl_spiking} "
-                    f"(V:{trade_recent_pnl_velocity:.5f} S:{trade_recent_pnl_velocity_std:.5f}, "
-                    f"A:{trade_recent_pnl_acceleration:.5f} S:{trade_recent_pnl_acceleration_std:.5f}) | "
+                    f"(V:{format_number(trade_recent_pnl_velocity)} S:{format_number(trade_recent_pnl_velocity_std)}, "
+                    f"A:{format_number(trade_recent_pnl_acceleration)} S:{format_number(trade_recent_pnl_acceleration_std)}) | "
                     f"Declining: {trade_pnl_momentum_declining} "
-                    f"(V:{trade_pnl_velocity:.5f} S:{trade_pnl_velocity_std:.5f}, "
-                    f"A:{trade_pnl_acceleration:.5f} S:{trade_pnl_acceleration_std:.5f})"
+                    f"(V:{format_number(trade_pnl_velocity)} S:{format_number(trade_pnl_velocity_std)}, "
+                    f"A:{format_number(trade_pnl_acceleration)} S:{format_number(trade_pnl_acceleration_std)})"
                 ),
             )
         if trade_exit:
