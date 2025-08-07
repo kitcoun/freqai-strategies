@@ -58,7 +58,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.109"
+    version = "3.7.110"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -107,7 +107,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
+        self.pairs: list[str] = self.config.get("exchange", {}).get("pair_whitelist")
         if not self.pairs:
             raise ValueError(
                 "FreqAI model requires StaticPairList method defined in pairlists configuration and 'pair_whitelist' defined in exchange section configuration"

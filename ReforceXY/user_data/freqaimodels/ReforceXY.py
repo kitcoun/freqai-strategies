@@ -100,7 +100,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.pairs = self.config.get("exchange", {}).get("pair_whitelist")
+        self.pairs: list[str] = self.config.get("exchange", {}).get("pair_whitelist")
         if not self.pairs:
             raise ValueError(
                 "FreqAI model requires StaticPairList method defined in pairlists configuration and pair_whitelist defined in exchange section configuration"
