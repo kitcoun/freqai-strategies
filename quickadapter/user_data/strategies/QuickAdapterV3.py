@@ -63,7 +63,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.140"
+        return "3.3.141"
 
     timeframe = "5m"
 
@@ -906,8 +906,8 @@ class QuickAdapterV3(IStrategy):
         if trade.has_open_orders:
             return None
 
-        exit_stage: int = trade.get_custom_data("exit_stage", 0)
-        if exit_stage not in self.partial_exit_stages:
+        trade_exit_stage: int = trade.get_custom_data("exit_stage", 0)
+        if trade_exit_stage not in self.partial_exit_stages:
             return None
 
         df, _ = self.dp.get_analyzed_dataframe(
@@ -916,28 +916,30 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        take_profit_price = self.get_take_profit_price(df, trade, exit_stage)
-        if isna(take_profit_price):
+        trade_take_profit_price = self.get_take_profit_price(
+            df, trade, trade_exit_stage
+        )
+        if isna(trade_take_profit_price):
             return None
 
         trade_partial_exit = QuickAdapterV3.can_take_profit(
-            trade, current_rate, take_profit_price
+            trade, current_rate, trade_take_profit_price
         )
         if not trade_partial_exit:
             self.throttle_callback(
                 pair=trade.pair,
                 current_time=current_time,
                 callback=lambda: logger.info(
-                    f"Trade {trade.trade_direction} for {trade.pair}: partial exit stage {exit_stage}, open price {trade.open_rate}, current price {current_rate}, exit price {take_profit_price}"
+                    f"Trade {trade.trade_direction} for {trade.pair}: partial exit stage {trade_exit_stage}, open price {trade.open_rate}, current price {current_rate}, exit price {trade_take_profit_price}"
                 ),
             )
         if trade_partial_exit:
-            stake_percent = self.partial_exit_stages[exit_stage][1]
-            trade_partial_stake_amount = trade.stake_amount * stake_percent
-            trade.set_custom_data("exit_stage", exit_stage + 1)
+            trade_stake_percent = self.partial_exit_stages[trade_exit_stage][1]
+            trade_partial_stake_amount = trade.stake_amount * trade_stake_percent
+            trade.set_custom_data("exit_stage", trade_exit_stage + 1)
             return (
                 -trade_partial_stake_amount,
-                f"take_profit_{trade.trade_direction}_{exit_stage}",
+                f"take_profit_{trade.trade_direction}_{trade_exit_stage}",
             )
 
         return None
@@ -1018,19 +1020,15 @@ class QuickAdapterV3(IStrategy):
         raise ValueError(f"Invalid side: {side}. Expected 'long' or 'short'")
 
     def get_trade_pnl_momentum(
-        self, trade: Trade, window: int = 4
+        self, trade: Trade, window: int = 14
     ) -> tuple[float, float, float, float]:
         unrealized_pnl_history = QuickAdapterV3.get_trade_unrealized_pnl_history(trade)
 
-        trade_velocity = np.diff(unrealized_pnl_history)
-        trade_acceleration = np.diff(trade_velocity)
+        velocity = np.diff(unrealized_pnl_history)
+        acceleration = np.diff(velocity)
 
-        trade_median_velocity = (
-            np.median(trade_velocity) if trade_velocity.size > 0 else 0.0
-        )
-        trade_median_acceleration = (
-            np.median(trade_acceleration) if trade_acceleration.size > 0 else 0.0
-        )
+        mean_velocity = np.mean(velocity) if velocity.size > 0 else 0.0
+        mean_acceleration = np.mean(acceleration) if acceleration.size > 0 else 0.0
 
         recent_unrealized_pnl_history = (
             unrealized_pnl_history[-window:]
@@ -1038,23 +1036,21 @@ class QuickAdapterV3(IStrategy):
             else unrealized_pnl_history
         )
 
-        trade_recent_velocity = np.diff(recent_unrealized_pnl_history)
-        trade_recent_acceleration = np.diff(trade_recent_velocity)
+        recent_velocity = np.diff(recent_unrealized_pnl_history)
+        recent_acceleration = np.diff(recent_velocity)
 
-        trade_recent_median_velocity = (
-            np.median(trade_recent_velocity) if trade_recent_velocity.size > 0 else 0.0
+        recent_mean_velocity = (
+            np.mean(recent_velocity) if recent_velocity.size > 0 else 0.0
         )
-        trade_recent_median_acceleration = (
-            np.median(trade_recent_acceleration)
-            if trade_recent_acceleration.size > 0
-            else 0.0
+        recent_mean_acceleration = (
+            np.mean(recent_acceleration) if recent_acceleration.size > 0 else 0.0
         )
 
         return (
-            trade_median_velocity,
-            trade_median_acceleration,
-            trade_recent_median_velocity,
-            trade_recent_median_acceleration,
+            mean_velocity,
+            mean_acceleration,
+            recent_mean_velocity,
+            recent_mean_acceleration,
         )
 
     @staticmethod
@@ -1126,8 +1122,8 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        exit_stage: int = trade.get_custom_data("exit_stage", 0)
-        if exit_stage in self.partial_exit_stages:
+        trade_exit_stage: int = trade.get_custom_data("exit_stage", 0)
+        if trade_exit_stage in self.partial_exit_stages:
             return None
 
         (
@@ -1136,35 +1132,35 @@ class QuickAdapterV3(IStrategy):
             trade_recent_pnl_velocity,
             trade_recent_pnl_acceleration,
         ) = self.get_trade_pnl_momentum(trade)
-        trade_pnl_momentum_decline = (
-            trade_pnl_velocity <= np.finfo(float).eps
-            and trade_pnl_acceleration < np.finfo(float).eps
+        trade_pnl_momentum_declining = (
+            trade_pnl_velocity <= 0.0 and trade_pnl_acceleration < 0.0
         )
-        is_pnl_spiking = (
-            trade_recent_pnl_velocity >= 0.0025
-            and trade_recent_pnl_acceleration > np.finfo(float).eps
+        trade_recent_pnl_spiking = (
+            trade_recent_pnl_velocity >= 0.00125 and trade_recent_pnl_acceleration > 0.0
         )
 
-        take_profit_price = self.get_take_profit_price(df, trade, exit_stage)
-        if isna(take_profit_price):
+        trade_take_profit_price = self.get_take_profit_price(
+            df, trade, trade_exit_stage
+        )
+        if isna(trade_take_profit_price):
             return None
         trade_take_profit_exit = QuickAdapterV3.can_take_profit(
-            trade, current_rate, take_profit_price
+            trade, current_rate, trade_take_profit_price
         )
 
         trade_exit = trade_take_profit_exit and (
-            trade_pnl_momentum_decline or not is_pnl_spiking
+            trade_pnl_momentum_declining or not trade_recent_pnl_spiking
         )
         if not trade_exit:
             self.throttle_callback(
                 pair=pair,
                 current_time=current_time,
                 callback=lambda: logger.info(
-                    f"Trade {trade.trade_direction} for {pair}: final exit stage {exit_stage}, open price {trade.open_rate}, current price {current_rate}, exit price {take_profit_price}, pnl velocity (trade/recent) {trade_pnl_velocity}/{trade_recent_pnl_velocity}, pnl acceleration (trade/recent) {trade_pnl_acceleration}/{trade_recent_pnl_acceleration}"
+                    f"Trade {trade.trade_direction} for {pair}: final exit stage {trade_exit_stage}, open price {trade.open_rate}, current price {current_rate}, exit price {trade_take_profit_price}, pnl velocity (trade/recent) {trade_pnl_velocity}/{trade_recent_pnl_velocity}, pnl acceleration (trade/recent) {trade_pnl_acceleration}/{trade_recent_pnl_acceleration}"
                 ),
             )
         if trade_exit:
-            return f"take_profit_{trade.trade_direction}_{exit_stage}"
+            return f"take_profit_{trade.trade_direction}_{trade_exit_stage}"
 
         return None
 
