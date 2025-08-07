@@ -63,7 +63,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.141"
+        return "3.3.142"
 
     timeframe = "5m"
 
@@ -232,6 +232,7 @@ class QuickAdapterV3(IStrategy):
             ),
         )
         self._max_history_size = int(12 * 60 * 60 / process_throttle_secs)
+        self._pnl_momentum_window_size = int(10 * 60 / process_throttle_secs)
 
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict[str, Any], **kwargs
@@ -930,7 +931,8 @@ class QuickAdapterV3(IStrategy):
                 pair=trade.pair,
                 current_time=current_time,
                 callback=lambda: logger.info(
-                    f"Trade {trade.trade_direction} for {trade.pair}: partial exit stage {trade_exit_stage}, open price {trade.open_rate}, current price {current_rate}, exit price {trade_take_profit_price}"
+                    f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
+                    f"Take Profit: {trade_take_profit_price:.4f}, Rate: {current_rate:.4f}"
                 ),
             )
         if trade_partial_exit:
@@ -1020,24 +1022,32 @@ class QuickAdapterV3(IStrategy):
         raise ValueError(f"Invalid side: {side}. Expected 'long' or 'short'")
 
     def get_trade_pnl_momentum(
-        self, trade: Trade, window: int = 14
-    ) -> tuple[float, float, float, float]:
+        self, trade: Trade
+    ) -> tuple[float, float, float, float, float, float, float, float]:
         unrealized_pnl_history = QuickAdapterV3.get_trade_unrealized_pnl_history(trade)
 
         velocity = np.diff(unrealized_pnl_history)
+        velocity_std = np.std(velocity) if velocity.size > 1 else 0.0
         acceleration = np.diff(velocity)
+        acceleration_std = np.std(acceleration) if acceleration.size > 1 else 0.0
 
         mean_velocity = np.mean(velocity) if velocity.size > 0 else 0.0
         mean_acceleration = np.mean(acceleration) if acceleration.size > 0 else 0.0
 
         recent_unrealized_pnl_history = (
-            unrealized_pnl_history[-window:]
-            if len(unrealized_pnl_history) > window
+            unrealized_pnl_history[-self._pnl_momentum_window_size :]
+            if len(unrealized_pnl_history) > self._pnl_momentum_window_size
             else unrealized_pnl_history
         )
 
         recent_velocity = np.diff(recent_unrealized_pnl_history)
+        recent_velocity_std = (
+            np.std(recent_velocity) if recent_velocity.size > 1 else 0.0
+        )
         recent_acceleration = np.diff(recent_velocity)
+        recent_acceleration_std = (
+            np.std(recent_acceleration) if recent_acceleration.size > 1 else 0.0
+        )
 
         recent_mean_velocity = (
             np.mean(recent_velocity) if recent_velocity.size > 0 else 0.0
@@ -1048,9 +1058,13 @@ class QuickAdapterV3(IStrategy):
 
         return (
             mean_velocity,
+            velocity_std,
             mean_acceleration,
+            acceleration_std,
             recent_mean_velocity,
+            recent_velocity_std,
             recent_mean_acceleration,
+            recent_acceleration_std,
         )
 
     @staticmethod
@@ -1128,15 +1142,21 @@ class QuickAdapterV3(IStrategy):
 
         (
             trade_pnl_velocity,
+            trade_pnl_velocity_std,
             trade_pnl_acceleration,
+            trade_pnl_acceleration_std,
             trade_recent_pnl_velocity,
+            trade_recent_pnl_velocity_std,
             trade_recent_pnl_acceleration,
+            trade_recent_pnl_acceleration_std,
         ) = self.get_trade_pnl_momentum(trade)
         trade_pnl_momentum_declining = (
-            trade_pnl_velocity <= 0.0 and trade_pnl_acceleration < 0.0
+            trade_pnl_velocity < -trade_pnl_velocity_std * 0.5
+            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.25
         )
         trade_recent_pnl_spiking = (
-            trade_recent_pnl_velocity >= 0.00125 and trade_recent_pnl_acceleration > 0.0
+            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 1.5
+            and trade_recent_pnl_acceleration > trade_recent_pnl_acceleration_std * 0.75
         )
 
         trade_take_profit_price = self.get_take_profit_price(
@@ -1156,7 +1176,14 @@ class QuickAdapterV3(IStrategy):
                 pair=pair,
                 current_time=current_time,
                 callback=lambda: logger.info(
-                    f"Trade {trade.trade_direction} for {pair}: final exit stage {trade_exit_stage}, open price {trade.open_rate}, current price {current_rate}, exit price {trade_take_profit_price}, pnl velocity (trade/recent) {trade_pnl_velocity}/{trade_recent_pnl_velocity}, pnl acceleration (trade/recent) {trade_pnl_acceleration}/{trade_recent_pnl_acceleration}"
+                    f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
+                    f"Take Profit: {trade_take_profit_price:.4f}, Rate: {current_rate:.4f} | "
+                    f"Spiking: {trade_recent_pnl_spiking} "
+                    f"(V:{trade_recent_pnl_velocity:.5f} S:{trade_recent_pnl_velocity_std:.5f}, "
+                    f"A:{trade_recent_pnl_acceleration:.5f} S:{trade_recent_pnl_acceleration_std:.5f}) | "
+                    f"Declining: {trade_pnl_momentum_declining} "
+                    f"(V:{trade_pnl_velocity:.5f} S:{trade_pnl_velocity_std:.5f}, "
+                    f"A:{trade_pnl_acceleration:.5f} S:{trade_pnl_acceleration_std:.5f})"
                 ),
             )
         if trade_exit:
