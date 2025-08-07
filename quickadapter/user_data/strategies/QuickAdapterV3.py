@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.144"
+        return "3.3.145"
 
     timeframe = "5m"
 
@@ -233,7 +233,7 @@ class QuickAdapterV3(IStrategy):
             ),
         )
         self._max_history_size = int(12 * 60 * 60 / process_throttle_secs)
-        self._pnl_momentum_window_size = int(10 * 60 / process_throttle_secs)
+        self._pnl_momentum_window_size = int(20 * 60 / process_throttle_secs)
 
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict[str, Any], **kwargs
@@ -1152,13 +1152,13 @@ class QuickAdapterV3(IStrategy):
             trade_recent_pnl_acceleration_std,
         ) = self.get_trade_pnl_momentum(trade)
         trade_pnl_momentum_declining = (
-            trade_pnl_velocity < -trade_pnl_velocity_std * 0.00375
-            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.0009375
+            trade_pnl_velocity < -trade_pnl_velocity_std * 0.0025
+            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.000625
         )
         trade_recent_pnl_spiking = (
-            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 0.015
+            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 0.1
             and trade_recent_pnl_acceleration
-            > trade_recent_pnl_acceleration_std * 0.00375
+            > trade_recent_pnl_acceleration_std * 0.025
         )
 
         trade_take_profit_price = self.get_take_profit_price(
