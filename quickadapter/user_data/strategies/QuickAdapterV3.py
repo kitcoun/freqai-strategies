@@ -1152,13 +1152,13 @@ class QuickAdapterV3(IStrategy):
             trade_recent_pnl_acceleration_std,
         ) = self.get_trade_pnl_momentum(trade)
         trade_pnl_momentum_declining = (
-            trade_pnl_velocity < -trade_pnl_velocity_std * 0.025
-            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.00625
+            trade_pnl_velocity < -trade_pnl_velocity_std * 0.00375
+            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.0009375
         )
         trade_recent_pnl_spiking = (
-            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 0.075
+            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 0.015
             and trade_recent_pnl_acceleration
-            > trade_recent_pnl_acceleration_std * 0.01875
+            > trade_recent_pnl_acceleration_std * 0.00375
         )
 
         trade_take_profit_price = self.get_take_profit_price(
