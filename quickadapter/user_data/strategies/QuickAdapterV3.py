@@ -23,6 +23,7 @@ from Utils import (
     calculate_n_extrema,
     calculate_quantile,
     ewo,
+    format_number,
     get_distance,
     get_zl_ma_fn,
     non_zero_diff,
@@ -63,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.142"
+        return "3.3.143"
 
     timeframe = "5m"
 
@@ -932,7 +933,7 @@ class QuickAdapterV3(IStrategy):
                 current_time=current_time,
                 callback=lambda: logger.info(
                     f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
-                    f"Take Profit: {trade_take_profit_price:.4f}, Rate: {current_rate:.4f}"
+                    f"Take Profit: {format_number(trade_take_profit_price)}, Rate: {format_number(current_rate)}"
                 ),
             )
         if trade_partial_exit:
@@ -1177,7 +1178,7 @@ class QuickAdapterV3(IStrategy):
                 current_time=current_time,
                 callback=lambda: logger.info(
                     f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
-                    f"Take Profit: {trade_take_profit_price:.4f}, Rate: {current_rate:.4f} | "
+                    f"Take Profit: {format_number(trade_take_profit_price)}, Rate: {format_number(current_rate)} | "
                     f"Spiking: {trade_recent_pnl_spiking} "
                     f"(V:{trade_recent_pnl_velocity:.5f} S:{trade_recent_pnl_velocity_std:.5f}, "
                     f"A:{trade_recent_pnl_acceleration:.5f} S:{trade_recent_pnl_acceleration_std:.5f}) | "
@@ -1223,7 +1224,7 @@ class QuickAdapterV3(IStrategy):
         ):
             return True
         logger.info(
-            f"User denied {side} entry for {pair}: rate {rate} did not break threshold {current_threshold}"
+            f"User denied {side} entry for {pair}: rate {format_number(rate)} did not break threshold {format_number(current_threshold)}"
         )
         return False
 

@@ -112,6 +112,39 @@ def smooth_extrema(
     )
 
 
+def format_number(value: int | float, significant_digits: int = 4) -> str:
+    if not isinstance(value, (int, float)):
+        return str(value)
+
+    if np.isinf(value):
+        return "+∞" if value > 0 else "-∞"
+    if np.isnan(value):
+        return "NaN"
+
+    if value == int(value):
+        return str(int(value))
+
+    abs_value = abs(value)
+
+    if abs_value >= 1.0:
+        return f"{value:.{significant_digits}f}"
+
+    value_str = f"{abs_value:.18f}"
+    first_digit_pos = -1
+    for i, char in enumerate(value_str):
+        if char > "0" and char <= "9":
+            first_digit_pos = i
+            break
+
+    if first_digit_pos == -1:
+        return f"{value:.{significant_digits}f}"
+
+    leading_zeros = first_digit_pos - 2
+    required_precision = leading_zeros + significant_digits
+
+    return f"{value:.{required_precision}f}"
+
+
 @lru_cache(maxsize=128)
 def calculate_min_extrema(
     size: int, fit_live_predictions_candles: int, min_extrema: int = 4

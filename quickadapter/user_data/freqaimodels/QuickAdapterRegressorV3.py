@@ -21,6 +21,7 @@ from Utils import (
     calculate_min_extrema,
     calculate_n_extrema,
     fit_regressor,
+    format_number,
     get_optuna_callbacks,
     get_optuna_study_model_parameters,
     largest_divisor,
@@ -1009,8 +1010,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             f"Optuna {pair} {namespace} {objective_type} objective done{metric_log_msg} ({time_spent:.2f} secs)"
         )
         for key, value in study_best_results.items():
+            if isinstance(value, list):
+                formatted_value = (
+                    f"[{', '.join([format_number(item) for item in value])}]"
+                )
+            elif isinstance(value, (int, float)):
+                formatted_value = format_number(value)
             logger.info(
-                f"Optuna {pair} {namespace} {objective_type} objective hyperopt | {key:>20s} : {value}"
+                f"Optuna {pair} {namespace} {objective_type} objective hyperopt | {key:>20s} : {formatted_value}"
             )
         if not self.optuna_params_valid(pair, namespace, study):
             logger.warning(
