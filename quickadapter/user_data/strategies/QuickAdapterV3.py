@@ -465,7 +465,7 @@ class QuickAdapterV3(IStrategy):
         dataframe[EXTREMA_COLUMN] = 0
         if len(pivots_indices) == 0:
             logger.warning(
-                f"{pair}: no extrema to label (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / {label_natr_ratio=:.2f})"
+                f"{pair}: no extrema to label (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / label_natr_ratio={format_number(label_natr_ratio)})"
             )
         else:
             for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
@@ -477,7 +477,7 @@ class QuickAdapterV3(IStrategy):
                 dataframe[EXTREMA_COLUMN] == TrendDirection.UP, 1, 0
             )
             logger.info(
-                f"{pair}: labeled {len(pivots_indices)} extrema (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / {label_natr_ratio=:.2f})"
+                f"{pair}: labeled {len(pivots_indices)} extrema (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / label_natr_ratio={format_number(label_natr_ratio)})"
             )
         dataframe[EXTREMA_COLUMN] = smooth_extrema(
             dataframe[EXTREMA_COLUMN],
