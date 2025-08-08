@@ -1008,7 +1008,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 f" using {self.ft_params.get('label_metric', 'seuclidean')} metric"
             )
         logger.info(
-            f"Optuna {pair} {namespace} {objective_type} objective done{metric_log_msg} ({time_spent:.2f} secs)"
+            f"Optuna {pair} {namespace} {objective_type} objective hyperopt done{metric_log_msg} ({time_spent:.2f} secs)"
         )
         for key, value in study_best_results.items():
             if isinstance(value, list):
@@ -1024,7 +1024,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         if not self.optuna_params_valid(pair, namespace, study):
             logger.warning(
-                f"Optuna {pair} {namespace} {objective_type} objective best params found has invalid optimization target value(s)"
+                f"Optuna {pair} {namespace} {objective_type} objective hyperopt best params found has invalid optimization target value(s)"
             )
         self.optuna_save_best_params(pair, namespace)
         return study
