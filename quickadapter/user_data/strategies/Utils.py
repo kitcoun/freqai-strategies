@@ -112,7 +112,7 @@ def smooth_extrema(
     )
 
 
-def format_number(value: int | float, significant_digits: int = 4) -> str:
+def format_number(value: int | float, significant_digits: int = 5) -> str:
     if not isinstance(value, (int, float)):
         return str(value)
 
