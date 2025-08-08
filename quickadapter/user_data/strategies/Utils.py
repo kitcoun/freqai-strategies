@@ -127,22 +127,27 @@ def format_number(value: int | float, significant_digits: int = 5) -> str:
     abs_value = abs(value)
 
     if abs_value >= 1.0:
-        return f"{value:.{significant_digits}f}"
+        precision = significant_digits
+    else:
+        value_str = f"{abs_value:.18f}"
+        first_digit_pos = -1
+        for i, char in enumerate(value_str):
+            if char > "0" and char <= "9":
+                first_digit_pos = i
+                break
 
-    value_str = f"{abs_value:.18f}"
-    first_digit_pos = -1
-    for i, char in enumerate(value_str):
-        if char > "0" and char <= "9":
-            first_digit_pos = i
-            break
+        if first_digit_pos == -1:
+            precision = significant_digits
+        else:
+            leading_zeros = first_digit_pos - 2
+            precision = leading_zeros + significant_digits
 
-    if first_digit_pos == -1:
-        return f"{value:.{significant_digits}f}"
+    formatted_value = f"{value:.{precision}f}"
 
-    leading_zeros = first_digit_pos - 2
-    required_precision = leading_zeros + significant_digits
+    if "." in formatted_value:
+        formatted_value = formatted_value.rstrip("0").rstrip(".")
 
-    return f"{value:.{required_precision}f}"
+    return formatted_value
 
 
 @lru_cache(maxsize=128)
