@@ -1116,6 +1116,9 @@ class QuickAdapterV3(IStrategy):
             if last_outlier_date != last_candle_date:
                 n_outliers = trade.get_custom_data("n_outliers", 0)
                 n_outliers += 1
+                logger.warning(
+                    f"{pair}: detected new predictions outlier ({n_outliers=}) on trade {trade.id}"
+                )
                 trade.set_custom_data("n_outliers", n_outliers)
                 trade.set_custom_data("last_outlier_date", last_candle_date.isoformat())
 
