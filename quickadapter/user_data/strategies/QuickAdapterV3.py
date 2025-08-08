@@ -716,6 +716,15 @@ class QuickAdapterV3(IStrategy):
             )
 
     @staticmethod
+    def get_trade_exit_stage(trade: Trade) -> int:
+        exit_orders = [
+            order
+            for order in trade.orders
+            if order.side == "sell" and order.status in ["open", "closed"]
+        ]
+        return len(exit_orders)
+
+    @staticmethod
     @lru_cache(maxsize=128)
     def get_stoploss_log_factor(trade_duration_candles: int) -> float:
         return 1 / math.log10(3.75 + 0.25 * trade_duration_candles)
@@ -739,7 +748,7 @@ class QuickAdapterV3(IStrategy):
             * self.get_label_natr_ratio_percent(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_stoploss_log_factor(
                 trade_duration_candles
-                + int(round(trade.nr_of_successful_exits ** (1.5)))
+                + int(round(QuickAdapterV3.get_trade_exit_stage(trade) ** (1.5)))
             )
         )
 
@@ -908,7 +917,8 @@ class QuickAdapterV3(IStrategy):
         if trade.has_open_orders:
             return None
 
-        if trade.nr_of_successful_exits not in self.partial_exit_stages:
+        trade_exit_stage = QuickAdapterV3.get_trade_exit_stage(trade)
+        if trade_exit_stage not in self.partial_exit_stages:
             return None
 
         df, _ = self.dp.get_analyzed_dataframe(
@@ -918,7 +928,7 @@ class QuickAdapterV3(IStrategy):
             return None
 
         trade_take_profit_price = self.get_take_profit_price(
-            df, trade, trade.nr_of_successful_exits
+            df, trade, trade_exit_stage
         )
         if isna(trade_take_profit_price):
             return None
@@ -931,18 +941,16 @@ class QuickAdapterV3(IStrategy):
                 pair=trade.pair,
                 current_time=current_time,
                 callback=lambda: logger.info(
-                    f"Trade {trade.trade_direction} {trade.pair} stage {trade.nr_of_successful_exits} | "
+                    f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
                     f"Take Profit: {format_number(trade_take_profit_price)}, Rate: {format_number(current_rate)}"
                 ),
             )
         if trade_partial_exit:
-            trade_stake_percent = self.partial_exit_stages[
-                trade.nr_of_successful_exits
-            ][1]
+            trade_stake_percent = self.partial_exit_stages[trade_exit_stage][1]
             trade_partial_stake_amount = trade.stake_amount * trade_stake_percent
             return (
                 -trade_partial_stake_amount,
-                f"take_profit_{trade.trade_direction}_{trade.nr_of_successful_exits}",
+                f"take_profit_{trade.trade_direction}_{trade_exit_stage}",
             )
 
         return None
@@ -1139,7 +1147,8 @@ class QuickAdapterV3(IStrategy):
         ):
             return "maxima_detected_long"
 
-        if trade.nr_of_successful_exits in self.partial_exit_stages:
+        trade_exit_stage = QuickAdapterV3.get_trade_exit_stage(trade)
+        if trade_exit_stage in self.partial_exit_stages:
             return None
 
         (
@@ -1162,7 +1171,7 @@ class QuickAdapterV3(IStrategy):
         )
 
         trade_take_profit_price = self.get_take_profit_price(
-            df, trade, trade.nr_of_successful_exits
+            df, trade, trade_exit_stage
         )
         if isna(trade_take_profit_price):
             return None
@@ -1178,7 +1187,7 @@ class QuickAdapterV3(IStrategy):
                 pair=pair,
                 current_time=current_time,
                 callback=lambda: logger.info(
-                    f"Trade {trade.trade_direction} {trade.pair} stage {trade.nr_of_successful_exits} | "
+                    f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
                     f"Take Profit: {format_number(trade_take_profit_price)}, Rate: {format_number(current_rate)} | "
                     f"Spiking: {trade_recent_pnl_spiking} "
                     f"(V:{format_number(trade_recent_pnl_velocity)} S:{format_number(trade_recent_pnl_velocity_std)}, "
@@ -1189,7 +1198,7 @@ class QuickAdapterV3(IStrategy):
                 ),
             )
         if trade_exit:
-            return f"take_profit_{trade.trade_direction}_{trade.nr_of_successful_exits}"
+            return f"take_profit_{trade.trade_direction}_{trade_exit_stage}"
 
         return None
 
