@@ -64,7 +64,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.145"
+        return "3.3.146"
 
     timeframe = "5m"
 
@@ -1153,12 +1153,12 @@ class QuickAdapterV3(IStrategy):
         ) = self.get_trade_pnl_momentum(trade)
         trade_pnl_momentum_declining = (
             trade_pnl_velocity < -trade_pnl_velocity_std * 0.0025
-            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.000625
+            and trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.000025
         )
         trade_recent_pnl_spiking = (
-            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 0.1
+            trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 0.075
             and trade_recent_pnl_acceleration
-            > trade_recent_pnl_acceleration_std * 0.025
+            > trade_recent_pnl_acceleration_std * 0.00075
         )
 
         trade_take_profit_price = self.get_take_profit_price(
