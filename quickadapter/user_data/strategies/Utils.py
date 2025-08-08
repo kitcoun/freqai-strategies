@@ -112,12 +112,15 @@ def smooth_extrema(
     )
 
 
+@lru_cache(maxsize=128)
 def format_number(value: int | float, significant_digits: int = 5) -> str:
     if not isinstance(value, (int, float)):
         return str(value)
 
-    if np.isinf(value):
-        return "+∞" if value > 0 else "-∞"
+    if np.isposinf(value):
+        return "+∞"
+    if np.isneginf(value):
+        return "-∞"
     if np.isnan(value):
         return "NaN"
 
@@ -129,18 +132,11 @@ def format_number(value: int | float, significant_digits: int = 5) -> str:
     if abs_value >= 1.0:
         precision = significant_digits
     else:
-        value_str = f"{abs_value:.18f}"
-        first_digit_pos = -1
-        for i, char in enumerate(value_str):
-            if char > "0" and char <= "9":
-                first_digit_pos = i
-                break
-
-        if first_digit_pos == -1:
-            precision = significant_digits
-        else:
-            leading_zeros = first_digit_pos - 2
-            precision = leading_zeros + significant_digits
+        if abs_value == 0:
+            return "0"
+        order_of_magnitude = math.floor(math.log10(abs_value))
+        leading_zeros = abs(order_of_magnitude) - 1
+        precision = leading_zeros + significant_digits
 
     formatted_value = f"{value:.{precision}f}"
 
@@ -240,6 +236,7 @@ def calculate_zero_lag(series: pd.Series, period: int) -> pd.Series:
     return 2 * series - series.shift(int(lag))
 
 
+@lru_cache(maxsize=8)
 def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
     mamodes: dict[str, Callable[[pd.Series, int], np.ndarray]] = {
         "sma": ta.SMA,
@@ -254,6 +251,7 @@ def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
     return mamodes.get(mamode, mamodes["sma"])
 
 
+@lru_cache(maxsize=8)
 def get_zl_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
     ma_fn = get_ma_fn(mamode)
     return lambda series, timeperiod: ma_fn(
@@ -935,6 +933,7 @@ def soft_extremum(series: pd.Series, alpha: float) -> float:
     return numerator / denominator
 
 
+@lru_cache(maxsize=128)
 def round_to_nearest_int(value: float, step: int) -> int:
     """
     Round a value to the nearest multiple of a given step.

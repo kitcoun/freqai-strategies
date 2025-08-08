@@ -433,12 +433,13 @@ class QuickAdapterV3(IStrategy):
         return self.get_label_natr_ratio(pair) * percent
 
     @staticmethod
+    @lru_cache(maxsize=128)
     def td_format(
         delta: datetime.timedelta, pattern: str = "{sign}{d}:{h:02d}:{m:02d}:{s:02d}"
     ) -> str:
         negative_duration = delta.total_seconds() < 0
         delta = abs(delta)
-        duration = {"d": delta.days}
+        duration: dict[str, Any] = {"d": delta.days}
         duration["h"], remainder = divmod(delta.seconds, 3600)
         duration["m"], duration["s"] = divmod(remainder, 60)
         duration["ms"] = delta.microseconds // 1000
@@ -572,6 +573,7 @@ class QuickAdapterV3(IStrategy):
         )
 
     @staticmethod
+    @lru_cache(maxsize=128)
     def is_trade_duration_valid(trade_duration: Optional[int | float]) -> bool:
         return isinstance(trade_duration, (int, float)) and not (
             isna(trade_duration) or trade_duration <= 0
@@ -1077,6 +1079,7 @@ class QuickAdapterV3(IStrategy):
         )
 
     @staticmethod
+    @lru_cache(maxsize=128)
     def is_isoformat(string: str) -> bool:
         if not isinstance(string, str):
             return False
