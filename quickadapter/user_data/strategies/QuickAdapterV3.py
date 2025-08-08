@@ -1122,7 +1122,7 @@ class QuickAdapterV3(IStrategy):
                 trade.set_custom_data("n_outliers", n_outliers)
                 trade.set_custom_data("last_outlier_date", last_candle_date.isoformat())
 
-        trade_direction = trade.direction
+        trade_direction = trade.trade_direction
         if (
             trade_direction == "short"
             and last_candle.get("do_predict") == 1
@@ -1213,7 +1213,9 @@ class QuickAdapterV3(IStrategy):
         max_open_trades_per_side = self.max_open_trades_per_side
         if max_open_trades_per_side >= 0:
             open_trades = Trade.get_open_trades()
-            trades_per_side = sum(1 for trade in open_trades if trade.direction == side)
+            trades_per_side = sum(
+                1 for trade in open_trades if trade.trade_direction == side
+            )
             if trades_per_side >= max_open_trades_per_side:
                 return False
 
