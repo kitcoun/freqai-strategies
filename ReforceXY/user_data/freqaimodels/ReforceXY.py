@@ -401,7 +401,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 )
                 return best_model
             except Exception as e:
-                logger.error(f"Error loading best model: {e}", exc_info=True)
+                logger.error(f"Error loading best model: {repr(e)}", exc_info=True)
 
         logger.info("Couldn't find best model, using final model instead.")
 
@@ -568,7 +568,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         except Exception as e:
             time_spent = time.time() - start_time
             logger.error(
-                f"Hyperopt {study_name} failed ({time_spent:.2f} secs): {e}",
+                f"Hyperopt {study_name} failed ({time_spent:.2f} secs): {repr(e)}",
                 exc_info=True,
             )
             hyperopt_failed = True
@@ -634,7 +634,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 json.dump(best_trial_params, write_file, indent=4)
         except Exception as e:
             logger.error(
-                f"Error saving best trial params to {best_trial_params_path}: {e}",
+                f"Error saving best trial params to {best_trial_params_path}: {repr(e)}",
                 exc_info=True,
             )
             raise

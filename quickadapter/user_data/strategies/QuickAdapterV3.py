@@ -446,7 +446,7 @@ class QuickAdapterV3(IStrategy):
         try:
             return pattern.format(**duration)
         except (KeyError, ValueError) as e:
-            raise ValueError(f"Invalid pattern '{pattern}': {e}")
+            raise ValueError(f"Invalid pattern '{pattern}': {repr(e)}")
 
     def set_freqai_targets(
         self, dataframe: DataFrame, metadata: dict[str, Any], **kwargs
@@ -691,7 +691,7 @@ class QuickAdapterV3(IStrategy):
                     return trade_kama_natr_values[-1]
             except Exception as e:
                 logger.warning(
-                    f"Failed to calculate trade NATR KAMA for pair {pair}: {str(e)}. Falling back to last trade NATR value",
+                    f"Failed to calculate trade NATR KAMA for pair {pair}: {repr(e)}. Falling back to last trade NATR value",
                     exc_info=True,
                 )
         return label_natr.iloc[-1]
@@ -775,7 +775,7 @@ class QuickAdapterV3(IStrategy):
                 callback()
             except Exception as e:
                 logger.error(
-                    f"Error executing callback for {pair}: {str(e)}", exc_info=True
+                    f"Error executing callback for {pair}: {repr(e)}", exc_info=True
                 )
 
     def custom_stoploss(

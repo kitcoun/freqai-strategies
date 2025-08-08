@@ -26,6 +26,7 @@ from Utils import (
     get_optuna_study_model_parameters,
     largest_divisor,
     round_to_nearest_int,
+    soft_extremum,
     zigzag,
 )
 
@@ -394,7 +395,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 callback()
             except Exception as e:
                 logger.error(
-                    f"Error executing optuna {pair} {namespace} callback: {str(e)}",
+                    f"Error executing optuna {pair} {namespace} callback: {repr(e)}",
                     exc_info=True,
                 )
             finally:
@@ -644,7 +645,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return threshold_func(values)
         except Exception as e:
             logger.warning(
-                f"Failed to apply skimage threshold function {threshold_func.__name__} on series {series.name}: {str(e)}. Falling back to median",
+                f"Failed to apply skimage threshold function {threshold_func.__name__} on series {series.name}: {repr(e)}. Falling back to median",
                 exc_info=True,
             )
             return np.median(values)
@@ -971,7 +972,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         except Exception as e:
             time_spent = time.time() - start_time
             logger.error(
-                f"Optuna {pair} {namespace} {objective_type} objective hyperopt failed ({time_spent:.2f} secs): {str(e)}",
+                f"Optuna {pair} {namespace} {objective_type} objective hyperopt failed ({time_spent:.2f} secs): {repr(e)}",
                 exc_info=True,
             )
             return
@@ -1016,6 +1017,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 )
             elif isinstance(value, (int, float)):
                 formatted_value = format_number(value)
+            else:
+                formatted_value = repr(value)
             logger.info(
                 f"Optuna {pair} {namespace} {objective_type} objective hyperopt | {key:>20s} : {formatted_value}"
             )
@@ -1063,7 +1066,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             storage = self.optuna_storage(pair)
         except Exception as e:
             logger.error(
-                f"Failed to create optuna storage for study {study_name}: {str(e)}",
+                f"Failed to create optuna storage for study {study_name}: {repr(e)}",
                 exc_info=True,
             )
             return None
@@ -1089,7 +1092,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         except Exception as e:
             logger.error(
-                f"Failed to create optuna study {study_name}: {str(e)}", exc_info=True
+                f"Failed to create optuna study {study_name}: {repr(e)}", exc_info=True
             )
             return None
 
@@ -1129,7 +1132,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 json.dump(self.get_optuna_params(pair, namespace), write_file, indent=4)
         except Exception as e:
             logger.error(
-                f"Failed to save optuna {namespace} best params for {pair}: {str(e)}",
+                f"Failed to save optuna {namespace} best params for {pair}: {repr(e)}",
                 exc_info=True,
             )
             raise
