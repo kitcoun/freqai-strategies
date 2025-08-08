@@ -1182,9 +1182,12 @@ class QuickAdapterV3(IStrategy):
             trade, current_rate, trade_take_profit_price
         )
 
-        trade_exit = trade_take_profit_exit and (
-            trade_pnl_momentum_declining or not trade_recent_pnl_spiking
+        trade_exit = (
+            trade_take_profit_exit
+            and trade_pnl_momentum_declining
+            and not trade_recent_pnl_spiking
         )
+
         if not trade_exit:
             self.throttle_callback(
                 pair=pair,
