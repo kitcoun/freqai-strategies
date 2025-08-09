@@ -65,18 +65,12 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.149"
+        return "3.3.150"
 
     timeframe = "5m"
 
     stoploss = -0.02
     use_custom_stoploss = True
-
-    # Trailing stop:
-    trailing_stop = False
-    trailing_stop_positive = 0.01
-    trailing_stop_positive_offset = 0.011
-    trailing_only_offset_is_reached = True
 
     order_types = {
         "entry": "limit",
@@ -98,7 +92,7 @@ class QuickAdapterV3(IStrategy):
     }
 
     default_exit_thresholds_calibration: dict[str, float] = {
-        "spike_quantile": 0.98,
+        "spike_quantile": 0.95,
         "decline_quantile": 0.90,
         "min_k_spike": 0.3,
         "min_k_decline": 0.15,
@@ -863,19 +857,8 @@ class QuickAdapterV3(IStrategy):
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
         )
         trade_take_profit_price_history = (
-            QuickAdapterV3.get_trade_take_profit_price_history(trade)
+            QuickAdapterV3.safe_append_trade_take_profit_price(trade, take_profit_price)
         )
-        previous_take_profit_price = (
-            trade_take_profit_price_history[-1]
-            if trade_take_profit_price_history
-            else None
-        )
-        if previous_take_profit_price is None or not np.isclose(
-            previous_take_profit_price, take_profit_price
-        ):
-            trade_take_profit_price_history = self.append_trade_take_profit_price(
-                trade, take_profit_price
-            )
 
         if exit_stage not in self.partial_exit_stages:
             if not trade_take_profit_price_history:
@@ -917,6 +900,19 @@ class QuickAdapterV3(IStrategy):
         trade.set_custom_data("history", history)
         return pnl_history
 
+    def safe_append_trade_unrealized_pnl(self, trade: Trade, pnl: float) -> list[float]:
+        trade_unrealized_pnl_history = QuickAdapterV3.get_trade_unrealized_pnl_history(
+            trade
+        )
+        previous_unrealized_pnl = (
+            trade_unrealized_pnl_history[-1] if trade_unrealized_pnl_history else None
+        )
+        if previous_unrealized_pnl is None or not np.isclose(
+            previous_unrealized_pnl, pnl
+        ):
+            trade_unrealized_pnl_history = self.append_trade_unrealized_pnl(trade, pnl)
+        return trade_unrealized_pnl_history
+
     def append_trade_take_profit_price(
         self, trade: Trade, take_profit_price: float
     ) -> list[float]:
@@ -928,6 +924,25 @@ class QuickAdapterV3(IStrategy):
             history["take_profit_price"] = price_history
         trade.set_custom_data("history", history)
         return price_history
+
+    def safe_append_trade_take_profit_price(
+        self, trade: Trade, take_profit_price: float
+    ) -> list[float]:
+        trade_take_profit_price_history = (
+            QuickAdapterV3.get_trade_take_profit_price_history(trade)
+        )
+        previous_take_profit_price = (
+            trade_take_profit_price_history[-1]
+            if trade_take_profit_price_history
+            else None
+        )
+        if previous_take_profit_price is None or not np.isclose(
+            previous_take_profit_price, take_profit_price
+        ):
+            trade_take_profit_price_history = self.append_trade_take_profit_price(
+                trade, take_profit_price
+            )
+        return trade_take_profit_price_history
 
     def adjust_trade_position(
         self,
@@ -1199,16 +1214,7 @@ class QuickAdapterV3(IStrategy):
         current_profit: float,
         **kwargs,
     ) -> Optional[str]:
-        trade_unrealized_pnl_history = QuickAdapterV3.get_trade_unrealized_pnl_history(
-            trade
-        )
-        previous_unrealized_pnl = (
-            trade_unrealized_pnl_history[-1] if trade_unrealized_pnl_history else None
-        )
-        if previous_unrealized_pnl is None or not np.isclose(
-            previous_unrealized_pnl, current_profit
-        ):
-            self.append_trade_unrealized_pnl(trade, current_profit)
+        self.safe_append_trade_unrealized_pnl(trade, current_profit)
 
         df, _ = self.dp.get_analyzed_dataframe(
             pair=pair, timeframe=self.config.get("timeframe")
