@@ -14,6 +14,7 @@ from freqtrade.persistence import Trade
 from freqtrade.strategy import stoploss_from_absolute
 from freqtrade.strategy.interface import IStrategy
 from pandas import DataFrame, Series, isna
+from scipy.stats import t
 from technical.pivots_points import pivots_points
 
 from Utils import (
@@ -64,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.148"
+        return "3.3.149"
 
     timeframe = "5m"
 
@@ -87,6 +88,20 @@ class QuickAdapterV3(IStrategy):
         "stoploss_on_exchange": False,
         "stoploss_on_exchange_interval": 60,
         "stoploss_on_exchange_limit_ratio": 0.99,
+    }
+
+    default_exit_thresholds: dict[str, float] = {
+        "k_spike_v": 2.0,
+        "k_spike_a": 1.5,
+        "k_decl_v": 1.0,
+        "k_decl_a": 0.5,
+    }
+
+    default_exit_thresholds_calibration: dict[str, float] = {
+        "spike_quantile": 0.98,
+        "decline_quantile": 0.90,
+        "min_k_spike": 0.3,
+        "min_k_decline": 0.15,
     }
 
     position_adjustment_enable = True
@@ -234,6 +249,10 @@ class QuickAdapterV3(IStrategy):
         )
         self._max_history_size = int(12 * 60 * 60 / process_throttle_secs)
         self._pnl_momentum_window_size = int(20 * 60 / process_throttle_secs)
+        self._exit_thresholds_calibration: dict[str, float] = {
+            **self.default_exit_thresholds_calibration,
+            **self.config.get("exit_pricing", {}).get("thresholds_calibration", {}),
+        }
 
     def feature_engineering_expand_all(
         self, dataframe: DataFrame, period: int, metadata: dict[str, Any], **kwargs
@@ -719,12 +738,15 @@ class QuickAdapterV3(IStrategy):
 
     @staticmethod
     def get_trade_exit_stage(trade: Trade) -> int:
-        exit_orders = [
-            order
-            for order in trade.orders
-            if order.side == "sell" and order.status in ["open", "closed"]
-        ]
-        return len(exit_orders)
+        exit_side = "buy" if trade.is_short else "sell"
+        try:
+            return sum(
+                1
+                for order in trade.orders
+                if order.side == exit_side and order.status in {"open", "closed"}
+            )
+        except Exception:
+            return 0
 
     @staticmethod
     @lru_cache(maxsize=128)
@@ -848,7 +870,9 @@ class QuickAdapterV3(IStrategy):
             if trade_take_profit_price_history
             else None
         )
-        if previous_take_profit_price != take_profit_price:
+        if previous_take_profit_price is None or not np.isclose(
+            previous_take_profit_price, take_profit_price
+        ):
             trade_take_profit_price_history = self.append_trade_take_profit_price(
                 trade, take_profit_price
             )
@@ -856,10 +880,13 @@ class QuickAdapterV3(IStrategy):
         if exit_stage not in self.partial_exit_stages:
             if not trade_take_profit_price_history:
                 return None
+            trade_take_profit_price_history = np.asarray(
+                trade_take_profit_price_history
+            )
             return (
-                min(trade_take_profit_price_history)
+                np.min(trade_take_profit_price_history)
                 if trade.is_short
-                else max(trade_take_profit_price_history)
+                else np.max(trade_take_profit_price_history)
             )
 
         return take_profit_price
@@ -1035,12 +1062,16 @@ class QuickAdapterV3(IStrategy):
     def get_trade_pnl_momentum(
         self, trade: Trade
     ) -> tuple[float, float, float, float, float, float, float, float]:
-        unrealized_pnl_history = QuickAdapterV3.get_trade_unrealized_pnl_history(trade)
+        unrealized_pnl_history = np.asarray(
+            QuickAdapterV3.get_trade_unrealized_pnl_history(trade)
+        )
 
         velocity = np.diff(unrealized_pnl_history)
-        velocity_std = np.std(velocity) if velocity.size > 1 else 0.0
+        velocity_std = np.std(velocity, ddof=1) if velocity.size > 1 else 0.0
         acceleration = np.diff(velocity)
-        acceleration_std = np.std(acceleration) if acceleration.size > 1 else 0.0
+        acceleration_std = (
+            np.std(acceleration, ddof=1) if acceleration.size > 1 else 0.0
+        )
 
         mean_velocity = np.mean(velocity) if velocity.size > 0 else 0.0
         mean_acceleration = np.mean(acceleration) if acceleration.size > 0 else 0.0
@@ -1053,11 +1084,11 @@ class QuickAdapterV3(IStrategy):
 
         recent_velocity = np.diff(recent_unrealized_pnl_history)
         recent_velocity_std = (
-            np.std(recent_velocity) if recent_velocity.size > 1 else 0.0
+            np.std(recent_velocity, ddof=1) if recent_velocity.size > 1 else 0.0
         )
         recent_acceleration = np.diff(recent_velocity)
         recent_acceleration_std = (
-            np.std(recent_acceleration) if recent_acceleration.size > 1 else 0.0
+            np.std(recent_acceleration, ddof=1) if recent_acceleration.size > 1 else 0.0
         )
 
         recent_mean_velocity = (
@@ -1080,6 +1111,15 @@ class QuickAdapterV3(IStrategy):
 
     @staticmethod
     @lru_cache(maxsize=128)
+    def _zscore(mean: float, std: float) -> float:
+        if not np.isfinite(mean) or not np.isfinite(std):
+            return 0.0
+        if np.isclose(std, 0.0):
+            return 0.0
+        return mean / std
+
+    @staticmethod
+    @lru_cache(maxsize=128)
     def is_isoformat(string: str) -> bool:
         if not isinstance(string, str):
             return False
@@ -1088,6 +1128,67 @@ class QuickAdapterV3(IStrategy):
         except (ValueError, TypeError):
             return False
         return True
+
+    def _get_exit_thresholds(self, trade: Trade) -> dict[str, float]:
+        q_spike = float(self._exit_thresholds_calibration.get("spike_quantile"))
+        q_decl = float(self._exit_thresholds_calibration.get("decline_quantile"))
+
+        hist_len = len(QuickAdapterV3.get_trade_unrealized_pnl_history(trade))
+
+        n_v = max(0, hist_len - 1)
+        n_a = max(0, hist_len - 2)
+
+        recent_hist_len = min(hist_len, self._pnl_momentum_window_size)
+        n_rv = max(0, recent_hist_len - 1)
+        n_ra = max(0, recent_hist_len - 2)
+
+        def t_k(n: int, q: float, default_k: float, min_k: float) -> float:
+            if n >= 3:
+                try:
+                    _df = max(n - 1, 1)
+                    return max(float(t.ppf(q, _df)) / math.sqrt(n), min_k)
+                except Exception:
+                    return default_k
+            return default_k
+
+        k_spike_v = t_k(
+            n_rv,
+            q_spike,
+            self.default_exit_thresholds["k_spike_v"],
+            self._exit_thresholds_calibration["min_k_spike"],
+        )
+        k_spike_a = t_k(
+            n_ra,
+            q_spike,
+            self.default_exit_thresholds["k_spike_a"],
+            self._exit_thresholds_calibration["min_k_spike"],
+        )
+        k_decl_v = t_k(
+            n_v,
+            q_decl,
+            self.default_exit_thresholds["k_decl_v"],
+            self._exit_thresholds_calibration["min_k_decline"],
+        )
+        k_decl_a = t_k(
+            n_a,
+            q_decl,
+            self.default_exit_thresholds["k_decl_a"],
+            self._exit_thresholds_calibration["min_k_decline"],
+        )
+
+        if debug:
+            logger.info(
+                f"n_(rv,ra,v,a)=({n_rv},{n_ra},{n_v},{n_a}) | "
+                f"q_(spike,decl)=({format_number(q_spike)},{format_number(q_decl)}) | "
+                f"k_spike_(v,a)=({format_number(k_spike_v)},{format_number(k_spike_a)}) k_decl(v,a)=({format_number(k_decl_v)},{format_number(k_decl_a)})"
+            )
+
+        return {
+            "k_spike_v": k_spike_v,
+            "k_spike_a": k_spike_a,
+            "k_decl_v": k_decl_v,
+            "k_decl_a": k_decl_a,
+        }
 
     def custom_exit(
         self,
@@ -1104,7 +1205,9 @@ class QuickAdapterV3(IStrategy):
         previous_unrealized_pnl = (
             trade_unrealized_pnl_history[-1] if trade_unrealized_pnl_history else None
         )
-        if previous_unrealized_pnl != current_profit:
+        if previous_unrealized_pnl is None or not np.isclose(
+            previous_unrealized_pnl, current_profit
+        ):
             self.append_trade_unrealized_pnl(trade, current_profit)
 
         df, _ = self.dp.get_analyzed_dataframe(
@@ -1154,6 +1257,26 @@ class QuickAdapterV3(IStrategy):
         if trade_exit_stage in self.partial_exit_stages:
             return None
 
+        trade_take_profit_price = self.get_take_profit_price(
+            df, trade, trade_exit_stage
+        )
+        if isna(trade_take_profit_price):
+            return None
+        trade_take_profit_exit = QuickAdapterV3.can_take_profit(
+            trade, current_rate, trade_take_profit_price
+        )
+
+        if not trade_take_profit_exit:
+            self.throttle_callback(
+                pair=pair,
+                current_time=current_time,
+                callback=lambda: logger.info(
+                    f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
+                    f"Take Profit: {format_number(trade_take_profit_price)}, Rate: {format_number(current_rate)}"
+                ),
+            )
+            return None
+
         (
             trade_pnl_velocity,
             trade_pnl_velocity_std,
@@ -1164,23 +1287,26 @@ class QuickAdapterV3(IStrategy):
             trade_recent_pnl_acceleration,
             trade_recent_pnl_acceleration_std,
         ) = self.get_trade_pnl_momentum(trade)
-        trade_pnl_momentum_declining = (
-            trade_pnl_acceleration < -trade_pnl_acceleration_std * 0.000025
-            and trade_pnl_velocity < -trade_pnl_velocity_std * 0.0025
+
+        z_dv = QuickAdapterV3._zscore(trade_pnl_velocity, trade_pnl_velocity_std)
+        z_da = QuickAdapterV3._zscore(
+            trade_pnl_acceleration, trade_pnl_acceleration_std
         )
-        trade_recent_pnl_spiking = (
-            trade_recent_pnl_acceleration > trade_recent_pnl_acceleration_std * 0.00075
-            and trade_recent_pnl_velocity > trade_recent_pnl_velocity_std * 0.075
+        z_sv = QuickAdapterV3._zscore(
+            trade_recent_pnl_velocity, trade_recent_pnl_velocity_std
+        )
+        z_sa = QuickAdapterV3._zscore(
+            trade_recent_pnl_acceleration, trade_recent_pnl_acceleration_std
         )
 
-        trade_take_profit_price = self.get_take_profit_price(
-            df, trade, trade_exit_stage
-        )
-        if isna(trade_take_profit_price):
-            return None
-        trade_take_profit_exit = QuickAdapterV3.can_take_profit(
-            trade, current_rate, trade_take_profit_price
-        )
+        trade_exit_thresholds = self._get_exit_thresholds(trade)
+        k_spike_v = trade_exit_thresholds.get("k_spike_v")
+        k_spike_a = trade_exit_thresholds.get("k_spike_a")
+        k_decl_v = trade_exit_thresholds.get("k_decl_v")
+        k_decl_a = trade_exit_thresholds.get("k_decl_a")
+
+        trade_pnl_momentum_declining = (z_dv <= -k_decl_v) and (z_da <= -k_decl_a)
+        trade_recent_pnl_spiking = (z_sv >= k_spike_v) and (z_sa >= k_spike_a)
 
         trade_exit = (
             trade_take_profit_exit
@@ -1196,11 +1322,9 @@ class QuickAdapterV3(IStrategy):
                     f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
                     f"Take Profit: {format_number(trade_take_profit_price)}, Rate: {format_number(current_rate)} | "
                     f"Spiking: {trade_recent_pnl_spiking} "
-                    f"(V:{format_number(trade_recent_pnl_velocity)} S:{format_number(trade_recent_pnl_velocity_std)}, "
-                    f"A:{format_number(trade_recent_pnl_acceleration)} S:{format_number(trade_recent_pnl_acceleration_std)}) | "
+                    f"(zV:{format_number(z_sv)}>=k:{format_number(k_spike_v)}, zA:{format_number(z_sa)}>=k:{format_number(k_spike_a)}) | "
                     f"Declining: {trade_pnl_momentum_declining} "
-                    f"(V:{format_number(trade_pnl_velocity)} S:{format_number(trade_pnl_velocity_std)}, "
-                    f"A:{format_number(trade_pnl_acceleration)} S:{format_number(trade_pnl_acceleration_std)})"
+                    f"(zV:{format_number(z_dv)}<=-k:{format_number(k_decl_v)}, zA:{format_number(z_da)}<=-k:{format_number(k_decl_a)})"
                 ),
             )
         if trade_exit:

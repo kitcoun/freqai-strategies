@@ -10,7 +10,6 @@ import optuna
 import pandas as pd
 import scipy as sp
 import talib.abstract as ta
-
 from technical import qtpylib
 
 T = TypeVar("T", pd.Series, float)
@@ -21,10 +20,9 @@ def get_distance(p1: T, p2: T) -> T:
 
 
 def non_zero_diff(s1: pd.Series, s2: pd.Series) -> pd.Series:
-    """Returns the difference of two series and adds epsilon to any zero values."""
+    """Returns the difference of two series and replace zeros with epsilon."""
     diff = s1 - s2
-    diff = diff.mask(diff == 0, other=diff + np.finfo(float).eps)
-    return diff
+    return diff.where(diff != 0, np.finfo(float).eps)
 
 
 @lru_cache(maxsize=8)

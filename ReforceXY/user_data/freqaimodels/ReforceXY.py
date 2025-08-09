@@ -14,6 +14,14 @@ import matplotlib.pyplot as plt
 import matplotlib.transforms as mtransforms
 import numpy as np
 import torch as th
+from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
+from freqtrade.freqai.RL.Base5ActionRLEnv import Actions, Base5ActionRLEnv, Positions
+from freqtrade.freqai.RL.BaseEnvironment import BaseEnvironment
+from freqtrade.freqai.RL.BaseReinforcementLearningModel import (
+    BaseReinforcementLearningModel,
+)
+from freqtrade.freqai.tensorboard.TensorboardCallback import TensorboardCallback
+from freqtrade.strategy import timeframe_to_minutes
 from gymnasium import Env
 from gymnasium.spaces import Box
 from optuna import Trial, TrialPruned, create_study
@@ -34,15 +42,6 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.logger import Figure, HParam
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack, VecMonitor
-
-from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
-from freqtrade.freqai.RL.Base5ActionRLEnv import Actions, Base5ActionRLEnv, Positions
-from freqtrade.freqai.RL.BaseEnvironment import BaseEnvironment
-from freqtrade.freqai.RL.BaseReinforcementLearningModel import (
-    BaseReinforcementLearningModel,
-)
-from freqtrade.freqai.tensorboard.TensorboardCallback import TensorboardCallback
-from freqtrade.strategy import timeframe_to_minutes
 
 matplotlib.use("Agg")
 warnings.filterwarnings("ignore", category=UserWarning)

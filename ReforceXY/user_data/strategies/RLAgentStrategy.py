@@ -3,9 +3,8 @@ from functools import cached_property, reduce
 from typing import Any
 
 # import talib.abstract as ta
-from pandas import DataFrame
-
 from freqtrade.strategy import IStrategy
+from pandas import DataFrame
 
 logger = logging.getLogger(__name__)
 
