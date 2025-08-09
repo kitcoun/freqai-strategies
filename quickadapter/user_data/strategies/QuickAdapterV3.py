@@ -1180,7 +1180,7 @@ class QuickAdapterV3(IStrategy):
             logger.info(
                 f"n_(rv,ra,v,a)=({n_rv},{n_ra},{n_v},{n_a}) | "
                 f"q_(spike,decl)=({format_number(q_spike)},{format_number(q_decl)}) | "
-                f"k_spike_(v,a)=({format_number(k_spike_v)},{format_number(k_spike_a)}) k_decl(v,a)=({format_number(k_decl_v)},{format_number(k_decl_a)})"
+                f"k_spike_(v,a)=({format_number(k_spike_v)},{format_number(k_spike_a)}), k_decl_(v,a)=({format_number(k_decl_v)},{format_number(k_decl_a)})"
             )
 
         return {
