@@ -856,8 +856,8 @@ class QuickAdapterV3(IStrategy):
         take_profit_price = (
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
         )
-        trade_take_profit_price_history = (
-            QuickAdapterV3.safe_append_trade_take_profit_price(trade, take_profit_price)
+        trade_take_profit_price_history = self.safe_append_trade_take_profit_price(
+            trade, take_profit_price
         )
 
         if exit_stage not in self.partial_exit_stages:
