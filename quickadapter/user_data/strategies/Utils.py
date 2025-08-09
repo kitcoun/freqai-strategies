@@ -358,6 +358,7 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     return smma
 
 
+@lru_cache(maxsize=8)
 def get_price_fn(pricemode: str) -> Callable[[pd.DataFrame], pd.Series]:
     pricemodes = {
         "average": ta.AVGPRICE,
