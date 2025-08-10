@@ -24,6 +24,7 @@ from freqtrade.freqai.tensorboard.TensorboardCallback import TensorboardCallback
 from freqtrade.strategy import timeframe_to_minutes
 from gymnasium import Env
 from gymnasium.spaces import Box
+from numpy.typing import NDArray
 from optuna import Trial, TrialPruned, create_study
 from optuna.exceptions import ExperimentalWarning
 from optuna.pruners import HyperbandPruner
@@ -788,7 +789,9 @@ class ReforceXY(BaseReinforcementLearningModel):
                 low=-np.inf, high=np.inf, shape=self.shape, dtype=np.float32
             )
 
-        def reset(self, seed=None, **kwargs) -> Tuple[np.ndarray, Dict[str, Any]]:
+        def reset(
+            self, seed=None, **kwargs
+        ) -> Tuple[NDArray[np.float32], Dict[str, Any]]:
             """
             Reset is called at the beginning of every episode
             """
@@ -941,7 +944,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
             return 0.0
 
-        def _get_observation(self) -> np.ndarray:
+        def _get_observation(self) -> NDArray[np.float32]:
             """
             This may or may not be independent of action types, user can inherit
             this in their custom "MyRLEnv"
@@ -1032,7 +1035,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         def step(
             self, action: int
-        ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        ) -> Tuple[NDArray[np.float32], float, bool, bool, Dict[str, Any]]:
             """
             Take a step in the environment based on the provided action
             """

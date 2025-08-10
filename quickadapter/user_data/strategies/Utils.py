@@ -10,6 +10,7 @@ import optuna
 import pandas as pd
 import scipy as sp
 import talib.abstract as ta
+from numpy.typing import NDArray
 from technical import qtpylib
 
 T = TypeVar("T", pd.Series, float)
@@ -44,7 +45,7 @@ def _calculate_coeffs(
     win_type: Literal["gaussian", "kaiser", "triang"],
     std: float,
     beta: float,
-) -> np.ndarray:
+) -> NDArray[np.float64]:
     if win_type == "gaussian":
         coeffs = sp.signal.windows.gaussian(M=window, std=std, sym=True)
     elif win_type == "kaiser":
@@ -235,8 +236,15 @@ def calculate_zero_lag(series: pd.Series, period: int) -> pd.Series:
 
 
 @lru_cache(maxsize=8)
-def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
-    mamodes: dict[str, Callable[[pd.Series, int], np.ndarray]] = {
+def get_ma_fn(
+    mamode: str,
+) -> Callable[[pd.Series | NDArray[np.float64], int], pd.Series | NDArray[np.float64]]:
+    mamodes: dict[
+        str,
+        Callable[
+            [pd.Series | NDArray[np.float64], int], pd.Series | NDArray[np.float64]
+        ],
+    ] = {
         "sma": ta.SMA,
         "ema": ta.EMA,
         "wma": ta.WMA,
@@ -250,7 +258,9 @@ def get_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
 
 
 @lru_cache(maxsize=8)
-def get_zl_ma_fn(mamode: str) -> Callable[[pd.Series, int], np.ndarray]:
+def get_zl_ma_fn(
+    mamode: str,
+) -> Callable[[pd.Series | NDArray[np.float64], int], pd.Series | NDArray[np.float64]]:
     ma_fn = get_ma_fn(mamode)
     return lambda series, timeperiod: ma_fn(
         calculate_zero_lag(series, timeperiod), timeperiod=timeperiod
@@ -265,7 +275,9 @@ def zlema(series: pd.Series, period: int) -> pd.Series:
     return zl_series.ewm(alpha=alpha, adjust=False).mean()
 
 
-def _fractal_dimension(highs: np.ndarray, lows: np.ndarray, period: int) -> float:
+def _fractal_dimension(
+    highs: NDArray[np.float64], lows: NDArray[np.float64], period: int
+) -> float:
     """Original fractal dimension computation implementation per Ehlers' paper."""
     if period % 2 != 0:
         raise ValueError("period must be even")
@@ -292,7 +304,7 @@ def _fractal_dimension(highs: np.ndarray, lows: np.ndarray, period: int) -> floa
     return np.clip(D, 1.0, 2.0)
 
 
-def frama(df: pd.DataFrame, period: int = 16, zero_lag=False) -> pd.Series:
+def frama(df: pd.DataFrame, period: int = 16, zero_lag: bool = False) -> pd.Series:
     """
     Original FRAMA implementation per Ehlers' paper with optional zero lag.
     """
@@ -372,12 +384,12 @@ def get_price_fn(pricemode: str) -> Callable[[pd.DataFrame], pd.Series]:
 
 def ewo(
     dataframe: pd.DataFrame,
-    ma1_length=5,
-    ma2_length=34,
-    pricemode="close",
-    mamode="sma",
-    zero_lag=False,
-    normalize=False,
+    ma1_length: int = 5,
+    ma2_length: int = 34,
+    pricemode: str = "close",
+    mamode: str = "sma",
+    zero_lag: bool = False,
+    normalize: bool = False,
 ) -> pd.Series:
     """
     Calculate the Elliott Wave Oscillator (EWO) using two moving averages.
@@ -402,14 +414,14 @@ def ewo(
 
 def alligator(
     df: pd.DataFrame,
-    jaw_period=13,
-    teeth_period=8,
-    lips_period=5,
-    jaw_shift=8,
-    teeth_shift=5,
-    lips_shift=3,
-    pricemode="median",
-    zero_lag=False,
+    jaw_period: int = 13,
+    teeth_period: int = 8,
+    lips_period: int = 5,
+    jaw_shift: int = 8,
+    teeth_shift: int = 5,
+    lips_shift: int = 3,
+    pricemode: str = "median",
+    zero_lag: bool = False,
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """
     Calculate Bill Williams' Alligator indicator lines.
@@ -454,7 +466,7 @@ def find_fractals(df: pd.DataFrame, period: int = 2) -> tuple[list[int], list[in
     return fractal_highs, fractal_lows
 
 
-def calculate_quantile(values: np.ndarray, value: float) -> float:
+def calculate_quantile(values: NDArray[np.float64], value: float) -> float:
     if values.size == 0:
         return np.nan
 
@@ -487,7 +499,7 @@ def zigzag(
     natr_values = (ta.NATR(df, timeperiod=natr_period).bfill() / 100.0).to_numpy()
 
     indices: list[int] = df.index.tolist()
-    thresholds: np.ndarray = natr_values * natr_ratio
+    thresholds: NDArray[np.float64] = natr_values * natr_ratio
     closes = df.get("close").to_numpy()
     highs = df.get("high").to_numpy()
     lows = df.get("low").to_numpy()
@@ -719,9 +731,9 @@ def fit_regressor(
     regressor: str,
     X: pd.DataFrame,
     y: pd.DataFrame,
-    train_weights: np.ndarray,
+    train_weights: NDArray[np.float64],
     eval_set: Optional[list[tuple[pd.DataFrame, pd.DataFrame]]],
-    eval_weights: Optional[list[np.ndarray]],
+    eval_weights: Optional[list[NDArray[np.float64]]],
     model_training_parameters: dict[str, Any],
     init_model: Any = None,
     callbacks: Optional[list[Callable]] = None,
