@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.151"
+        return "3.3.154"
 
     timeframe = "5m"
 
@@ -641,7 +641,7 @@ class QuickAdapterV3(IStrategy):
         median_weight = calculate_weight(median_quantile)
 
         total_weight = entry_weight + current_weight + median_weight
-        if np.isclose(total_weight, 0):
+        if np.isclose(total_weight, 0.0):
             return None
         entry_weight /= total_weight
         current_weight /= total_weight

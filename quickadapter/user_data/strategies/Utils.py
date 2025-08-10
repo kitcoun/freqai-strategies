@@ -930,7 +930,7 @@ def soft_extremum(series: pd.Series, alpha: float) -> float:
     np_array = series.to_numpy()
     if np_array.size == 0:
         return np.nan
-    if np.isclose(alpha, 0):
+    if np.isclose(alpha, 0.0):
         return np.mean(np_array)
     scaled_np_array = alpha * np_array
     max_scaled_np_array = np.max(scaled_np_array)
@@ -944,15 +944,66 @@ def soft_extremum(series: pd.Series, alpha: float) -> float:
     return numerator / denominator
 
 
+@lru_cache(maxsize=8)
+def get_min_max_label_period_candles(
+    candles_step: int,
+    min_label_period_candles: int = 8,
+    max_label_period_candles: int = 48,
+) -> tuple[int, int, int]:
+    if min_label_period_candles > max_label_period_candles:
+        min_label_period_candles, max_label_period_candles = (
+            max_label_period_candles,
+            min_label_period_candles,
+        )
+
+    if candles_step <= (max_label_period_candles - min_label_period_candles):
+        low = ceil_to_step(min_label_period_candles, candles_step)
+        high = floor_to_step(max_label_period_candles, candles_step)
+        if low > high:
+            low, high, candles_step = (
+                min_label_period_candles,
+                max_label_period_candles,
+                1,
+            )
+    else:
+        low, high, candles_step = min_label_period_candles, max_label_period_candles, 1
+
+    return low, high, candles_step
+
+
 @lru_cache(maxsize=128)
-def round_to_nearest_int(value: float, step: int) -> int:
+def round_to_step(value: float | int, step: int) -> int:
     """
     Round a value to the nearest multiple of a given step.
     :param value: The value to round.
-    :param step: The step size to round to (must be non-zero).
+    :param step: The step size to round to (must be a positive integer).
     :return: The rounded value.
-    :raises ValueError: If step is zero.
+    :raises ValueError: If step is not a positive integer or value is not finite.
     """
+    if not np.isfinite(value):
+        raise ValueError("value must be finite")
     if not isinstance(step, int) or step <= 0:
         raise ValueError("step must be a positive integer")
-    return int(round(value / step) * step)
+    return int(round(float(value) / step) * step)
+
+
+@lru_cache(maxsize=128)
+def ceil_to_step(value: float | int, step: int) -> int:
+    if not isinstance(step, int) or step <= 0:
+        raise ValueError("step must be a positive integer")
+    if isinstance(value, (int, np.integer)):
+        return int(-(-int(value) // step) * step)
+    if not np.isfinite(value):
+        raise ValueError("value must be finite")
+    return int(math.ceil(float(value) / step) * step)
+
+
+@lru_cache(maxsize=128)
+def floor_to_step(value: float | int, step: int) -> int:
+    if not isinstance(step, int) or step <= 0:
+        raise ValueError("step must be a positive integer")
+    if isinstance(value, (int, np.integer)):
+        return int((int(value) // step) * step)
+    if not np.isfinite(value):
+        raise ValueError("value must be finite")
+    return int(math.floor(float(value) / step) * step)
