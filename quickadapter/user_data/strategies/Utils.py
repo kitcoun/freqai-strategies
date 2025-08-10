@@ -21,7 +21,7 @@ def get_distance(p1: T, p2: T) -> T:
 
 
 def non_zero_diff(s1: pd.Series, s2: pd.Series) -> pd.Series:
-    """Returns the difference of two series and replace zeros with epsilon."""
+    """Returns the difference of two series and replaces zeros with epsilon."""
     diff = s1 - s2
     return diff.where(diff != 0, np.finfo(float).eps)
 
