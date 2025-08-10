@@ -60,7 +60,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.110"
+    version = "3.7.111"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -76,7 +76,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "n_startup_trials": 15,
             "n_trials": 36,
             "timeout": 7200,
-            "label_candles_step": 2,
+            "label_candles_step": 1,
             "train_candles_step": 10,
             "expansion_ratio": 0.4,
             "seed": 1,
@@ -1351,11 +1351,12 @@ def label_objective(
             fit_live_predictions_candles
             // fit_live_predictions_candles_largest_divisor,
             candles_step,
+            12,
         ),
         candles_step,
     )
     max_label_period_candles: int = round_to_nearest_int(
-        max(fit_live_predictions_candles // 4, min_label_period_candles),
+        max(fit_live_predictions_candles // 24, min_label_period_candles, 22),
         candles_step,
     )
     label_period_candles = trial.suggest_int(
@@ -1364,7 +1365,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 2.0, 38.0, step=0.01)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 2.0, 44.0, step=0.01)
 
     label_period_cycles = fit_live_predictions_candles / label_period_candles
     df = df.iloc[-(max(2, int(label_period_cycles)) * label_period_candles) :]

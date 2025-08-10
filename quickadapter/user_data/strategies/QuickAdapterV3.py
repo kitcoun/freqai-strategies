@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.150"
+        return "3.3.151"
 
     timeframe = "5m"
 
@@ -856,21 +856,7 @@ class QuickAdapterV3(IStrategy):
         take_profit_price = (
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
         )
-        trade_take_profit_price_history = self.safe_append_trade_take_profit_price(
-            trade, take_profit_price
-        )
-
-        if exit_stage not in self.partial_exit_stages:
-            if not trade_take_profit_price_history:
-                return None
-            trade_take_profit_price_history = np.asarray(
-                trade_take_profit_price_history
-            )
-            return (
-                np.min(trade_take_profit_price_history)
-                if trade.is_short
-                else np.max(trade_take_profit_price_history)
-            )
+        self.safe_append_trade_take_profit_price(trade, take_profit_price)
 
         return take_profit_price
 
