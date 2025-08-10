@@ -3,6 +3,7 @@ from functools import cached_property, reduce
 from typing import Any
 
 # import talib.abstract as ta
+from freqtrade.freqai.RL.Base5ActionRLEnv import Actions
 from freqtrade.strategy import IStrategy
 from pandas import DataFrame
 
@@ -106,7 +107,7 @@ class RLAgentStrategy(IStrategy):
     def set_freqai_targets(
         self, dataframe: DataFrame, metadata: dict[str, Any], **kwargs
     ) -> DataFrame:
-        dataframe[ACTION_COLUMN] = 0
+        dataframe[ACTION_COLUMN] = Actions.Neutral
 
         return dataframe
 
@@ -122,7 +123,7 @@ class RLAgentStrategy(IStrategy):
     ) -> DataFrame:
         enter_long_conditions = [
             dataframe.get("do_predict") == 1,
-            dataframe.get(ACTION_COLUMN) == 1,
+            dataframe.get(ACTION_COLUMN) == Actions.Long_enter,
         ]
         dataframe.loc[
             reduce(lambda x, y: x & y, enter_long_conditions),
@@ -131,7 +132,7 @@ class RLAgentStrategy(IStrategy):
 
         enter_short_conditions = [
             dataframe.get("do_predict") == 1,
-            dataframe.get(ACTION_COLUMN) == 3,
+            dataframe.get(ACTION_COLUMN) == Actions.Short_enter,
         ]
         dataframe.loc[
             reduce(lambda x, y: x & y, enter_short_conditions),
@@ -145,13 +146,13 @@ class RLAgentStrategy(IStrategy):
     ) -> DataFrame:
         exit_long_conditions = [
             dataframe.get("do_predict") == 1,
-            dataframe.get(ACTION_COLUMN) == 2,
+            dataframe.get(ACTION_COLUMN) == Actions.Long_exit,
         ]
         dataframe.loc[reduce(lambda x, y: x & y, exit_long_conditions), "exit_long"] = 1
 
         exit_short_conditions = [
             dataframe.get("do_predict") == 1,
-            dataframe.get(ACTION_COLUMN) == 4,
+            dataframe.get(ACTION_COLUMN) == Actions.Short_exit,
         ]
         dataframe.loc[
             reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"

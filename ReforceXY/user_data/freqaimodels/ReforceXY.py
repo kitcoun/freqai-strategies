@@ -182,7 +182,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             [
                 make_env(
                     self.MyRLEnv,
-                    "train_env",
+                    f"train_env{i}",
                     i,
                     seed,
                     train_df,
@@ -196,7 +196,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             [
                 make_env(
                     self.MyRLEnv,
-                    "eval_env",
+                    f"eval_env{i}",
                     i,
                     seed,
                     test_df,
@@ -1273,7 +1273,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             enter_short_prices = history.loc[history_type == "short_enter", "price"]
             exit_long_prices = history.loc[history_type == "long_exit", "price"]
             exit_short_prices = history.loc[history_type == "short_exit", "price"]
-            take_profit_prices = history.loc[history_type == "take_profit"]
+            take_profit_prices = history.loc[history_type == "take_profit", "price"]
             stop_loss_prices = history.loc[history_type == "stop_loss", "price"]
             timeout_prices = history.loc[history_type == "timeout", "price"]
 
