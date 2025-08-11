@@ -765,8 +765,7 @@ class QuickAdapterV3(IStrategy):
             * (trade_natr / 100.0)
             * self.get_label_natr_ratio_percent(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_stoploss_log_factor(
-                trade_duration_candles
-                + int(round(QuickAdapterV3.get_trade_exit_stage(trade) ** (1.5)))
+                trade_duration_candles + int(round(trade.nr_of_successful_exits**1.5))
             )
         )
 
@@ -1030,8 +1029,8 @@ class QuickAdapterV3(IStrategy):
         current_deviation = self._calculate_current_deviation(
             df,
             pair,
-            min_natr_ratio_percent=0.00985,
-            max_natr_ratio_percent=0.0995,
+            min_natr_ratio_percent=0.00995,
+            max_natr_ratio_percent=0.0999,
             interpolation_direction="direct",
         )
         if isna(current_deviation):

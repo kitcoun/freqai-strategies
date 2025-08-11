@@ -1341,7 +1341,7 @@ def label_objective(
     candles_step: int,
 ) -> tuple[float, int]:
     min_label_period_candles, max_label_period_candles, candles_step = (
-        get_min_max_label_period_candles(candles_step)
+        get_min_max_label_period_candles(fit_live_predictions_candles, candles_step)
     )
 
     label_period_candles = trial.suggest_int(

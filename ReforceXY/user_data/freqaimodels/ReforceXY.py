@@ -4,7 +4,7 @@ import json
 import logging
 import time
 import warnings
-from enum import Enum
+from enum import IntEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple, Type
@@ -51,7 +51,7 @@ warnings.filterwarnings("ignore", category=ExperimentalWarning)
 logger = logging.getLogger(__name__)
 
 
-class ForceActions(Enum):
+class ForceActions(IntEnum):
     Take_profit = 1
     Stop_loss = 2
     Timeout = 3
