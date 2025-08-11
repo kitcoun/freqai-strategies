@@ -855,12 +855,12 @@ class QuickAdapterV3(IStrategy):
         take_profit_price = (
             trade.open_rate + (-1 if trade.is_short else 1) * take_profit_distance
         )
-        self.safe_append_trade_take_profit_price(trade, take_profit_price)
+        self.safe_append_trade_take_profit_price(trade, take_profit_price, exit_stage)
 
         return take_profit_price
 
     @staticmethod
-    def _get_trade_history(trade: Trade) -> dict[str, list[float]]:
+    def _get_trade_history(trade: Trade) -> dict[str, list[float | tuple[int, float]]]:
         return trade.get_custom_data(
             "history", {"unrealized_pnl": [], "take_profit_price": []}
         )
@@ -871,7 +871,9 @@ class QuickAdapterV3(IStrategy):
         return history.get("unrealized_pnl", [])
 
     @staticmethod
-    def get_trade_take_profit_price_history(trade: Trade) -> list[float]:
+    def get_trade_take_profit_price_history(
+        trade: Trade,
+    ) -> list[float | tuple[int, float]]:
         history = QuickAdapterV3._get_trade_history(trade)
         return history.get("take_profit_price", [])
 
@@ -899,11 +901,11 @@ class QuickAdapterV3(IStrategy):
         return trade_unrealized_pnl_history
 
     def append_trade_take_profit_price(
-        self, trade: Trade, take_profit_price: float
-    ) -> list[float]:
+        self, trade: Trade, take_profit_price: float, exit_stage: int
+    ) -> list[float | tuple[int, float]]:
         history = QuickAdapterV3._get_trade_history(trade)
         price_history = history.setdefault("take_profit_price", [])
-        price_history.append(take_profit_price)
+        price_history.append((exit_stage, take_profit_price))
         if len(price_history) > self._max_history_size:
             price_history = price_history[-self._max_history_size :]
             history["take_profit_price"] = price_history
@@ -911,21 +913,35 @@ class QuickAdapterV3(IStrategy):
         return price_history
 
     def safe_append_trade_take_profit_price(
-        self, trade: Trade, take_profit_price: float
-    ) -> list[float]:
+        self, trade: Trade, take_profit_price: float, exit_stage: int
+    ) -> list[float | tuple[int, float]]:
         trade_take_profit_price_history = (
             QuickAdapterV3.get_trade_take_profit_price_history(trade)
         )
-        previous_take_profit_price = (
+        previous_take_profit_entry = (
             trade_take_profit_price_history[-1]
             if trade_take_profit_price_history
             else None
         )
-        if previous_take_profit_price is None or not np.isclose(
-            previous_take_profit_price, take_profit_price
+        previous_exit_stage = None
+        previous_take_profit_price = None
+        if isinstance(previous_take_profit_entry, tuple):
+            previous_exit_stage = (
+                previous_take_profit_entry[0] if previous_take_profit_entry else None
+            )
+            previous_take_profit_price = (
+                previous_take_profit_entry[1] if previous_take_profit_entry else None
+            )
+        elif isinstance(previous_take_profit_entry, float):
+            previous_exit_stage = -1
+            previous_take_profit_price = previous_take_profit_entry
+        if (
+            previous_take_profit_price is None
+            or (previous_exit_stage is not None and previous_exit_stage != exit_stage)
+            or not np.isclose(previous_take_profit_price, take_profit_price)
         ):
             trade_take_profit_price_history = self.append_trade_take_profit_price(
-                trade, take_profit_price
+                trade, take_profit_price, exit_stage
             )
         return trade_take_profit_price_history
 

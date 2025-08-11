@@ -128,7 +128,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         )
         self._optuna_hp_value: dict[str, float] = {}
         self._optuna_train_value: dict[str, float] = {}
-        self._optuna_label_values: dict[str, list] = {}
+        self._optuna_label_values: dict[str, list[float | int]] = {}
         self._optuna_hp_params: dict[str, dict[str, Any]] = {}
         self._optuna_train_params: dict[str, dict[str, Any]] = {}
         self._optuna_label_params: dict[str, dict[str, Any]] = {}
@@ -210,14 +210,16 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
 
-    def get_optuna_values(self, pair: str, namespace: str) -> list:
+    def get_optuna_values(self, pair: str, namespace: str) -> list[float | int]:
         if namespace == "label":
             values = self._optuna_label_values.get(pair)
         else:
             raise ValueError(f"Invalid namespace: {namespace}")
         return values
 
-    def set_optuna_values(self, pair: str, namespace: str, values: list) -> None:
+    def set_optuna_values(
+        self, pair: str, namespace: str, values: list[float | int]
+    ) -> None:
         if namespace == "label":
             self._optuna_label_values[pair] = values
         else:
