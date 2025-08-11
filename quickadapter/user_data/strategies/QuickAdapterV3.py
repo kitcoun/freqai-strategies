@@ -1030,7 +1030,7 @@ class QuickAdapterV3(IStrategy):
             df,
             pair,
             min_natr_ratio_percent=0.00995,
-            max_natr_ratio_percent=0.0999,
+            max_natr_ratio_percent=0.0985,
             interpolation_direction="direct",
         )
         if isna(current_deviation):
