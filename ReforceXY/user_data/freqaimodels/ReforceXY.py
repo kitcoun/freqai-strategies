@@ -1049,7 +1049,9 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "tick": self._current_tick,
                 "position": self._position.value,
                 "action": action,
-                "force_action": self._force_action,
+                "force_action": (
+                    self._force_action.name if self._force_action else None
+                ),
                 "pnl": self.get_unrealized_profit(),
                 "reward": round(reward, 5),
                 "total_reward": round(self.total_reward, 5),

@@ -143,7 +143,7 @@ class QuickAdapterV3(IStrategy):
             self.freqai_info.get("fit_live_predictions_candles", 100)
         )
         estimated_trade_duration_candles = int(
-            self.config.get("estimated_trade_duration_candles", 36)
+            self.config.get("estimated_trade_duration_candles", 24)
         )
         stoploss_guard_lookback_period_candles = int(fit_live_predictions_candles / 2)
         stoploss_guard_trade_limit = max(
