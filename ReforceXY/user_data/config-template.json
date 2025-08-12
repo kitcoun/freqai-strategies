@@ -132,7 +132,6 @@
         "1h",
         "4h"
       ],
-      "label_period_candles": 100,
       "include_shifted_candles": 6,
       "weight_factor": 0.9,
       "principal_component_analysis": false,

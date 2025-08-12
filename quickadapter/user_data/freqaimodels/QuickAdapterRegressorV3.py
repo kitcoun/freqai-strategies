@@ -156,7 +156,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 if self.optuna_load_best_params(pair, "label")
                 else {
                     "label_period_candles": self.ft_params.get(
-                        "label_period_candles", 50
+                        "label_period_candles", 24
                     ),
                     "label_natr_ratio": float(
                         self.ft_params.get("label_natr_ratio", 6.0)

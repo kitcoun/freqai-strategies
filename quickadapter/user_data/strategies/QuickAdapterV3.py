@@ -220,7 +220,7 @@ class QuickAdapterV3(IStrategy):
                 if self.optuna_load_best_params(pair, "label")
                 else {
                     "label_period_candles": self.freqai_info["feature_parameters"].get(
-                        "label_period_candles", 50
+                        "label_period_candles", 24
                     ),
                     "label_natr_ratio": float(
                         self.freqai_info["feature_parameters"].get(
@@ -420,7 +420,7 @@ class QuickAdapterV3(IStrategy):
         )
         if label_period_candles and isinstance(label_period_candles, int):
             return label_period_candles
-        return self.freqai_info["feature_parameters"].get("label_period_candles", 50)
+        return self.freqai_info["feature_parameters"].get("label_period_candles", 24)
 
     def set_label_period_candles(self, pair: str, label_period_candles: int) -> None:
         if isinstance(label_period_candles, int):
