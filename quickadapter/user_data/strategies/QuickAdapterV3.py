@@ -1045,8 +1045,8 @@ class QuickAdapterV3(IStrategy):
         current_deviation = self._calculate_current_deviation(
             df,
             pair,
-            min_natr_ratio_percent=0.00995,
-            max_natr_ratio_percent=0.0985,
+            min_natr_ratio_percent=0.00999,
+            max_natr_ratio_percent=0.099,
             interpolation_direction="direct",
         )
         if isna(current_deviation):
