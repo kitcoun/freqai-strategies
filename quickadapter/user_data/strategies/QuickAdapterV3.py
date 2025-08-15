@@ -1100,6 +1100,70 @@ class QuickAdapterV3(IStrategy):
 
         raise ValueError(f"Invalid side: {side}. Expected 'long' or 'short'")
 
+    def reversal_confirmation(
+        self,
+        df: DataFrame,
+        pair: str,
+        side: str,
+        order: Literal["entry", "exit"],
+        rate: float,
+        lookback_period: int = 0,
+    ) -> bool:
+        """
+        Confirm a reversal using a multi-candle lookback chain.
+        Requirements:
+        - Always: current rate must break the current candle threshold (candle -1) for the given side.
+        - If lookback_period > 0: for k = 1..lookback_period, close[-k] must have broken the threshold
+          computed on candle [-(k+1)].
+        Fallbacks:
+        - If thresholds or closes are unavailable for any k, only the current threshold condition is enforced.
+        Logging:
+        - When returning False, this method logs the failing condition with contextual values.
+        """
+        if df.empty:
+            return False
+
+        lookback_period = max(0, min(int(lookback_period), len(df) - 1))
+
+        current_threshold = self.calculate_candle_threshold(
+            df, pair, side, candle_idx=-1
+        )
+        current_ok = np.isfinite(current_threshold) and (
+            (side == "long" and rate > current_threshold)
+            or (side == "short" and rate < current_threshold)
+        )
+        if not current_ok:
+            logger.info(
+                f"User denied {side} {order} for {pair}: rate {format_number(rate)} did not break threshold {format_number(current_threshold)}"
+            )
+            return False
+
+        if lookback_period <= 0:
+            return current_ok
+
+        for k in range(1, lookback_period + 1):
+            close_k = df.iloc[-k].get("close")
+            if not np.isfinite(close_k):
+                return current_ok
+
+            threshold_k_minus_1 = self.calculate_candle_threshold(
+                df, pair, side, candle_idx=-(k + 1)
+            )
+            if not np.isfinite(threshold_k_minus_1):
+                return current_ok
+
+            if (side == "long" and not (close_k > threshold_k_minus_1)) or (
+                side == "short" and not (close_k < threshold_k_minus_1)
+            ):
+                logger.info(
+                    f"User denied {side} {order} for {pair}: "
+                    f"close[-{k}] {format_number(close_k)} "
+                    f"did not break threshold_k_minus_1[-{k + 1}] {format_number(threshold_k_minus_1)}"
+                )
+                return False
+
+        return True
+
     def get_trade_pnl_momentum(
         self, trade: Trade
     ) -> tuple[float, float, float, float, float, float, float, float]:
@@ -1273,7 +1337,7 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) < last_candle.get("minima_threshold")
-            and current_rate > self.calculate_candle_threshold(df, pair, "long")
+            and self.reversal_confirmation(df, pair, "long", "exit", current_rate)
         ):
             return "minima_detected_short"
         if (
@@ -1281,7 +1345,7 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) > last_candle.get("maxima_threshold")
-            and current_rate < self.calculate_candle_threshold(df, pair, "short")
+            and self.reversal_confirmation(df, pair, "short", "exit", current_rate)
         ):
             return "maxima_detected_long"
 
@@ -1391,15 +1455,10 @@ class QuickAdapterV3(IStrategy):
             pair=pair, timeframe=self.config.get("timeframe")
         )
         if df.empty:
+            logger.info(f"User denied {side} entry for {pair}: dataframe is empty")
             return False
-        current_threshold = self.calculate_candle_threshold(df, pair, side)
-        if (side == "long" and rate > current_threshold) or (
-            side == "short" and rate < current_threshold
-        ):
+        if self.reversal_confirmation(df, pair, side, "entry", rate):
             return True
-        logger.info(
-            f"User denied {side} entry for {pair}: rate {format_number(rate)} did not break threshold {format_number(current_threshold)}"
-        )
         return False
 
     def is_short_allowed(self) -> bool:
