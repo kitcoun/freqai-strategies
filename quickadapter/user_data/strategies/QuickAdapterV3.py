@@ -820,7 +820,7 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             return None
 
-        stoploss_distance = self.get_stoploss_distance(df, trade, current_rate, 0.8860)
+        stoploss_distance = self.get_stoploss_distance(df, trade, current_rate, 0.7860)
         if isna(stoploss_distance) or stoploss_distance <= 0:
             return None
         return stoploss_from_absolute(
