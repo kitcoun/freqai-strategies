@@ -1132,9 +1132,15 @@ class QuickAdapterV3(IStrategy):
             (side == "long" and rate > current_threshold)
             or (side == "short" and rate < current_threshold)
         )
+        trade_direction = side
+        if order == "exit":
+            if side == "long":
+                trade_direction = "short"
+            if side == "short":
+                trade_direction = "long"
         if not current_ok:
             logger.info(
-                f"User denied {side} {order} for {pair}: rate {format_number(rate)} did not break threshold {format_number(current_threshold)}"
+                f"User denied {trade_direction} {order} for {pair}: rate {format_number(rate)} did not break threshold {format_number(current_threshold)}"
             )
             return False
 
@@ -1156,7 +1162,7 @@ class QuickAdapterV3(IStrategy):
                 side == "short" and not (close_k < threshold_k_minus_1)
             ):
                 logger.info(
-                    f"User denied {side} {order} for {pair}: "
+                    f"User denied {trade_direction} {order} for {pair}: "
                     f"close[-{k}] {format_number(close_k)} "
                     f"did not break threshold_k_minus_1[-{k + 1}] {format_number(threshold_k_minus_1)}"
                 )
