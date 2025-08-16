@@ -745,7 +745,7 @@ class QuickAdapterV3(IStrategy):
     @staticmethod
     @lru_cache(maxsize=128)
     def get_stoploss_log_factor(trade_duration_candles: int) -> float:
-        return 1 / math.log10(3.75 + 0.25 * trade_duration_candles)
+        return 1 / math.log10(3.25 + 0.25 * trade_duration_candles)
 
     def get_stoploss_distance(
         self,
@@ -765,7 +765,7 @@ class QuickAdapterV3(IStrategy):
             * (trade_natr / 100.0)
             * self.get_label_natr_ratio_percent(trade.pair, natr_ratio_percent)
             * QuickAdapterV3.get_stoploss_log_factor(
-                trade_duration_candles + int(round(trade.nr_of_successful_exits**1.5))
+                trade_duration_candles + int(round(trade.nr_of_successful_exits**1.25))
             )
         )
 
@@ -1004,6 +1004,19 @@ class QuickAdapterV3(IStrategy):
     def weighted_close(series: Series) -> float:
         return (series.get("high") + series.get("low") + 2 * series.get("close")) / 4.0
 
+    @staticmethod
+    def _normalize_candle_idx(length: int, idx: int) -> int:
+        """
+        Normalize a candle index against a sequence length:
+        - supports negative indexing (Python-like),
+        - clamps to [0, length-1].
+        """
+        if length <= 0:
+            return 0
+        if idx < 0:
+            idx = length + idx
+        return max(0, min(idx, length - 1))
+
     def _calculate_candle_deviation(
         self,
         df: DataFrame,
@@ -1018,10 +1031,9 @@ class QuickAdapterV3(IStrategy):
         if label_natr_series is None or label_natr_series.empty:
             return None
 
-        n = len(label_natr_series)
-        if candle_idx < 0:
-            candle_idx = n + candle_idx
-        candle_idx = max(0, min(candle_idx, n - 1))
+        candle_idx = QuickAdapterV3._normalize_candle_idx(
+            len(label_natr_series), candle_idx
+        )
 
         label_natr_values = label_natr_series.iloc[: candle_idx + 1].to_numpy()
         if label_natr_values.size == 0:
@@ -1057,23 +1069,26 @@ class QuickAdapterV3(IStrategy):
         )
 
     def calculate_candle_threshold(
-        self, df: DataFrame, pair: str, side: str, candle_idx: int = -1
+        self,
+        df: DataFrame,
+        pair: str,
+        side: str,
+        min_natr_ratio_percent: float,
+        max_natr_ratio_percent: float,
+        candle_idx: int = -1,
     ) -> float:
         current_deviation = self._calculate_candle_deviation(
             df,
             pair,
-            min_natr_ratio_percent=0.00999,
-            max_natr_ratio_percent=0.099,
+            min_natr_ratio_percent=min_natr_ratio_percent,
+            max_natr_ratio_percent=max_natr_ratio_percent,
             candle_idx=candle_idx,
             interpolation_direction="direct",
         )
         if isna(current_deviation) or current_deviation <= 0:
             return np.nan
 
-        n = len(df)
-        if candle_idx < 0:
-            candle_idx = n + candle_idx
-        candle_idx = max(0, min(candle_idx, n - 1))
+        candle_idx = QuickAdapterV3._normalize_candle_idx(len(df), candle_idx)
 
         candle = df.iloc[candle_idx]
         candle_close = candle.get("close")
@@ -1107,7 +1122,10 @@ class QuickAdapterV3(IStrategy):
         side: str,
         order: Literal["entry", "exit"],
         rate: float,
+        min_natr_ratio_percent: float = 0.00999,
+        max_natr_ratio_percent: float = 0.099,
         lookback_period: int = 0,
+        decay_ratio: float = 0.9,
     ) -> bool:
         """
         Confirm a reversal using a multi-candle lookback chain.
@@ -1115,6 +1133,12 @@ class QuickAdapterV3(IStrategy):
         - Always: current rate must break the current candle threshold (candle -1) for the given side.
         - If lookback_period > 0: for k = 1..lookback_period, close[-k] must have broken the threshold
           computed on candle [-(k+1)].
+        Decay:
+        - A geometric decay is applied for each lookback step k:
+          min_natr_ratio_percent/max_natr_ratio_percent bounds are multiplied
+          by (decay_ratio ** k) and clamped to [0, 1] for the threshold computed on candle [-(k+1)].
+          Default decay_ratio=0.9.
+          Set decay_ratio=1.0 to disable decay and keep the current behavior.
         Fallbacks:
         - If thresholds or closes are unavailable for any k, only the current threshold condition is enforced.
         Logging:
@@ -1124,9 +1148,16 @@ class QuickAdapterV3(IStrategy):
             return False
 
         lookback_period = max(0, min(int(lookback_period), len(df) - 1))
+        if not (0.0 < decay_ratio <= 1.0):
+            decay_ratio = 1.0
 
         current_threshold = self.calculate_candle_threshold(
-            df, pair, side, candle_idx=-1
+            df,
+            pair,
+            side,
+            min_natr_ratio_percent=min_natr_ratio_percent,
+            max_natr_ratio_percent=max_natr_ratio_percent,
+            candle_idx=-1,
         )
         current_ok = np.isfinite(current_threshold) and (
             (side == "long" and rate > current_threshold)
@@ -1152,8 +1183,21 @@ class QuickAdapterV3(IStrategy):
             if not np.isfinite(close_k):
                 return current_ok
 
+            decayed_min_natr_ratio_percent = max(
+                0.0, min(1.0, min_natr_ratio_percent * (decay_ratio**k))
+            )
+            decayed_max_natr_ratio_percent = max(
+                decayed_min_natr_ratio_percent,
+                min(1.0, max_natr_ratio_percent * (decay_ratio**k)),
+            )
+
             threshold_k_minus_1 = self.calculate_candle_threshold(
-                df, pair, side, candle_idx=-(k + 1)
+                df,
+                pair,
+                side,
+                min_natr_ratio_percent=decayed_min_natr_ratio_percent,
+                max_natr_ratio_percent=decayed_max_natr_ratio_percent,
+                candle_idx=-(k + 1),
             )
             if not np.isfinite(threshold_k_minus_1):
                 return current_ok
@@ -1164,7 +1208,8 @@ class QuickAdapterV3(IStrategy):
                 logger.info(
                     f"User denied {trade_direction} {order} for {pair}: "
                     f"close[-{k}] {format_number(close_k)} "
-                    f"did not break threshold_k_minus_1[-{k + 1}] {format_number(threshold_k_minus_1)}"
+                    f"did not break threshold_k_minus_1[-{k + 1}] {format_number(threshold_k_minus_1)} "
+                    f"(decayed min/max: min={format_number(decayed_min_natr_ratio_percent)}, max={format_number(decayed_max_natr_ratio_percent)})"
                 )
                 return False
 
