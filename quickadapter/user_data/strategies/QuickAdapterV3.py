@@ -143,7 +143,7 @@ class QuickAdapterV3(IStrategy):
             self.freqai_info.get("fit_live_predictions_candles", 100)
         )
         estimated_trade_duration_candles = int(
-            self.config.get("estimated_trade_duration_candles", 24)
+            self.config.get("estimated_trade_duration_candles", 48)
         )
         stoploss_guard_lookback_period_candles = int(fit_live_predictions_candles / 2)
         stoploss_guard_trade_limit = max(
@@ -745,7 +745,7 @@ class QuickAdapterV3(IStrategy):
     @staticmethod
     @lru_cache(maxsize=128)
     def get_stoploss_log_factor(trade_duration_candles: int) -> float:
-        return 1 / math.log10(3.25 + 0.25 * trade_duration_candles)
+        return 1 / math.log10(2.0 + 0.25 * trade_duration_candles)
 
     def get_stoploss_distance(
         self,
