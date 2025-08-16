@@ -1191,7 +1191,7 @@ class QuickAdapterV3(IStrategy):
                 min(1.0, max_natr_ratio_percent * (decay_ratio**k)),
             )
 
-            threshold_k_minus_1 = self.calculate_candle_threshold(
+            threshold_k = self.calculate_candle_threshold(
                 df,
                 pair,
                 side,
@@ -1199,16 +1199,16 @@ class QuickAdapterV3(IStrategy):
                 max_natr_ratio_percent=decayed_max_natr_ratio_percent,
                 candle_idx=-(k + 1),
             )
-            if not np.isfinite(threshold_k_minus_1):
+            if not np.isfinite(threshold_k):
                 return current_ok
 
-            if (side == "long" and not (close_k > threshold_k_minus_1)) or (
-                side == "short" and not (close_k < threshold_k_minus_1)
+            if (side == "long" and not (close_k > threshold_k)) or (
+                side == "short" and not (close_k < threshold_k)
             ):
                 logger.info(
                     f"User denied {trade_direction} {order} for {pair}: "
                     f"close_k[{-k}] {format_number(close_k)} "
-                    f"did not break threshold_k_minus_1[{-(k + 1)}] {format_number(threshold_k_minus_1)} "
+                    f"did not break threshold_k[{-(k + 1)}] {format_number(threshold_k)} "
                     f"(decayed min/max natr_ratio_percent: min={format_number(decayed_min_natr_ratio_percent)}, max={format_number(decayed_max_natr_ratio_percent)})"
                 )
                 return False
