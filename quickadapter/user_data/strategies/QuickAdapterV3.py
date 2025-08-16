@@ -1207,9 +1207,9 @@ class QuickAdapterV3(IStrategy):
             ):
                 logger.info(
                     f"User denied {trade_direction} {order} for {pair}: "
-                    f"close[-{k}] {format_number(close_k)} "
-                    f"did not break threshold_k_minus_1[-{k + 1}] {format_number(threshold_k_minus_1)} "
-                    f"(decayed min/max: min={format_number(decayed_min_natr_ratio_percent)}, max={format_number(decayed_max_natr_ratio_percent)})"
+                    f"close_k[{-k}] {format_number(close_k)} "
+                    f"did not break threshold_k_minus_1[{-(k + 1)}] {format_number(threshold_k_minus_1)} "
+                    f"(decayed min/max natr_ratio_percent: min={format_number(decayed_min_natr_ratio_percent)}, max={format_number(decayed_max_natr_ratio_percent)})"
                 )
                 return False
 
@@ -1471,7 +1471,7 @@ class QuickAdapterV3(IStrategy):
                     f"Spiking: {trade_recent_pnl_spiking} "
                     f"(zV:{format_number(z_sv)}>=k:{format_number(k_spike_v)}, zA:{format_number(z_sa)}>=k:{format_number(k_spike_a)}) | "
                     f"Declining: {trade_pnl_momentum_declining} "
-                    f"(zV:{format_number(z_dv)}<=-k:{format_number(k_decl_v)}, zA:{format_number(z_da)}<=-k:{format_number(k_decl_a)})"
+                    f"(zV:{format_number(z_dv)}<=-k:{format_number(-k_decl_v)}, zA:{format_number(z_da)}<=-k:{format_number(-k_decl_a)})"
                 ),
             )
         if trade_exit:
