@@ -948,12 +948,12 @@ def soft_extremum(series: pd.Series, alpha: float) -> float:
 def get_min_max_label_period_candles(
     fit_live_predictions_candles: int,
     candles_step: int,
-    min_label_period_candles: int = 8,
-    max_label_period_candles: int = 48,
-    max_time_candles: int = 48,
+    min_label_period_candles: int = 12,
+    max_label_period_candles: int = 36,
+    max_time_candles: int = 36,
     max_horizon_fraction: float = 1.0 / 3.0,
-    min_label_period_candles_fallback: int = 8,
-    max_label_period_candles_fallback: int = 28,
+    min_label_period_candles_fallback: int = 12,
+    max_label_period_candles_fallback: int = 36,
 ) -> tuple[int, int, int]:
     if min_label_period_candles > max_label_period_candles:
         raise ValueError(
@@ -964,7 +964,7 @@ def get_min_max_label_period_candles(
     capped_horizon_candles = max(
         1,
         floor_to_step(
-            max(1, int(fit_live_predictions_candles * max_horizon_fraction)),
+            max(1, math.ceil(fit_live_predictions_candles * max_horizon_fraction)),
             candles_step,
         ),
     )
