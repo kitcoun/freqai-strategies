@@ -228,7 +228,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             model_params["learning_rate"] = linear_schedule(_lr)
             logger.info("Learning rate linear schedule enabled, initial value: %s", _lr)
 
-        if self.cr_schedule:
+        if "PPO" in self.model_type and self.cr_schedule:
             _cr = model_params.get("clip_range", 0.2)
             model_params["clip_range"] = linear_schedule(_cr)
             logger.info("Clip range linear schedule enabled, initial value: %s", _cr)
