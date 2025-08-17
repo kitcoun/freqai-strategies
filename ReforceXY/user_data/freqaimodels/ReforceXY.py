@@ -1363,11 +1363,12 @@ class InfoMetricsCallback(TensorboardCallback):
                 {
                     "buffer_size": self.model.buffer_size,
                     "gradient_steps": self.model.gradient_steps,
-                    "train_freq": self.model.train_freq,
                     "learning_starts": self.model.learning_starts,
                     "target_update_interval": self.model.target_update_interval,
                     "exploration_fraction": self.model.exploration_fraction,
+                    "exploration_initial_eps": self.model.exploration_initial_eps,
                     "exploration_final_eps": self.model.exploration_final_eps,
+                    "exploration_rate": self.model.exploration_rate,
                 }
             )
         if "QRDQN" in self.model.__class__.__name__:
