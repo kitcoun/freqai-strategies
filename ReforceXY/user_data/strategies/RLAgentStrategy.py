@@ -18,58 +18,6 @@ class RLAgentStrategy(IStrategy):
 
     INTERFACE_VERSION = 3
 
-    minimal_roi = {"0": 0.03}
-
-    process_only_new_candles = True
-
-    stoploss = -0.02
-    # # Trailing stop:
-    # trailing_stop = False
-    # trailing_stop_positive = 0.01
-    # trailing_stop_positive_offset = 0.011
-    # trailing_only_offset_is_reached = True
-
-    startup_candle_count: int = 300
-
-    # @cached_property
-    # def protections(self) -> list[dict[str, Any]]:
-    #     fit_live_predictions_candles = int(
-    #         self.freqai_info.get("fit_live_predictions_candles", 100)
-    #     )
-    #     estimated_trade_duration_candles = int(
-    #         self.config.get("estimated_trade_duration_candles", 36)
-    #     )
-    #     stoploss_guard_lookback_period_candles = int(fit_live_predictions_candles / 2)
-    #     stoploss_guard_trade_limit = max(
-    #         1,
-    #         int(
-    #             round(
-    #                 (
-    #                     stoploss_guard_lookback_period_candles
-    #                     / estimated_trade_duration_candles
-    #                 )
-    #                 * 0.75
-    #             )
-    #         ),
-    #     )
-    #     return [
-    #         {"method": "CooldownPeriod", "stop_duration_candles": 4},
-    #         {
-    #             "method": "MaxDrawdown",
-    #             "lookback_period_candles": fit_live_predictions_candles,
-    #             "trade_limit": 2 * self.config.get("max_open_trades"),
-    #             "stop_duration_candles": fit_live_predictions_candles,
-    #             "max_allowed_drawdown": 0.2,
-    #         },
-    #         {
-    #             "method": "StoplossGuard",
-    #             "lookback_period_candles": stoploss_guard_lookback_period_candles,
-    #             "trade_limit": stoploss_guard_trade_limit,
-    #             "stop_duration_candles": stoploss_guard_lookback_period_candles,
-    #             "only_per_pair": True,
-    #         },
-    #     ]
-
     @cached_property
     def can_short(self) -> bool:
         return self.is_short_allowed()
