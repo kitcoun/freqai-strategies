@@ -471,7 +471,7 @@ def calculate_quantile(values: NDArray[np.float64], value: float) -> float:
         return np.nan
 
     first_value = values[0]
-    if np.all(np.isclose(values, first_value)):
+    if np.allclose(values, first_value):
         return (
             0.5
             if np.isclose(value, first_value)
@@ -1008,6 +1008,8 @@ def round_to_step(value: float | int, step: int) -> int:
     :return: The rounded value.
     :raises ValueError: If step is not a positive integer or value is not finite.
     """
+    if not isinstance(value, (int, float)):
+        raise ValueError("value must be an integer or float")
     if not np.isfinite(value):
         raise ValueError("value must be finite")
     if not isinstance(step, int) or step <= 0:

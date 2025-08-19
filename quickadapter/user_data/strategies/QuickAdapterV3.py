@@ -1146,6 +1146,10 @@ class QuickAdapterV3(IStrategy):
         """
         if df.empty:
             return False
+        if side not in {"long", "short"}:
+            return False
+        if order not in {"entry", "exit"}:
+            return False
 
         lookback_period = max(0, min(int(lookback_period), len(df) - 1))
         if not (0.0 < decay_ratio <= 1.0):
@@ -1180,7 +1184,7 @@ class QuickAdapterV3(IStrategy):
 
         for k in range(1, lookback_period + 1):
             close_k = df.iloc[-k].get("close")
-            if not np.isfinite(close_k):
+            if not isinstance(close_k, (int, float)) or not np.isfinite(close_k):
                 return current_ok
 
             decayed_min_natr_ratio_percent = max(
@@ -1199,7 +1203,9 @@ class QuickAdapterV3(IStrategy):
                 max_natr_ratio_percent=decayed_max_natr_ratio_percent,
                 candle_idx=-(k + 1),
             )
-            if not np.isfinite(threshold_k):
+            if not isinstance(threshold_k, (int, float)) or not np.isfinite(
+                threshold_k
+            ):
                 return current_ok
 
             if (side == "long" and not (close_k > threshold_k)) or (

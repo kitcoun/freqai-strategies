@@ -581,6 +581,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     @staticmethod
     def get_pred_min_max(pred_extrema: pd.Series) -> tuple[pd.Series, pd.Series]:
+        pred_extrema = (
+            pd.to_numeric(pred_extrema, errors="coerce")
+            .where(np.isfinite, np.nan)
+            .dropna()
+        )
+        if pred_extrema.empty:
+            return pd.Series(dtype=float), pd.Series(dtype=float)
         n_pred_minima = max(1, sp.signal.find_peaks(-pred_extrema)[0].size)
         n_pred_maxima = max(1, sp.signal.find_peaks(pred_extrema)[0].size)
 
@@ -588,6 +595,34 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         return sorted_pred_extrema.iloc[:n_pred_minima], sorted_pred_extrema.iloc[
             -n_pred_maxima:
         ]
+
+    @staticmethod
+    def safe_min_pred(pred_extrema: pd.Series) -> float:
+        try:
+            pred_minimum = pred_extrema.min()
+        except Exception:
+            pred_minimum = None
+        if (
+            pred_minimum is not None
+            and isinstance(pred_minimum, (int, float, np.number))
+            and np.isfinite(pred_minimum)
+        ):
+            return pred_minimum
+        return -2.0
+
+    @staticmethod
+    def safe_max_pred(pred_extrema: pd.Series) -> float:
+        try:
+            pred_maximum = pred_extrema.max()
+        except Exception:
+            pred_maximum = None
+        if (
+            pred_maximum is not None
+            and isinstance(pred_maximum, (int, float, np.number))
+            and np.isfinite(pred_maximum)
+        ):
+            return pred_maximum
+        return 2.0
 
     @staticmethod
     def soft_extremum_min_max(
@@ -598,9 +633,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
             pred_extrema
         )
-        return soft_extremum(pred_minima, alpha=-alpha), soft_extremum(
-            pred_maxima, alpha=alpha
-        )
+        soft_minimum = soft_extremum(pred_minima, alpha=-alpha)
+        if not np.isfinite(soft_minimum):
+            soft_minimum = QuickAdapterRegressorV3.safe_min_pred(pred_extrema)
+        soft_maximum = soft_extremum(pred_maxima, alpha=alpha)
+        if not np.isfinite(soft_maximum):
+            soft_maximum = QuickAdapterRegressorV3.safe_max_pred(pred_extrema)
+        return soft_minimum, soft_maximum
 
     @staticmethod
     def skimage_min_max(pred_extrema: pd.Series, method: str) -> tuple[float, float]:
@@ -630,7 +669,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             raise ValueError(f"Unknown skimage threshold function: threshold_{method}")
 
         min_val = min_func(pred_minima, threshold_func)
+        if not np.isfinite(min_val):
+            min_val = QuickAdapterRegressorV3.safe_min_pred(pred_extrema)
         max_val = max_func(pred_maxima, threshold_func)
+        if not np.isfinite(max_val):
+            max_val = QuickAdapterRegressorV3.safe_max_pred(pred_extrema)
 
         return min_val, max_val
 
@@ -642,8 +685,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
         if values.size == 0:
             return np.nan
-        if values.size == 1 or np.all(np.isclose(values, values[0])):
-            return values.mean()
+        if (
+            values.size == 1
+            or np.unique(values).size < 3
+            or np.allclose(values, values[0])
+        ):
+            return np.median(values)
         try:
             return threshold_func(values)
         except Exception as e:
