@@ -1019,6 +1019,8 @@ def round_to_step(value: float | int, step: int) -> int:
 
 @lru_cache(maxsize=128)
 def ceil_to_step(value: float | int, step: int) -> int:
+    if not isinstance(value, (int, float)):
+        raise ValueError("value must be an integer or float")
     if not isinstance(step, int) or step <= 0:
         raise ValueError("step must be a positive integer")
     if isinstance(value, (int, np.integer)):
@@ -1030,6 +1032,8 @@ def ceil_to_step(value: float | int, step: int) -> int:
 
 @lru_cache(maxsize=128)
 def floor_to_step(value: float | int, step: int) -> int:
+    if not isinstance(value, (int, float)):
+        raise ValueError("value must be an integer or float")
     if not isinstance(step, int) or step <= 0:
         raise ValueError("step must be a positive integer")
     if isinstance(value, (int, np.integer)):
