@@ -92,10 +92,10 @@ class QuickAdapterV3(IStrategy):
     }
 
     default_exit_thresholds_calibration: dict[str, float] = {
-        "spike_quantile": 0.95,
+        "spike_quantile": 0.96,
         "decline_quantile": 0.90,
-        "min_k_spike": 0.3,
-        "min_k_decline": 0.15,
+        "min_k_spike": 0.2,
+        "min_k_decline": 0.1,
     }
 
     position_adjustment_enable = True
@@ -1305,13 +1305,13 @@ class QuickAdapterV3(IStrategy):
         n_ra = max(0, recent_hist_len - 2)
 
         def t_k(n: int, q: float, default_k: float, min_k: float) -> float:
-            if n >= 3:
-                try:
-                    _df = max(n - 1, 1)
-                    return max(float(t.ppf(q, _df)) / math.sqrt(n), min_k)
-                except Exception:
-                    return default_k
-            return default_k
+            if not (0.0 < q < 1.0) or n < 1:
+                return default_k
+            try:
+                df = max(n - 1, 1)
+                return max(float(t.ppf(q, df)) / math.sqrt(n), min_k)
+            except Exception:
+                return default_k
 
         k_spike_v = t_k(
             n_rv,
