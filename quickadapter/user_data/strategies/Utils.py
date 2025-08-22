@@ -136,6 +136,7 @@ def format_number(value: int | float, significant_digits: int = 5) -> str:
         order_of_magnitude = math.floor(math.log10(abs_value))
         leading_zeros = abs(order_of_magnitude) - 1
         precision = leading_zeros + significant_digits
+    precision = max(0, int(precision))
 
     formatted_value = f"{value:.{precision}f}"
 
