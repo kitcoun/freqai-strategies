@@ -1125,7 +1125,7 @@ class QuickAdapterV3(IStrategy):
         min_natr_ratio_percent: float = 0.00999,
         max_natr_ratio_percent: float = 0.099,
         lookback_period: int = 1,
-        decay_ratio: float = 0.5,
+        decay_ratio: float = 0.6,
     ) -> bool:
         """
         Confirm a reversal using a multi-candle lookback chain.
@@ -1137,7 +1137,7 @@ class QuickAdapterV3(IStrategy):
         - A geometric decay is applied for each lookback step k:
           min_natr_ratio_percent/max_natr_ratio_percent bounds are multiplied
           by (decay_ratio ** k) and clamped to [0, 1] for the threshold computed on candle [-(k+1)].
-          Default decay_ratio=0.5.
+          Default decay_ratio=0.6.
           Set decay_ratio=1.0 to disable decay and keep the current behavior.
         Fallbacks:
         - If thresholds or closes are unavailable for any k, only the current threshold condition is enforced.
@@ -1187,12 +1187,13 @@ class QuickAdapterV3(IStrategy):
             if not isinstance(close_k, (int, float)) or not np.isfinite(close_k):
                 return current_ok
 
+            decay_factor = decay_ratio**k
             decayed_min_natr_ratio_percent = max(
-                0.0, min(1.0, min_natr_ratio_percent * (decay_ratio**k))
+                0.0, min(1.0, min_natr_ratio_percent * decay_factor)
             )
             decayed_max_natr_ratio_percent = max(
                 decayed_min_natr_ratio_percent,
-                min(1.0, max_natr_ratio_percent * (decay_ratio**k)),
+                min(1.0, max_natr_ratio_percent * decay_factor),
             )
 
             threshold_k = self.calculate_candle_threshold(

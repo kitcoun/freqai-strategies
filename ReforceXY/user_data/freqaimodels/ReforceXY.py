@@ -29,7 +29,12 @@ from optuna import Trial, TrialPruned, create_study
 from optuna.exceptions import ExperimentalWarning
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
-from optuna.storages import BaseStorage, JournalStorage, RDBStorage
+from optuna.storages import (
+    BaseStorage,
+    JournalStorage,
+    RDBStorage,
+    RetryFailedTrialCallback,
+)
 from optuna.storages.journal import JournalFileBackend
 from optuna.study import Study, StudyDirection
 from pandas import DataFrame, concat, merge
@@ -494,7 +499,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         storage_backend = self.rl_config_optuna.get("storage", "sqlite")
         if storage_backend == "sqlite":
             storage = RDBStorage(
-                url=f"sqlite:///{storage_dir}/{storage_filename}.sqlite"
+                url=f"sqlite:///{storage_dir}/{storage_filename}.sqlite",
+                heartbeat_interval=60,
+                failed_trial_callback=RetryFailedTrialCallback(max_retry=3),
             )
         elif storage_backend == "file":
             storage = JournalStorage(
