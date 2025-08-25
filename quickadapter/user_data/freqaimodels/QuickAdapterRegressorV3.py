@@ -547,7 +547,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 max(2, int(label_period_cycles)) * label_period_candles,
             )
         )
-        pred_extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
+        pred_extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:].copy()
+        pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
+            pred_extrema
+        )
         thresholds_smoothing = str(
             self.freqai_info.get("prediction_thresholds_smoothing", "mean")
         )
@@ -568,11 +571,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 self.freqai_info.get("prediction_thresholds_alpha", 12.0)
             )
             return QuickAdapterRegressorV3.soft_extremum_min_max(
-                pred_extrema, thresholds_alpha
+                pred_minima, pred_maxima, thresholds_alpha
             )
         elif thresholds_smoothing in skimage_thresholds_smoothing_methods:
             return QuickAdapterRegressorV3.skimage_min_max(
-                pred_extrema, thresholds_smoothing
+                pred_minima, pred_maxima, thresholds_smoothing
             )
         else:
             raise ValueError(
@@ -626,13 +629,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     @staticmethod
     def soft_extremum_min_max(
-        pred_extrema: pd.Series, alpha: float
+        pred_minima: pd.Series, pred_maxima: pd.Series, alpha: float
     ) -> tuple[float, float]:
         if alpha < 0:
             raise ValueError("alpha must be non-negative")
-        pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
-            pred_extrema
-        )
         soft_minimum = soft_extremum(pred_minima, alpha=-alpha)
         if not np.isfinite(soft_minimum):
             soft_minimum = QuickAdapterRegressorV3.safe_min_pred(pred_extrema)
@@ -642,11 +642,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         return soft_minimum, soft_maximum
 
     @staticmethod
-    def skimage_min_max(pred_extrema: pd.Series, method: str) -> tuple[float, float]:
-        pred_minima, pred_maxima = QuickAdapterRegressorV3.get_pred_min_max(
-            pred_extrema
-        )
-
+    def skimage_min_max(
+        pred_minima: pd.Series, pred_maxima: pd.Series, method: str
+    ) -> tuple[float, float]:
         method_functions = {
             "isodata": QuickAdapterRegressorV3.apply_skimage_threshold,
             "li": QuickAdapterRegressorV3.apply_skimage_threshold,
