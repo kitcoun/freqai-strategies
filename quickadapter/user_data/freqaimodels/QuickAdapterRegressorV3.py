@@ -547,7 +547,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 max(2, int(label_period_cycles)) * label_period_candles,
             )
         )
-        pred_extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:]
+        pred_extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:].copy()
         thresholds_smoothing = str(
             self.freqai_info.get("prediction_thresholds_smoothing", "mean")
         )
