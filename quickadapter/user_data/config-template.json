@@ -162,8 +162,8 @@
       ],
       // "label_metric": "chebyshev",
       // "label_weights": [
-      //   0.25,
-      //   0.75
+      //   0.4,
+      //   0.6
       // ],
       // "label_metric": "hellinger",
       // "label_weights": [
