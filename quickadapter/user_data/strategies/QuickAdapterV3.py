@@ -1115,7 +1115,7 @@ class QuickAdapterV3(IStrategy):
 
         raise ValueError(f"Invalid side: {side}. Expected 'long' or 'short'")
 
-    def reversal_confirmation(
+    def reversal_confirmed(
         self,
         df: DataFrame,
         pair: str,
@@ -1395,7 +1395,7 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) < last_candle.get("minima_threshold")
-            and self.reversal_confirmation(df, pair, "long", "exit", current_rate)
+            and self.reversal_confirmed(df, pair, "long", "exit", current_rate)
         ):
             return "minima_detected_short"
         if (
@@ -1403,7 +1403,7 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) > last_candle.get("maxima_threshold")
-            and self.reversal_confirmation(df, pair, "short", "exit", current_rate)
+            and self.reversal_confirmed(df, pair, "short", "exit", current_rate)
         ):
             return "maxima_detected_long"
 
@@ -1515,7 +1515,7 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             logger.info(f"User denied {side} entry for {pair}: dataframe is empty")
             return False
-        if self.reversal_confirmation(df, pair, side, "entry", rate):
+        if self.reversal_confirmed(df, pair, side, "entry", rate):
             return True
         return False
 
