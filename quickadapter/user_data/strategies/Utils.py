@@ -907,7 +907,7 @@ def get_optuna_study_model_parameters(
     return study_model_parameters
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=128)
 def largest_divisor_to_step(integer: int, step: int) -> Optional[int]:
     if not isinstance(integer, int) or integer <= 0:
         raise ValueError("integer must be a positive integer")
