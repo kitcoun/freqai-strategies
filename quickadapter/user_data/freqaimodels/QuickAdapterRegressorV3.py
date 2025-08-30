@@ -340,9 +340,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 direction=optuna.study.StudyDirection.MINIMIZE,
             )
 
+            optuna_hp_value = self.get_optuna_value(dk.pair, "hp")
             optuna_train_params = self.get_optuna_params(dk.pair, "train")
-            if optuna_train_params and self.optuna_params_valid(
-                dk.pair, "train", train_study
+            optuna_train_value = self.get_optuna_value(dk.pair, "train")
+            if (
+                optuna_train_params
+                and self.optuna_params_valid(dk.pair, "train", train_study)
+                and optuna_train_value < optuna_hp_value
             ):
                 train_period_candles = optuna_train_params.get("train_period_candles")
                 if isinstance(train_period_candles, int) and train_period_candles > 0:
@@ -355,6 +359,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     X_test = X_test.iloc[-test_period_candles:]
                     y_test = y_test.iloc[-test_period_candles:]
                     test_weights = test_weights[-test_period_candles:]
+            elif optuna_train_value >= optuna_hp_value:
+                logger.warning(
+                    f"{dk.pair}: Optuna train RMSE {format_number(optuna_train_value)} is not better than HPO RMSE {format_number(optuna_hp_value)}, skipping training sets sizing optimization"
+                )
 
         eval_set, eval_weights = QuickAdapterRegressorV3.eval_set_and_weights(
             X_test,
