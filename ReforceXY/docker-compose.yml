@@ -21,7 +21,7 @@ services:
         ARG optuna_version
         RUN pip install --user optuna==$${optuna_version} optuna-dashboard
       args:
-        - optuna_version=4.4.0
+        - optuna_version=4.5.0
     restart: unless-stopped
     container_name: freqtrade-ReforceXY
     environment:

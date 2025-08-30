@@ -22,7 +22,7 @@ services:
         ARG skimage_version
         RUN pip install --user optuna==$${optuna_version} optuna-integration==$${optuna_version} optuna-dashboard scikit-image==$${skimage_version}
       args:
-        - optuna_version=4.4.0
+        - optuna_version=4.5.0
         - skimage_version=0.25.2
     restart: unless-stopped
     container_name: freqtrade-quickadapter
