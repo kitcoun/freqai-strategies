@@ -908,23 +908,27 @@ def get_optuna_study_model_parameters(
 
 
 @lru_cache(maxsize=8)
-def largest_divisor(integer: int, step: int) -> Optional[int]:
+def largest_divisor_to_step(integer: int, step: int) -> Optional[int]:
     if not isinstance(integer, int) or integer <= 0:
         raise ValueError("integer must be a positive integer")
     if not isinstance(step, int) or step <= 0:
         raise ValueError("step must be a positive integer")
 
-    q_start = math.floor(0.5 * step) + 1
-    q_end = math.ceil(1.5 * step) - 1
+    if step == 1 or integer % step == 0:
+        return integer
 
-    if q_start > q_end:
-        return None
+    best_divisor: Optional[int] = None
+    max_divisor = int(math.isqrt(integer))
+    for i in range(1, max_divisor + 1):
+        if integer % i != 0:
+            continue
+        j = integer // i
+        if j % step == 0:
+            return j
+        if i % step == 0:
+            best_divisor = i
 
-    for q in range(q_start, q_end + 1):
-        if integer % q == 0:
-            return int(integer / q)
-
-    return None
+    return best_divisor
 
 
 def soft_extremum(series: pd.Series, alpha: float) -> float:
