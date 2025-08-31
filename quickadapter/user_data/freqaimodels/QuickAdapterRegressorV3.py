@@ -74,7 +74,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "continuous": True,
             "warm_start": True,
             "n_startup_trials": 15,
-            "n_trials": 36,
+            "n_trials": 50,
             "timeout": 7200,
             "label_candles_step": 1,
             "train_candles_step": 10,
