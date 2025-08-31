@@ -361,7 +361,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     test_weights = test_weights[-test_period_candles:]
             elif optuna_train_value >= optuna_hp_value:
                 logger.warning(
-                    f"{dk.pair}: Optuna train RMSE {format_number(optuna_train_value)} is not better than HPO RMSE {format_number(optuna_hp_value)}, skipping training sets sizing optimization"
+                    f"Optuna {dk.pair} train RMSE {format_number(optuna_train_value)} is not better than HPO RMSE {format_number(optuna_hp_value)}, skipping training sets sizing optimization"
                 )
 
         eval_set, eval_weights = QuickAdapterRegressorV3.eval_set_and_weights(
