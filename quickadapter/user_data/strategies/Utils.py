@@ -1015,10 +1015,18 @@ def round_to_step(value: float | int, step: int) -> int:
     """
     if not isinstance(value, (int, float)):
         raise ValueError("value must be an integer or float")
-    if not np.isfinite(value):
-        raise ValueError("value must be finite")
     if not isinstance(step, int) or step <= 0:
         raise ValueError("step must be a positive integer")
+    if isinstance(value, (int, np.integer)):
+        q, r = divmod(value, step)
+        twice_r = r * 2
+        if twice_r < step:
+            return q * step
+        if twice_r > step:
+            return (q + 1) * step
+        return int(round(value / step) * step)
+    if not np.isfinite(value):
+        raise ValueError("value must be finite")
     return int(round(float(value) / step) * step)
 
 
