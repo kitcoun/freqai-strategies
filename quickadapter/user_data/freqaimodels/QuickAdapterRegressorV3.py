@@ -746,8 +746,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             # "yule",
             "hellinger",
             "shellinger",
-            "geometric_mean",
             "harmonic_mean",
+            "geometric_mean",
+            "arithmetic_mean",
+            "quadratic_mean",
+            "cubic_mean",
             "power_mean",
             "weighted_sum",
             "kmeans",
@@ -853,10 +856,20 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         axis=1,
                     )
                 ) / np.sqrt(2.0)
-            elif metric in {"geometric_mean", "harmonic_mean", "power_mean"}:
+            elif metric in {
+                "harmonic_mean",
+                "geometric_mean",
+                "arithmetic_mean",
+                "quadratic_mean",
+                "cubic_mean",
+                "power_mean",
+            }:
                 p = {
-                    "geometric_mean": 0.0,
                     "harmonic_mean": -1.0,
+                    "geometric_mean": 0.0,
+                    "arithmetic_mean": 1.0,
+                    "quadratic_mean": 2.0,
+                    "cubic_mean": 3.0,
                     "power_mean": label_p_order,
                 }[metric]
                 return sp.stats.pmean(
