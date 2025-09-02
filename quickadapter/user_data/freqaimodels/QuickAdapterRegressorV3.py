@@ -722,12 +722,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return None
 
         metrics = {
-            "braycurtis",
-            "canberra",
+            # "braycurtis",
+            # "canberra",
             "chebyshev",
             "cityblock",
-            "correlation",
-            "cosine",
+            # "correlation",
+            # "cosine",
             # "dice",
             "euclidean",
             # "hamming",
@@ -807,12 +807,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             ideal_point_2d = ideal_point.reshape(1, -1)
 
             if metric in {
-                "braycurtis",
-                "canberra",
+                # "braycurtis",
+                # "canberra",
                 "chebyshev",
                 "cityblock",
-                "correlation",
-                "cosine",
+                # "correlation",
+                # "cosine",
                 # "dice",
                 "euclidean",
                 # "hamming",
