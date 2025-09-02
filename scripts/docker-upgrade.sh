@@ -26,13 +26,30 @@ if ! command docker image pull --quiet "$REMOTE_DOCKER_IMAGE"; then
 fi
 remote_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_IMAGE" 2>/dev/null || command echo "none")
 
+rebuild_local_image=false
 if [ "$local_digest" != "$remote_digest" ]; then
-  echo_timestamped "Info: docker image ${REMOTE_DOCKER_IMAGE} was updated ($local_digest -> $remote_digest), wait for reload..."
-  echo_timestamped "Info: restarting docker image ${REMOTE_DOCKER_IMAGE}"
-  command docker compose --progress quiet down
-  command docker image rm "$LOCAL_DOCKER_IMAGE"
-  command docker compose --progress quiet up -d
-  echo_timestamped "Info: restarted docker image ${REMOTE_DOCKER_IMAGE}"
+  rebuild_local_image=true
+  echo_timestamped "Info: docker image ${REMOTE_DOCKER_IMAGE} was updated ($local_digest -> $remote_digest)"
 else
   echo_timestamped "Info: docker image ${REMOTE_DOCKER_IMAGE} is up to date"
 fi
+
+if [ "$rebuild_local_image" = true ]; then
+  echo_timestamped "Info: rebuilding and restarting docker image ${LOCAL_DOCKER_IMAGE}"
+  if ! command docker compose --progress quiet down; then
+    echo_timestamped "Error: docker compose down failed"
+    exit 1
+  fi
+  if ! command docker image rm "$LOCAL_DOCKER_IMAGE"; then
+    echo_timestamped "Warning: docker image rm failed for ${LOCAL_DOCKER_IMAGE}"
+  fi
+  if ! command docker compose --progress quiet up -d; then
+    echo_timestamped "Error: docker compose up failed"
+    exit 1
+  fi
+  echo_timestamped "Info: rebuilt and restarted docker image ${LOCAL_DOCKER_IMAGE}"
+else
+  echo_timestamped "Info: no rebuild and restart needed for docker image ${LOCAL_DOCKER_IMAGE}"
+fi
+
+exit 0
