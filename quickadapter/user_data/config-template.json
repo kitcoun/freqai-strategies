@@ -155,11 +155,11 @@
         // "1d"
       ],
       "label_period_candles": 24,
-      "label_metric": "euclidean",
-      "label_weights": [
-        0.5,
-        0.5
-      ],
+      "label_metric": "seuclidean",
+      // "label_weights": [
+      //   0.5,
+      //   0.5
+      // ],
       "include_shifted_candles": 6,
       "DI_threshold": 10,
       "weight_factor": 0.9,
