@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-FREQTRADE_CONFIG="user_data/config.json"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+FREQTRADE_CONFIG="${SCRIPT_DIR}/user_data/config.json"
 LOCAL_DOCKER_IMAGE="reforcexy-freqtrade"
 REMOTE_DOCKER_IMAGE="freqtradeorg/freqtrade:stable_freqairl"
 
@@ -132,13 +133,13 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -f "docker-compose.yml" ] && [ ! -f "docker-compose.yaml" ]; then
+if [ ! -f "${SCRIPT_DIR}/docker-compose.yml" ] && [ ! -f "${SCRIPT_DIR}/docker-compose.yaml" ]; then
   echo_timestamped "Error: docker-compose.yml or docker-compose.yaml file not found in current directory"
   exit 1
 fi
 
 if [ ! -f "$FREQTRADE_CONFIG" ]; then
-  echo_timestamped "Error: $FREQTRADE_CONFIG file not found from current directory"
+  echo_timestamped "Error: ${FREQTRADE_CONFIG} file not found from current directory"
   exit 1
 fi
 
@@ -164,6 +165,7 @@ if [ "$rebuild_local_image" = true ]; then
   message="rebuilding and restarting docker image ${LOCAL_DOCKER_IMAGE}"
   echo_timestamped "Info: $message"
   send_telegram_message "$message"
+  cd -- "$SCRIPT_DIR" || exit 1
   if ! command docker compose --progress quiet down; then
     echo_timestamped "Error: docker compose down failed"
     exit 1
@@ -178,6 +180,8 @@ if [ "$rebuild_local_image" = true ]; then
   message="rebuilt and restarted docker image ${LOCAL_DOCKER_IMAGE}"
   echo_timestamped "Info: $message"
   send_telegram_message "$message"
+  echo_timestamped "Info: pruning unused docker images"
+  command docker image prune -f >/dev/null 2>&1 || true
 else
   echo_timestamped "Info: no rebuild and restart needed for docker image ${LOCAL_DOCKER_IMAGE}"
 fi
