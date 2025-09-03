@@ -15,7 +15,7 @@ if [ -f "$LOCKFILE" ]; then
   echo_timestamped "Error: already running for ${LOCAL_DOCKER_IMAGE}"
   exit 1
 fi
-trap 'rm -f "$LOCKFILE"' EXIT
+trap 'rm -f "$LOCKFILE"' 0 HUP INT TERM
 touch "$LOCKFILE"
 
 jsonc_to_json() {
@@ -80,7 +80,7 @@ jsonc_to_json() {
 }
 
 escape_telegram_markdown() {
-  printf '%s' "$1" | sed \
+  printf '%s' "$1" | command sed \
     -e 's/\\/\\\\/g' \
     -e 's/[][(){}.*_~`>#\+=|.!-]/\\&/g'
 }
@@ -93,13 +93,18 @@ send_telegram_message() {
 
     freqtrade_telegram_enabled=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.enabled // "false"' 2>/dev/null || echo "false")
     if [ "$freqtrade_telegram_enabled" = "false" ]; then
-        return 0
+      return 0
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+      echo_timestamped "Error: curl not found, cannot send telegram notification"
+      return 1
     fi
 
     telegram_message=$(escape_telegram_markdown "$1")
     if [ -z "$telegram_message" ]; then
-        echo_timestamped "Error: message variable is empty"
-        return 1
+      echo_timestamped "Error: message variable is empty"
+      return 1
     fi
 
     freqtrade_telegram_token=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.token // ""' 2>/dev/null || echo "")
