@@ -148,7 +148,7 @@ def format_number(value: int | float, significant_digits: int = 5) -> str:
 
 @lru_cache(maxsize=128)
 def calculate_min_extrema(
-    length: int, fit_live_predictions_candles: int, min_extrema: int = 4
+    length: int, fit_live_predictions_candles: int, min_extrema: int = 2
 ) -> int:
     return int(round(length / fit_live_predictions_candles) * min_extrema)
 

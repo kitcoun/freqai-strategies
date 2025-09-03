@@ -145,7 +145,7 @@ fi
 
 echo_timestamped "Info: docker image pull for ${REMOTE_DOCKER_IMAGE}"
 local_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_IMAGE" 2>/dev/null || command echo "none")
-if ! command docker image pull --quiet "$REMOTE_DOCKER_IMAGE"; then
+if ! command docker image pull --quiet "$REMOTE_DOCKER_IMAGE" >/dev/null 2>&1; then
   echo_timestamped "Error: docker image pull failed for ${REMOTE_DOCKER_IMAGE}"
   exit 1
 fi
@@ -170,7 +170,7 @@ if [ "$rebuild_local_image" = true ]; then
     echo_timestamped "Error: docker compose down failed"
     exit 1
   fi
-  if ! command docker image rm "$LOCAL_DOCKER_IMAGE"; then
+  if ! command docker image rm "$LOCAL_DOCKER_IMAGE" >/dev/null 2>&1; then
     echo_timestamped "Warning: docker image rm failed for ${LOCAL_DOCKER_IMAGE}"
   fi
   if ! command docker compose --progress quiet up -d; then
