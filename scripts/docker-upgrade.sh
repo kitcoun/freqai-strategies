@@ -89,7 +89,7 @@ send_telegram_message() {
     if [ -z "${FREQTRADE_CONFIG_JSON:-}" ]; then
       FREQTRADE_CONFIG_JSON=$(jsonc_to_json "$FREQTRADE_CONFIG" 2>/dev/null || echo "")
     fi
-    printf '%s' "$FREQTRADE_CONFIG_JSON" | jq empty 2>/dev/null || { echo_timestamped "Error: invalid config JSON"; exit 1; }
+    printf '%s' "$FREQTRADE_CONFIG_JSON" | jq empty 2>/dev/null || { echo_timestamped "Error: invalid JSON configuration"; exit 1; }
 
     freqtrade_telegram_enabled=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.enabled // "false"' 2>/dev/null || echo "false")
     if [ "$freqtrade_telegram_enabled" = "false" ]; then
