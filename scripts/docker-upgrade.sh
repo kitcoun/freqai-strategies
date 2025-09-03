@@ -97,7 +97,7 @@ send_telegram_message() {
     fi
 
     if ! command -v curl >/dev/null 2>&1; then
-      echo_timestamped "Error: curl not found, cannot send telegram notification"
+      echo_timestamped "Error: curl not found, cannot send telegram message"
       return 1
     fi
 
