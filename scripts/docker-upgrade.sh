@@ -9,9 +9,10 @@ echo_timestamped() {
   printf '%s - %s\n' "$(date +"%Y-%m-%d %H:%M:%S")" "$*"
 }
 
-LOCKFILE="/tmp/docker-upgrade.lock"
+LOCK_TAG=$(printf '%s' "$LOCAL_DOCKER_IMAGE" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_')
+LOCKFILE="/tmp/docker-upgrade.${LOCK_TAG}.lock"
 if [ -f "$LOCKFILE" ]; then
-  echo_timestamped "Error: already running"
+  echo_timestamped "Error: already running for ${LOCAL_DOCKER_IMAGE}"
   exit 1
 fi
 trap 'rm -f "$LOCKFILE"' EXIT
