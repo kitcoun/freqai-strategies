@@ -115,10 +115,10 @@ send_telegram_message() {
         --data-urlencode "parse_mode=MarkdownV2" \
         --data "chat_id=$freqtrade_telegram_chat_id" \
         "https://api.telegram.org/bot${freqtrade_telegram_token}/sendMessage" 2>&1 1>/dev/null)
-        if [ $? -ne 0 ]; then
-            echo_timestamped "Error: failed to send telegram notification: $curl_error"
-            return 1
-        fi
+      if [ $? -ne 0 ]; then
+        echo_timestamped "Error: failed to send telegram message: $curl_error"
+        return 1
+      fi
     fi
 }
 
