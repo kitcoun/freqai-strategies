@@ -6,7 +6,7 @@ LOCAL_DOCKER_IMAGE="reforcexy-freqtrade"
 REMOTE_DOCKER_IMAGE="freqtradeorg/freqtrade:stable_freqairl"
 
 echo_timestamped() {
-  command echo "$(date +"%Y-%m-%d %H:%M:%S") - $*"
+  printf '%s - %s\n' "$(date +"%Y-%m-%d %H:%M:%S")" "$*"
 }
 
 LOCKFILE="/tmp/docker-upgrade.lock"
@@ -48,7 +48,8 @@ jsonc_to_json() {
       if (out ~ /^[[:space:]]*$/) next
       cur = out
       if (have_prev){
-        sub(/[[:space:]]*,[[:space:]]*([}\]])[[:space:]]*$/, "\\1", prev)
+        sub(/,[[:space:]]*\}[[:space:]]*$/, "}", prev)
+        sub(/,[[:space:]]*\][[:space:]]*$/, "]", prev)
         if (prev ~ /,[[:space:]]*$/ && cur ~ /^[[:space:]]*[}\]]/) {
           sub(/,[[:space:]]*$/, "", prev)
         }
@@ -56,7 +57,7 @@ jsonc_to_json() {
         openval = (cur ~ /^[[:space:]]*[{[]/)
         strval = (cur ~ /^[[:space:]]*"/) && !(key)
         numval = (cur ~ /^[[:space:]]*-?[0-9]/)
-        boolnull = (cur ~ /^[[:space:]]*(true|false|null)\b/)
+        boolnull = (cur ~ /^[[:space:]]*(true|false|null)([[:space:]]|,|]|\}|$)/)
         prev_value_end = (prev ~ /[}\]][[:space:]]*$/) || (prev ~ /"[[:space:]]*$/) || (prev ~ /-?[0-9]+([.][0-9]+)?([eE][+-]?[0-9]+)?[[:space:]]*$/) || (prev ~ /(true|false|null)[[:space:]]*$/)
         if (prev_value_end && (key || openval || strval || numval || boolnull)) {
           prev = prev ","
@@ -68,12 +69,19 @@ jsonc_to_json() {
     }
     END {
       if (have_prev){
-        sub(/[[:space:]]*,[[:space:]]*([}\]])[[:space:]]*$/, "\\1", prev)
+        sub(/,[[:space:]]*\}[[:space:]]*$/, "}", prev)
+        sub(/,[[:space:]]*\][[:space:]]*$/, "]", prev)
         sub(/,[[:space:]]*$/, "", prev)
         print prev
       }
     }
   ' "$1" | jq -c '.'
+}
+
+escape_telegram_markdown() {
+  printf '%s' "$1" | sed \
+    -e 's/\\/\\\\/g' \
+    -e 's/[][(){}.*_~`>#\+=|.!-]/\\&/g'
 }
 
 send_telegram_message() {
@@ -87,7 +95,7 @@ send_telegram_message() {
         return 0
     fi
 
-    telegram_message="$1"
+    telegram_message=$(escape_telegram_markdown "$1")
     if [ -z "$telegram_message" ]; then
         echo_timestamped "Error: message variable is empty"
         return 1
@@ -98,7 +106,7 @@ send_telegram_message() {
     if [ -n "$freqtrade_telegram_token" ] && [ -n "$freqtrade_telegram_chat_id" ]; then
       curl_error=$(command curl -s -X POST \
         --data-urlencode "text=${telegram_message}" \
-        --data-urlencode "parse_mode=markdown" \
+        --data-urlencode "parse_mode=MarkdownV2" \
         --data "chat_id=$freqtrade_telegram_chat_id" \
         "https://api.telegram.org/bot${freqtrade_telegram_token}/sendMessage" 2>&1 1>/dev/null)
         if [ $? -ne 0 ]; then
