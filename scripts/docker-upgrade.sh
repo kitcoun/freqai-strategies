@@ -83,24 +83,7 @@ jsonc_to_json() {
 escape_telegram_markdown() {
   printf '%s' "$1" | \
   command sed \
-    -e 's/\\\*/MDV2ESCSTAR/g' \
-    -e 's/\\_/MDV2ESCUND/g' \
-    -e 's/\\~/MDV2ESCTIL/g' \
-    -e 's/\\`/MDV2ESCCOD/g' \
-    -e 's/\\|/MDV2ESCPIPE/g' \
-    -e 's/\\\[/MDV2ESCLBK/g' \
-    -e 's/\\\]/MDV2ESCRBK/g' \
-    -e 's/\\(/MDV2ESCLPAR/g' \
-    -e 's/\\)/MDV2ESCRPAR/g' \
-    -e 's/\\>/MDV2ESCGT/g' \
-    -e 's/\\#/MDV2ESCHASH/g' \
-    -e 's/\\+/MDV2ESCPLUS/g' \
-    -e 's/\\-/MDV2ESCMINUS/g' \
-    -e 's/\\=/MDV2ESCEQ/g' \
-    -e 's/\\{/MDV2ESCLCB/g' \
-    -e 's/\\}/MDV2ESCRCB/g' \
-    -e 's/\\\./MDV2ESCDOT/g' \
-    -e 's/\\!/MDV2ESCEXC/g' | \
+    -e 's/\\([][_*()~`>#+=|{}.!-])/MDV2ESC\1/g' | \
   command sed \
     -e 's/`\([^`]*\)`/MDV2COPEN\1MDV2CCLOSE/g' \
     -e 's/\[\([^]]*\)\](\([^)]*\))/MDV2LOPEN\1MDV2LMID\2MDV2LCLOSE/g' \
@@ -122,15 +105,7 @@ escape_telegram_markdown() {
     -e 's/MDV2IOPEN/_/g'      -e 's/MDV2ICLOSE/_/g' \
     -e 's/MDV2SOPEN/~/g'      -e 's/MDV2SCLOSE/~/g' \
     -e 's/MDV2POPEN/||/g'     -e 's/MDV2PCLOSE/||/g' \
-    -e 's/MDV2ESCSTAR/\\*/g'  -e 's/MDV2ESCUND/\\_/g' \
-    -e 's/MDV2ESCTIL/\\~/g'   -e 's/MDV2ESCCOD/\\`/g' \
-    -e 's/MDV2ESCPIPE/\\|/g'  -e 's/MDV2ESCLBK/\\[/g' \
-    -e 's/MDV2ESCRBK/\\]/g'   -e 's/MDV2ESCLPAR/\\(/g' \
-    -e 's/MDV2ESCRPAR/\\)/g'  -e 's/MDV2ESCGT/\\>/g' \
-    -e 's/MDV2ESCHASH/\\#/g'  -e 's/MDV2ESCPLUS/\\+/g' \
-    -e 's/MDV2ESCMINUS/\\-/g' -e 's/MDV2ESCEQ/\\=/g' \
-    -e 's/MDV2ESCLCB/\\{/g'   -e 's/MDV2ESCRCB/\\}/g' \
-    -e 's/MDV2ESCDOT/\\./g'   -e 's/MDV2ESCEXC/\\!/g'
+    -e 's/MDV2ESC\([][_*()~`>#+=|{}.!-]\)/\\\1/g'
 }
 
 send_telegram_message() {
