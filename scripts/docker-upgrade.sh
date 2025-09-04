@@ -83,7 +83,7 @@ jsonc_to_json() {
 escape_telegram_markdown() {
   printf '%s' "$1" | \
   command sed \
-    -e 's/\\([][_*()~`>#+=|{}.!-])/MDV2ESC\1/g' | \
+    -e 's/\\\([][_*()~`>#+=|{}.!-]\)/MDV2ESC\1/g' | \
   command sed \
     -e 's/`\([^`]*\)`/MDV2COPEN\1MDV2CCLOSE/g' \
     -e 's/\[\([^]]*\)\](\([^)]*\))/MDV2LOPEN\1MDV2LMID\2MDV2LCLOSE/g' \
@@ -105,7 +105,7 @@ escape_telegram_markdown() {
     -e 's/MDV2IOPEN/_/g'      -e 's/MDV2ICLOSE/_/g' \
     -e 's/MDV2SOPEN/~/g'      -e 's/MDV2SCLOSE/~/g' \
     -e 's/MDV2POPEN/||/g'     -e 's/MDV2PCLOSE/||/g' \
-    -e 's/MDV2ESC\([][_*()~`>#+=|{}.!-]\)/\\\1/g'
+    -e 's/MDV2ESC\\\([][_*()~`>#+=|{}.!-]\)/\\\1/g'
 }
 
 send_telegram_message() {
