@@ -157,8 +157,8 @@
       "label_period_candles": 24,
       "label_metric": "euclidean",
       "label_weights": [
-        0.6,
-        0.4
+        0.55,
+        0.45
       ],
       "include_shifted_candles": 6,
       "DI_threshold": 10,
