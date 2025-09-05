@@ -136,7 +136,7 @@ send_telegram_message() {
       curl_error=$(command curl -s -X POST \
         --data-urlencode "text=${telegram_message}" \
         --data-urlencode "parse_mode=MarkdownV2" \
-        --data "chat_id=$freqtrade_telegram_chat_id" \
+        --data "chat_id=${freqtrade_telegram_chat_id}" \
         "https://api.telegram.org/bot${freqtrade_telegram_token}/sendMessage" 2>&1 1>/dev/null)
       if [ $? -ne 0 ]; then
         echo_timestamped "Error: failed to send telegram message: $curl_error"
@@ -176,7 +176,7 @@ remote_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_
 rebuild_local_image=false
 if [ "$local_digest" != "$remote_digest" ]; then
   rebuild_local_image=true
-  message="docker image ${REMOTE_DOCKER_IMAGE} was updated ($local_digest -> $remote_digest)"
+  message="docker image ${REMOTE_DOCKER_IMAGE} was updated (${local_digest} -> ${remote_digest})"
   echo_timestamped "Info: $message"
   send_telegram_message "$message"
 else
