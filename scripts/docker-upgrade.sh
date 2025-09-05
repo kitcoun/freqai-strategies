@@ -109,6 +109,15 @@ escape_telegram_markdown() {
 }
 
 send_telegram_message() {
+    if ! command -v jq >/dev/null 2>&1; then
+      echo_timestamped "Error: jq not found in PATH"
+      exit 1
+    fi
+    if ! command -v curl >/dev/null 2>&1; then
+      echo_timestamped "Error: curl not found, cannot send telegram message"
+      return 1
+    fi
+
     if [ -z "${FREQTRADE_CONFIG_JSON:-}" ]; then
       FREQTRADE_CONFIG_JSON=$(jsonc_to_json "$FREQTRADE_CONFIG" 2>/dev/null || echo "")
     fi
@@ -117,11 +126,6 @@ send_telegram_message() {
     freqtrade_telegram_enabled=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.enabled // "false"' 2>/dev/null || echo "false")
     if [ "$freqtrade_telegram_enabled" = "false" ]; then
       return 0
-    fi
-
-    if ! command -v curl >/dev/null 2>&1; then
-      echo_timestamped "Error: curl not found, cannot send telegram message"
-      return 1
     fi
 
     telegram_message=$(escape_telegram_markdown "$1")
@@ -144,11 +148,6 @@ send_telegram_message() {
       fi
     fi
 }
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo_timestamped "Error: jq not found in PATH"
-  exit 1
-fi
 
 if ! command -v docker >/dev/null 2>&1; then
   echo_timestamped "Error: docker not found in PATH"
