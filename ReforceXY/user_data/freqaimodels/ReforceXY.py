@@ -25,7 +25,6 @@ from freqtrade.freqai.RL.BaseReinforcementLearningModel import (
 )
 from freqtrade.freqai.tensorboard.TensorboardCallback import TensorboardCallback
 from freqtrade.strategy import timeframe_to_minutes
-from gymnasium import Env
 from gymnasium.spaces import Box
 from numpy.typing import NDArray
 from optuna import Trial, TrialPruned, create_study
@@ -1579,23 +1578,24 @@ def make_env(
     train_df: DataFrame,
     price: DataFrame,
     env_info: Dict[str, Any],
-) -> Callable:
+) -> Callable[[], BaseEnvironment]:
     """
     Utility function for multiprocessed env.
 
+    :param MyRLEnv: (Type[BaseEnvironment]) environment class to instantiate
     :param env_id: (str) the environment ID
-    :param num_env: (int) the number of environment you wish to have in subprocesses
-    :param seed: (int) the inital seed for RNG
     :param rank: (int) index of the subprocess
+    :param seed: (int) the initial seed for RNG
+    :param train_df: (DataFrame) feature dataframe for the environment
+    :param price: (DataFrame) aligned price dataframe
     :param env_info: (dict) all required arguments to instantiate the environment.
-    :return: (Callable)
+    :return: (Callable[[], BaseEnvironment]) closure that when called instantiates and returns the environment.
     """
 
-    def _init() -> Env:
-        env = MyRLEnv(
+    def _init() -> BaseEnvironment:
+        return MyRLEnv(
             df=train_df, prices=price, id=env_id, seed=seed + rank, **env_info
         )
-        return env
 
     set_random_seed(seed)
     return _init
