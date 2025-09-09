@@ -705,6 +705,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         else:
             raise NotImplementedError
 
+        # Ensure that the sampled parameters take precedence
         params = deepmerge(self.get_model_params(), params)
 
         nan_encountered = False
