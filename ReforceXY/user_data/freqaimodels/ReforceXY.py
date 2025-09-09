@@ -4,11 +4,11 @@ import json
 import logging
 import time
 import warnings
+from collections.abc import Mapping
 from enum import IntEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple, Type
-from collections.abc import Mapping
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -1669,13 +1669,7 @@ def sample_params_ppo(trial: Trial) -> Dict[str, Any]:
     Sampler for PPO hyperparams
     """
     n_steps = trial.suggest_categorical("n_steps", [512, 1024, 2048, 4096])
-    batch_size_candidates = [64, 128, 256, 512, 1024]
-    batch_size_suggestions = [
-        b for b in batch_size_candidates if b <= n_steps and n_steps % b == 0
-    ]
-    if not batch_size_suggestions:
-        batch_size_suggestions = [b for b in batch_size_candidates if b <= n_steps]
-    batch_size = trial.suggest_categorical("batch_size", batch_size_suggestions)
+    batch_size = trial.suggest_categorical("batch_size", [64, 128, 256, 512, 1024])
     return convert_optuna_params_to_model_params(
         "PPO",
         {
@@ -1722,28 +1716,14 @@ def get_common_dqn_optuna_params(trial: Trial) -> Dict[str, Any]:
     exploration_initial_eps = trial.suggest_float(
         "exploration_initial_eps", exploration_final_eps, 1.0
     )
-    if exploration_initial_eps >= 0.9:
-        min_fraction = 0.2
-    elif (exploration_initial_eps - exploration_final_eps) > 0.5:
-        min_fraction = 0.15
-    else:
-        min_fraction = 0.05
     exploration_fraction = trial.suggest_float(
-        "exploration_fraction", min_fraction, 0.9, step=0.02
+        "exploration_fraction", 0.05, 0.9, step=0.02
     )
-
     buffer_size = trial.suggest_categorical(
         "buffer_size", [int(1e4), int(5e4), int(1e5), int(2e5)]
     )
-    learning_starts_suggestions = [
-        v
-        for v in [500, 1000, 2000, 3000, 4000, 5000]
-        if v <= min(int(buffer_size * 0.05), 5000)
-    ]
-    if not learning_starts_suggestions:
-        learning_starts_suggestions = [1000]
     learning_starts = trial.suggest_categorical(
-        "learning_starts", learning_starts_suggestions
+        "learning_starts", [500, 1000, 2000, 3000, 4000, 5000]
     )
     return {
         "train_freq": train_freq,
