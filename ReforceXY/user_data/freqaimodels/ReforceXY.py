@@ -1588,8 +1588,8 @@ def make_env(
     :param seed: (int) the initial seed for RNG
     :param train_df: (DataFrame) feature dataframe for the environment
     :param price: (DataFrame) aligned price dataframe
-    :param env_info: (dict) all required arguments to instantiate the environment.
-    :return: (Callable[[], BaseEnvironment]) closure that when called instantiates and returns the environment.
+    :param env_info: (dict) all required arguments to instantiate the environment
+    :return: (Callable[[], BaseEnvironment]) closure that when called instantiates and returns the environment
     """
 
     def _init() -> BaseEnvironment:
