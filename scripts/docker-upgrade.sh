@@ -6,18 +6,49 @@ FREQTRADE_CONFIG="${SCRIPT_DIR}/user_data/config.json"
 LOCAL_DOCKER_IMAGE="reforcexy-freqtrade"
 REMOTE_DOCKER_IMAGE="freqtradeorg/freqtrade:stable_freqairl"
 
+################################
+
 echo_timestamped() {
   printf '%s - %s\n' "$(date +"%Y-%m-%d %H:%M:%S")" "$*"
 }
 
+is_pid_running() {
+  _pid="$1"
+  [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null
+}
+
+
 LOCK_TAG=$(printf '%s' "$LOCAL_DOCKER_IMAGE" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_')
-LOCKFILE="/tmp/docker-upgrade.${LOCK_TAG}.lock"
-if [ -f "$LOCKFILE" ]; then
+LOCKDIR="${TMPDIR:-/tmp}/docker-upgrade.${LOCK_TAG}.lock.d"
+
+create_lock() {
+  umask 077
+  if mkdir "$LOCKDIR" 2>/dev/null; then
+    if ! printf '%d\n' "$$" >"$LOCKDIR/pid"; then
+      rm -rf "$LOCKDIR" 2>/dev/null || true
+      return 1
+    fi
+    return 0
+  fi
+  return 1
+}
+
+if [ -d "$LOCKDIR" ]; then
+  _oldpid=$(sed -n '1p' "$LOCKDIR/pid" 2>/dev/null | tr -cd '0-9' || true)
+  if [ -n "$_oldpid" ] && is_pid_running "$_oldpid"; then
+    echo_timestamped "Error: already running for ${LOCAL_DOCKER_IMAGE} (pid ${_oldpid})"
+    exit 1
+  fi
+  echo_timestamped "Warning: removing stale lock ${LOCKDIR} (pid ${_oldpid:-unknown})"
+  rm -rf "$LOCKDIR" || true
+fi
+
+trap 'rm -rf "$LOCKDIR"' 0 HUP INT TERM QUIT
+
+if ! create_lock; then
   echo_timestamped "Error: already running for ${LOCAL_DOCKER_IMAGE}"
   exit 1
 fi
-trap 'rm -f "$LOCKFILE"' 0 HUP INT TERM
-touch "$LOCKFILE"
 
 jsonc_to_json() {
   awk '
@@ -80,6 +111,20 @@ jsonc_to_json() {
   ' "$1" | jq -c '.'
 }
 
+short_digest() {
+  _d="$1"
+  if [ -z "$_d" ] || [ "$_d" = "none" ]; then
+    printf '%s\n' "$_d"
+    return 0
+  fi
+  case "$_d" in
+    sha256:*) _h=${_d#sha256:} ;;
+    *) _h="$_d" ;;
+  esac
+  printf '%s' "$_h" | LC_ALL=C cut -c1-12
+  printf '\n'
+}
+
 escape_telegram_markdown() {
   printf '%s' "$1" | \
   command sed \
@@ -110,18 +155,18 @@ escape_telegram_markdown() {
 
 send_telegram_message() {
     if ! command -v jq >/dev/null 2>&1; then
-      echo_timestamped "Error: jq not found in PATH"
-      exit 1
+      echo_timestamped "Warning: jq not found, skipping telegram notification"
+      return 0
     fi
     if ! command -v curl >/dev/null 2>&1; then
-      echo_timestamped "Error: curl not found, cannot send telegram message"
-      return 1
+      echo_timestamped "Warning: curl not found, skipping telegram notification"
+      return 0
     fi
 
     if [ -z "${FREQTRADE_CONFIG_JSON:-}" ]; then
       FREQTRADE_CONFIG_JSON=$(jsonc_to_json "$FREQTRADE_CONFIG" 2>/dev/null || echo "")
     fi
-    printf '%s' "$FREQTRADE_CONFIG_JSON" | jq empty 2>/dev/null || { echo_timestamped "Error: invalid JSON configuration"; exit 1; }
+    printf '%s' "$FREQTRADE_CONFIG_JSON" | jq empty 2>/dev/null || { echo_timestamped "Warning: invalid JSON configuration, skipping telegram notification"; return 0; }
 
     freqtrade_telegram_enabled=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.enabled // "false"' 2>/dev/null || echo "false")
     if [ "$freqtrade_telegram_enabled" = "false" ]; then
@@ -155,7 +200,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 if [ ! -f "${SCRIPT_DIR}/docker-compose.yml" ] && [ ! -f "${SCRIPT_DIR}/docker-compose.yaml" ]; then
-  echo_timestamped "Error: docker-compose.yml or docker-compose.yaml file not found in current directory"
+  echo_timestamped "Error: docker-compose.yml or docker-compose.yaml file not found in ${SCRIPT_DIR}"
   exit 1
 fi
 
@@ -175,7 +220,9 @@ remote_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_
 rebuild_local_image=false
 if [ "$local_digest" != "$remote_digest" ]; then
   rebuild_local_image=true
-  message="docker image ${REMOTE_DOCKER_IMAGE} was updated (${local_digest} -> ${remote_digest})"
+  local_digest_short=$(short_digest "$local_digest")
+  remote_digest_short=$(short_digest "$remote_digest")
+  message="docker image ${REMOTE_DOCKER_IMAGE} was updated (${local_digest_short} -> ${remote_digest_short})"
   echo_timestamped "Info: $message"
   send_telegram_message "$message"
 else
