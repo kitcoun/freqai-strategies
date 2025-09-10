@@ -45,7 +45,7 @@ def _calculate_coeffs(
     win_type: Literal["gaussian", "kaiser", "triang"],
     std: float,
     beta: float,
-) -> NDArray[np.float64]:
+) -> NDArray[np.floating]:
     if win_type == "gaussian":
         coeffs = sp.signal.windows.gaussian(M=window, std=std, sym=True)
     elif win_type == "kaiser":
@@ -239,11 +239,13 @@ def calculate_zero_lag(series: pd.Series, period: int) -> pd.Series:
 @lru_cache(maxsize=8)
 def get_ma_fn(
     mamode: str,
-) -> Callable[[pd.Series | NDArray[np.float64], int], pd.Series | NDArray[np.float64]]:
+) -> Callable[
+    [pd.Series | NDArray[np.floating], int], pd.Series | NDArray[np.floating]
+]:
     mamodes: dict[
         str,
         Callable[
-            [pd.Series | NDArray[np.float64], int], pd.Series | NDArray[np.float64]
+            [pd.Series | NDArray[np.floating], int], pd.Series | NDArray[np.floating]
         ],
     ] = {
         "sma": ta.SMA,
@@ -261,7 +263,9 @@ def get_ma_fn(
 @lru_cache(maxsize=8)
 def get_zl_ma_fn(
     mamode: str,
-) -> Callable[[pd.Series | NDArray[np.float64], int], pd.Series | NDArray[np.float64]]:
+) -> Callable[
+    [pd.Series | NDArray[np.floating], int], pd.Series | NDArray[np.floating]
+]:
     ma_fn = get_ma_fn(mamode)
     return lambda series, timeperiod: ma_fn(
         calculate_zero_lag(series, timeperiod), timeperiod=timeperiod
@@ -277,7 +281,7 @@ def zlema(series: pd.Series, period: int) -> pd.Series:
 
 
 def _fractal_dimension(
-    highs: NDArray[np.float64], lows: NDArray[np.float64], period: int
+    highs: NDArray[np.floating], lows: NDArray[np.floating], period: int
 ) -> float:
     """Original fractal dimension computation implementation per Ehlers' paper."""
     if period % 2 != 0:
@@ -467,7 +471,7 @@ def find_fractals(df: pd.DataFrame, period: int = 2) -> tuple[list[int], list[in
     return fractal_highs, fractal_lows
 
 
-def calculate_quantile(values: NDArray[np.float64], value: float) -> float:
+def calculate_quantile(values: NDArray[np.floating], value: float) -> float:
     if values.size == 0:
         return np.nan
 
@@ -500,7 +504,7 @@ def zigzag(
     natr_values = (ta.NATR(df, timeperiod=natr_period).bfill() / 100.0).to_numpy()
 
     indices: list[int] = df.index.tolist()
-    thresholds: NDArray[np.float64] = natr_values * natr_ratio
+    thresholds: NDArray[np.floating] = natr_values * natr_ratio
     closes = df.get("close").to_numpy()
     highs = df.get("high").to_numpy()
     lows = df.get("low").to_numpy()
@@ -732,9 +736,9 @@ def fit_regressor(
     regressor: str,
     X: pd.DataFrame,
     y: pd.DataFrame,
-    train_weights: NDArray[np.float64],
+    train_weights: NDArray[np.floating],
     eval_set: Optional[list[tuple[pd.DataFrame, pd.DataFrame]]],
-    eval_weights: Optional[list[NDArray[np.float64]]],
+    eval_weights: Optional[list[NDArray[np.floating]]],
     model_training_parameters: dict[str, Any],
     init_model: Any = None,
     callbacks: Optional[list[Callable]] = None,

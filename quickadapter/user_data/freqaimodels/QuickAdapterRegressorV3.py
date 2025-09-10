@@ -527,11 +527,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     def eval_set_and_weights(
         X_test: pd.DataFrame,
         y_test: pd.DataFrame,
-        test_weights: NDArray[np.float64],
+        test_weights: NDArray[np.floating],
         test_size: float,
     ) -> tuple[
         Optional[list[tuple[pd.DataFrame, pd.DataFrame]]],
-        Optional[list[NDArray[np.float64]]],
+        Optional[list[NDArray[np.floating]]],
     ]:
         if test_size == 0:
             eval_set = None
@@ -687,7 +687,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     @staticmethod
     def apply_skimage_threshold(
-        series: pd.Series, threshold_func: Callable[[NDArray[np.float64]], float]
+        series: pd.Series, threshold_func: Callable[[NDArray[np.floating]], float]
     ) -> float:
         values = series.to_numpy()
 
@@ -782,8 +782,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             return None
 
         def calculate_distances(
-            normalized_matrix: NDArray[np.float64], metric: str
-        ) -> NDArray[np.float64]:
+            normalized_matrix: NDArray[np.floating], metric: str
+        ) -> NDArray[np.floating]:
             n_objectives = normalized_matrix.shape[1]
             n_samples = normalized_matrix.shape[0]
             label_p_order = float(self.ft_params.get("label_p_order", 2.0))
@@ -1264,10 +1264,10 @@ def train_objective(
     regressor: str,
     X: pd.DataFrame,
     y: pd.DataFrame,
-    train_weights: NDArray[np.float64],
+    train_weights: NDArray[np.floating],
     X_test: pd.DataFrame,
     y_test: pd.DataFrame,
-    test_weights: NDArray[np.float64],
+    test_weights: NDArray[np.floating],
     test_size: float,
     fit_live_predictions_candles: int,
     candles_step: int,
@@ -1374,10 +1374,10 @@ def hp_objective(
     regressor: str,
     X: pd.DataFrame,
     y: pd.DataFrame,
-    train_weights: NDArray[np.float64],
+    train_weights: NDArray[np.floating],
     X_test: pd.DataFrame,
     y_test: pd.DataFrame,
-    test_weights: NDArray[np.float64],
+    test_weights: NDArray[np.floating],
     model_training_best_parameters: dict[str, Any],
     model_training_parameters: dict[str, Any],
     expansion_ratio: float,
