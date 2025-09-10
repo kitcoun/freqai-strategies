@@ -219,9 +219,9 @@ remote_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_
 rebuild_local_image=false
 if [ "$local_digest" != "$remote_digest" ]; then
   rebuild_local_image=true
-  local_digest_short=$(short_digest "$local_digest")
-  remote_digest_short=$(short_digest "$remote_digest")
-  message="docker image ${REMOTE_DOCKER_IMAGE} was updated (${local_digest_short} -> ${remote_digest_short})"
+  short_local_digest=$(short_digest "$local_digest")
+  short_remote_digest=$(short_digest "$remote_digest")
+  message="docker image ${REMOTE_DOCKER_IMAGE} was updated (${short_local_digest} -> ${short_remote_digest})"
   echo_timestamped "Info: $message"
   send_telegram_message "$message"
 else
