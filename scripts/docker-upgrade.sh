@@ -34,7 +34,7 @@ LOCK_TAG=$(printf '%s' "$LOCAL_DOCKER_IMAGE" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_'
 LOCKDIR="${TMPDIR:-/tmp}/docker-upgrade.${LOCK_TAG}.lock.d"
 
 if [ -d "$LOCKDIR" ]; then
-  _oldpid=$(sed -n '1p' "$LOCKDIR/pid" 2>/dev/null | tr -cd '0-9' || true)
+  _oldpid=$(command sed -n '1p' "$LOCKDIR/pid" 2>/dev/null | tr -cd '0-9' || true)
   if [ -n "$_oldpid" ] && is_pid_running "$_oldpid"; then
     echo_timestamped "Error: already running for ${LOCAL_DOCKER_IMAGE} (pid ${_oldpid})"
     exit 1
@@ -121,7 +121,7 @@ short_digest() {
     sha256:*) _h=${_d#sha256:} ;;
     *) _h="$_d" ;;
   esac
-  printf '%s' "$_h" | LC_ALL=C cut -c1-12
+  printf '%s' "$_h" | LC_ALL=C command cut -c1-12
   printf '\n'
 }
 
