@@ -17,7 +17,6 @@ is_pid_running() {
   [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null
 }
 
-
 LOCK_TAG=$(printf '%s' "$LOCAL_DOCKER_IMAGE" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_')
 LOCKDIR="${TMPDIR:-/tmp}/docker-upgrade.${LOCK_TAG}.lock.d"
 
