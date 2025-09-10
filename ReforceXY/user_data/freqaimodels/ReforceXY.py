@@ -1592,9 +1592,8 @@ class MaskableTrialEvalCallback(MaskableEvalCallback):
     def _on_step(self) -> bool:
         if self.is_pruned:
             return False
-
-        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
-            super()._on_step()
+        _super_on_step = super()._on_step()
+        if _super_on_step and self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
             self.eval_idx += 1
             last_mean_reward = getattr(self, "last_mean_reward", np.nan)
             if not isinstance(last_mean_reward, (int, float)) or not np.isfinite(

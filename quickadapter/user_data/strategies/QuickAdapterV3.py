@@ -224,7 +224,7 @@ class QuickAdapterV3(IStrategy):
                     ),
                     "label_natr_ratio": float(
                         self.freqai_info["feature_parameters"].get(
-                            "label_natr_ratio", 6.0
+                            "label_natr_ratio", 7.5
                         )
                     ),
                 }
@@ -431,7 +431,7 @@ class QuickAdapterV3(IStrategy):
         if label_natr_ratio and isinstance(label_natr_ratio, float):
             return label_natr_ratio
         return float(
-            self.freqai_info["feature_parameters"].get("label_natr_ratio", 6.0)
+            self.freqai_info["feature_parameters"].get("label_natr_ratio", 7.5)
         )
 
     def set_label_natr_ratio(self, pair: str, label_natr_ratio: float) -> None:

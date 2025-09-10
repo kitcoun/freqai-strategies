@@ -495,7 +495,7 @@ class TrendDirection(IntEnum):
 def zigzag(
     df: pd.DataFrame,
     natr_period: int = 14,
-    natr_ratio: float = 6.0,
+    natr_ratio: float = 7.5,
 ) -> tuple[list[int], list[float], list[TrendDirection], list[float]]:
     n = len(df)
     if df.empty or n < natr_period:
