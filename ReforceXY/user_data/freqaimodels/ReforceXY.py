@@ -255,7 +255,6 @@ class ReforceXY(BaseReinforcementLearningModel):
         if "DQN" in self.model_type:
             gradient_steps = model_params.get("gradient_steps")
             if gradient_steps is None:
-                gradient_steps = int(gradient_steps)
                 train_freq = model_params.get("train_freq")
                 if isinstance(train_freq, (tuple, list)) and train_freq:
                     train_freq = (
