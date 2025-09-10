@@ -17,20 +17,21 @@ is_pid_running() {
   [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null
 }
 
-LOCK_TAG=$(printf '%s' "$LOCAL_DOCKER_IMAGE" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_')
-LOCKDIR="${TMPDIR:-/tmp}/docker-upgrade.${LOCK_TAG}.lock.d"
-
 create_lock() {
+  _dir="$1"
   umask 077
-  if mkdir "$LOCKDIR" 2>/dev/null; then
-    if ! printf '%d\n' "$$" >"$LOCKDIR/pid"; then
-      rm -rf "$LOCKDIR" 2>/dev/null || true
+  if mkdir "$_dir" 2>/dev/null; then
+    if ! printf '%d\n' "$$" >"$_dir/pid"; then
+      rm -rf "$_dir" 2>/dev/null || true
       return 1
     fi
     return 0
   fi
   return 1
 }
+
+LOCK_TAG=$(printf '%s' "$LOCAL_DOCKER_IMAGE" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_')
+LOCKDIR="${TMPDIR:-/tmp}/docker-upgrade.${LOCK_TAG}.lock.d"
 
 if [ -d "$LOCKDIR" ]; then
   _oldpid=$(sed -n '1p' "$LOCKDIR/pid" 2>/dev/null | tr -cd '0-9' || true)
@@ -44,7 +45,7 @@ fi
 
 trap 'rm -rf "$LOCKDIR"' 0 HUP INT TERM QUIT
 
-if ! create_lock; then
+if ! create_lock "$LOCKDIR"; then
   echo_timestamped "Error: already running for ${LOCAL_DOCKER_IMAGE}"
   exit 1
 fi
@@ -153,44 +154,47 @@ escape_telegram_markdown() {
 }
 
 send_telegram_message() {
-    if ! command -v jq >/dev/null 2>&1; then
-      echo_timestamped "Warning: jq not found, skipping telegram notification"
+  if ! command -v jq >/dev/null 2>&1; then
+    echo_timestamped "Warning: jq not found, skipping telegram notification"
+    return 0
+  fi
+  if ! command -v curl >/dev/null 2>&1; then
+    echo_timestamped "Warning: curl not found, skipping telegram notification"
+    return 0
+  fi
+
+  if [ -z "${FREQTRADE_CONFIG_JSON:-}" ]; then
+    FREQTRADE_CONFIG_JSON=$(jsonc_to_json "$FREQTRADE_CONFIG" 2>/dev/null || printf '%s\n' '')
+  fi
+  printf '%s' "$FREQTRADE_CONFIG_JSON" | jq empty 2>/dev/null || { echo_timestamped "Warning: invalid JSON configuration, skipping telegram notification"; return 0; }
+
+  freqtrade_telegram_enabled=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.enabled // "false"' 2>/dev/null || printf '%s\n' 'false')
+  if [ "$freqtrade_telegram_enabled" = "false" ]; then
+    return 0
+  fi
+
+  telegram_message=$(escape_telegram_markdown "$1")
+  if [ -z "$telegram_message" ]; then
+    echo_timestamped "Warning: message variable is empty, skipping telegram notification"
+    return 0
+  fi
+
+  freqtrade_telegram_token=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.token // ""' 2>/dev/null || printf '%s\n' '')
+  freqtrade_telegram_chat_id=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.chat_id // ""' 2>/dev/null || printf '%s\n' '')
+  if [ -n "$freqtrade_telegram_token" ] && [ -n "$freqtrade_telegram_chat_id" ]; then
+    set +e
+    curl_error=$({ command curl -sS --max-time 10 -X POST \
+      --data-urlencode "text=${telegram_message}" \
+      --data-urlencode "parse_mode=MarkdownV2" \
+      --data "chat_id=${freqtrade_telegram_chat_id}" \
+      "https://api.telegram.org/bot${freqtrade_telegram_token}/sendMessage" 1>/dev/null; } 2>&1)
+    rc=$?
+    set -e
+    if [ $rc -ne 0 ]; then
+      echo_timestamped "Warning: failed to send telegram message: $curl_error"
       return 0
     fi
-    if ! command -v curl >/dev/null 2>&1; then
-      echo_timestamped "Warning: curl not found, skipping telegram notification"
-      return 0
-    fi
-
-    if [ -z "${FREQTRADE_CONFIG_JSON:-}" ]; then
-      FREQTRADE_CONFIG_JSON=$(jsonc_to_json "$FREQTRADE_CONFIG" 2>/dev/null || echo "")
-    fi
-    printf '%s' "$FREQTRADE_CONFIG_JSON" | jq empty 2>/dev/null || { echo_timestamped "Warning: invalid JSON configuration, skipping telegram notification"; return 0; }
-
-    freqtrade_telegram_enabled=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.enabled // "false"' 2>/dev/null || echo "false")
-    if [ "$freqtrade_telegram_enabled" = "false" ]; then
-      return 0
-    fi
-
-    telegram_message=$(escape_telegram_markdown "$1")
-    if [ -z "$telegram_message" ]; then
-      echo_timestamped "Error: message variable is empty"
-      return 1
-    fi
-
-    freqtrade_telegram_token=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.token // ""' 2>/dev/null || echo "")
-    freqtrade_telegram_chat_id=$(printf '%s' "$FREQTRADE_CONFIG_JSON" | jq -r '.telegram.chat_id // ""' 2>/dev/null || echo "")
-    if [ -n "$freqtrade_telegram_token" ] && [ -n "$freqtrade_telegram_chat_id" ]; then
-      curl_error=$(command curl -s -X POST \
-        --data-urlencode "text=${telegram_message}" \
-        --data-urlencode "parse_mode=MarkdownV2" \
-        --data "chat_id=${freqtrade_telegram_chat_id}" \
-        "https://api.telegram.org/bot${freqtrade_telegram_token}/sendMessage" 2>&1 1>/dev/null)
-      if [ $? -ne 0 ]; then
-        echo_timestamped "Error: failed to send telegram message: $curl_error"
-        return 1
-      fi
-    fi
+  fi
 }
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -209,12 +213,12 @@ if [ ! -f "$FREQTRADE_CONFIG" ]; then
 fi
 
 echo_timestamped "Info: docker image pull for ${REMOTE_DOCKER_IMAGE}"
-local_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_IMAGE" 2>/dev/null || command echo "none")
+local_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_IMAGE" 2>/dev/null || printf '%s\n' 'none')
 if ! command docker image pull --quiet "$REMOTE_DOCKER_IMAGE" >/dev/null 2>&1; then
   echo_timestamped "Error: docker image pull failed for ${REMOTE_DOCKER_IMAGE}"
   exit 1
 fi
-remote_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_IMAGE" 2>/dev/null || command echo "none")
+remote_digest=$(command docker image inspect --format='{{.Id}}' "$REMOTE_DOCKER_IMAGE" 2>/dev/null || printf '%s\n' 'none')
 
 rebuild_local_image=false
 if [ "$local_digest" != "$remote_digest" ]; then
