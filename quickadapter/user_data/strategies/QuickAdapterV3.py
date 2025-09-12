@@ -92,10 +92,10 @@ class QuickAdapterV3(IStrategy):
     }
 
     default_exit_thresholds_calibration: dict[str, float] = {
-        "spike_quantile": 0.96,
+        "spike_quantile": 0.95,
         "decline_quantile": 0.90,
-        "min_k_spike": 0.2,
-        "min_k_decline": 0.1,
+        "min_k_spike": 0.1,
+        "min_k_decline": 0.5,
     }
 
     position_adjustment_enable = True
