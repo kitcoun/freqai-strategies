@@ -94,7 +94,7 @@ class QuickAdapterV3(IStrategy):
     default_exit_thresholds_calibration: dict[str, float] = {
         "spike_quantile": 0.95,
         "decline_quantile": 0.90,
-        "min_k_spike": 0.1,
+        "min_k_spike": 0.15,
         "min_k_decline": 0.5,
     }
 
@@ -1123,7 +1123,7 @@ class QuickAdapterV3(IStrategy):
         order: Literal["entry", "exit"],
         rate: float,
         min_natr_ratio_percent: float = 0.00999,
-        max_natr_ratio_percent: float = 0.099,
+        max_natr_ratio_percent: float = 0.095,
         lookback_period: int = 1,
         decay_ratio: float = 0.5,
     ) -> bool:
