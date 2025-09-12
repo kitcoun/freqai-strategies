@@ -386,8 +386,7 @@ class ReforceXY(BaseReinforcementLearningModel):
     ) -> Any:
         """
         User customizable fit method
-        :param data_dictionary: dict = common data dictionary containing all train/test
-            features/labels/weights.
+        :param data_dictionary: dict = common data dictionary containing all train/test features/labels/weights.
         :param dk: FreqaiDatakitchen = data kitchen for current pair.
         :return:
         model Any = trained model to be used for inference in dry/live/backtesting
@@ -481,11 +480,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         into the model.
         :param pair: str = COIN/STAKE to get the environment information for
         :return:
-        :market_side: float = representing short, long, or neutral for
-            pair
+        :market_side: float = representing short, long, or neutral for pair
         :current_profit: float = unrealized profit of the current trade
-        :trade_duration: int = the number of candles that the trade has
-            been open for
+        :trade_duration: int = the number of candles that the trade has been open for
         """
         # STATE_INFO
         position, pnl, trade_duration = super().get_state_info(pair)
@@ -590,8 +587,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         self, train_df: DataFrame, total_timesteps: int, dk: FreqaiDataKitchen
     ) -> Optional[Dict[str, Any]]:
         """
-        Runs hyperparameter optimization using Optuna and
-        returns the best hyperparameters found merged with the user defined parameters
+        Runs hyperparameter optimization using Optuna and returns the best hyperparameters found merged with the user defined parameters
         """
         identifier = self.freqai_info.get("identifier", "no_id_provided")
         study_name = (
@@ -924,7 +920,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             :param action: int = The action made by the agent for the current candle.
             :return:
             float = the reward to give to the agent for current step (used for optimization
-                of weights in NN)
+                    of weights in NN)
             """
             # first, penalize if the action is not valid
             if not self._force_action and not self._is_valid(action):
@@ -1635,7 +1631,8 @@ def make_env(
     :param train_df: (DataFrame) feature dataframe for the environment
     :param price: (DataFrame) aligned price dataframe
     :param env_info: (dict) all required arguments to instantiate the environment
-    :return: (Callable[[], BaseEnvironment]) closure that when called instantiates and returns the environment
+    :return:
+    (Callable[[], BaseEnvironment]) closure that when called instantiates and returns the environment
     """
 
     def _init() -> BaseEnvironment:
