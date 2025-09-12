@@ -320,7 +320,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             model_params.get("policy_kwargs", {}).get("optimizer_class", "adam")
         )
 
-        self._model_params_cache = copy.deepcopy(model_params)
+        self._model_params_cache = model_params
         return copy.deepcopy(self._model_params_cache)
 
     def get_callbacks(
