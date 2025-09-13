@@ -1007,8 +1007,8 @@ class ReforceXY(BaseReinforcementLearningModel):
                     )
                 else:
                     return (
-                        factor * pnl * (1 + lambda1 * duration_fraction)
-                        - 2 * lambda2 * duration_fraction
+                        factor * pnl * (1.0 + lambda1 * duration_fraction)
+                        - 2.0 * lambda2 * duration_fraction
                         - drawdown_penalty
                     )
 
@@ -1295,7 +1295,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "tick" not in _history_df.columns
                 or "tick" not in _trade_history_df.columns
             ):
-                logger.warning("'tick' column is missing from history or trade history")
+                logger.warning("'tick' column is missing from history or trade_history")
                 return DataFrame()
 
             _rollout_history = merge(
@@ -1462,8 +1462,8 @@ class InfoMetricsCallback(TensorboardCallback):
                     "exploration_rate": float(self.model.exploration_rate),
                 }
             )
-        if "QRDQN" in self.model.__class__.__name__:
-            hparam_dict.update({"n_quantiles": int(self.model.n_quantiles)})
+            if "QRDQN" in self.model.__class__.__name__:
+                hparam_dict.update({"n_quantiles": int(self.model.n_quantiles)})
         metric_dict = {
             "info/total_reward": 0.0,
             "info/total_profit": 1.0,
