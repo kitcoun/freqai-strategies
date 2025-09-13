@@ -65,7 +65,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.155"
+        return "3.3.156"
 
     timeframe = "5m"
 
@@ -85,14 +85,11 @@ class QuickAdapterV3(IStrategy):
     }
 
     default_exit_thresholds: dict[str, float] = {
-        "k_spike_v": 1.2,
-        "k_spike_a": 1.0,
         "k_decl_v": 0.6,
         "k_decl_a": 0.4,
     }
 
     default_exit_thresholds_calibration: dict[str, float] = {
-        "spike_quantile": 0.95,
         "decline_quantile": 0.90,
     }
 
@@ -240,7 +237,7 @@ class QuickAdapterV3(IStrategy):
             ),
         )
         self._max_history_size = int(12 * 60 * 60 / process_throttle_secs)
-        self._pnl_momentum_window_size = int(20 * 60 / process_throttle_secs)
+        self._pnl_momentum_window_size = int(30 * 60 / process_throttle_secs)
         self._exit_thresholds_calibration: dict[str, float] = {
             **self.default_exit_thresholds_calibration,
             **self.config.get("exit_pricing", {}).get("thresholds_calibration", {}),
@@ -1272,9 +1269,9 @@ class QuickAdapterV3(IStrategy):
     @lru_cache(maxsize=128)
     def _zscore(mean: float, std: float) -> float:
         if not np.isfinite(mean) or not np.isfinite(std):
-            return 0.0
+            return np.nan
         if np.isclose(std, 0.0):
-            return 0.0
+            return np.nan
         return mean / std
 
     @staticmethod
@@ -1291,12 +1288,12 @@ class QuickAdapterV3(IStrategy):
     def _get_exit_thresholds(
         self,
         hist_len: int,
-        velocity_std_global: float,
-        acceleration_std_global: float,
-        velocity_std_recent: float,
-        acceleration_std_recent: float,
+        std_v_global: float,
+        std_a_global: float,
+        std_v_recent: float,
+        std_a_recent: float,
+        min_alpha: float = 0.05,
     ) -> dict[str, float]:
-        q_spike = float(self._exit_thresholds_calibration.get("spike_quantile"))
         q_decl = float(self._exit_thresholds_calibration.get("decline_quantile"))
 
         recent_hist_len = min(hist_len, self._pnl_momentum_window_size)
@@ -1310,15 +1307,15 @@ class QuickAdapterV3(IStrategy):
             alpha_len = 1.0
         else:
             alpha_len = recent_hist_len / hist_len if hist_len > 0 else 1.0
-            if alpha_len < 0.05:
-                alpha_len = 0.05
+            if alpha_len < min_alpha:
+                alpha_len = min_alpha
 
         def volatility_adjusted_alpha(
             alpha_base: float,
             sigma_global: float,
             sigma_recent: float,
-            gamma=1.25,
-            min_alpha=0.05,
+            gamma: float = 1.25,
+            min_alpha: float = 0.05,
         ) -> float:
             if not (np.isfinite(sigma_global) and np.isfinite(sigma_recent)):
                 return alpha_base
@@ -1332,10 +1329,10 @@ class QuickAdapterV3(IStrategy):
             return max(min_alpha, alpha_vol)
 
         alpha_v = volatility_adjusted_alpha(
-            alpha_len, velocity_std_global, velocity_std_recent
+            alpha_len, std_v_global, std_v_recent, min_alpha=min_alpha
         )
         alpha_a = volatility_adjusted_alpha(
-            alpha_len, acceleration_std_global, acceleration_std_recent
+            alpha_len, std_a_global, std_a_recent, min_alpha=min_alpha
         )
         n_eff_v = alpha_v * n_v_recent + (1.0 - alpha_v) * n_v_global
         n_eff_a = alpha_a * n_a_recent + (1.0 - alpha_a) * n_a_global
@@ -1358,12 +1355,6 @@ class QuickAdapterV3(IStrategy):
             except Exception:
                 return default_k
 
-        k_spike_v = effective_k(
-            q_spike, n_eff_v, self.default_exit_thresholds["k_spike_v"]
-        )
-        k_spike_a = effective_k(
-            q_spike, n_eff_a, self.default_exit_thresholds["k_spike_a"]
-        )
         k_decl_v = effective_k(
             q_decl, n_eff_v, self.default_exit_thresholds["k_decl_v"]
         )
@@ -1374,38 +1365,33 @@ class QuickAdapterV3(IStrategy):
         if debug:
             logger.info(
                 (
-                    "hist_len=%s recent_len=%s | alpha_len=%s | q_spike=%s q_decl=%s | "
+                    "hist_len=%s recent_len=%s | alpha_len=%s | q_decl=%s | "
                     "n_v_(global,recent)=(%s,%s) n_a_(global,recent)=(%s,%s) | "
                     "std_v_(global,recent)=(%s,%s) std_a_(global,recent)=(%s,%s) | "
                     "alpha_(v,a)=(%s,%s) | n_eff_(v,a)=(%s,%s) | "
-                    "k_spike_(v,a)=(%s,%s) k_decl_(v,a)=(%s,%s)"
+                    "k_decl_(v,a)=(%s,%s)"
                 ),
                 hist_len,
                 recent_hist_len,
                 format_number(alpha_len),
-                format_number(q_spike),
                 format_number(q_decl),
                 n_v_global,
                 n_v_recent,
                 n_a_global,
                 n_a_recent,
-                format_number(velocity_std_global),
-                format_number(velocity_std_recent),
-                format_number(acceleration_std_global),
-                format_number(acceleration_std_recent),
+                format_number(std_v_global),
+                format_number(std_v_recent),
+                format_number(std_a_global),
+                format_number(std_a_recent),
                 format_number(alpha_v),
                 format_number(alpha_a),
                 format_number(n_eff_v),
                 format_number(n_eff_a),
-                format_number(k_spike_v),
-                format_number(k_spike_a),
                 format_number(k_decl_v),
                 format_number(k_decl_a),
             )
 
         return {
-            "k_spike_v": k_spike_v,
-            "k_spike_a": k_spike_a,
             "k_decl_v": k_decl_v,
             "k_decl_a": k_decl_a,
         }
@@ -1492,10 +1478,10 @@ class QuickAdapterV3(IStrategy):
             trade
         )
         (
-            trade_pnl_velocity,
-            trade_pnl_velocity_std,
-            trade_pnl_acceleration,
-            trade_pnl_acceleration_std,
+            _,
+            trade_global_pnl_velocity_std,
+            _,
+            trade_global_pnl_acceleration_std,
             trade_recent_pnl_velocity,
             trade_recent_pnl_velocity_std,
             trade_recent_pnl_acceleration,
@@ -1504,38 +1490,35 @@ class QuickAdapterV3(IStrategy):
             trade_unrealized_pnl_history, self._pnl_momentum_window_size
         )
 
-        z_dv = QuickAdapterV3._zscore(trade_pnl_velocity, trade_pnl_velocity_std)
-        z_da = QuickAdapterV3._zscore(
-            trade_pnl_acceleration, trade_pnl_acceleration_std
-        )
-        z_sv = QuickAdapterV3._zscore(
+        z_recent_v = QuickAdapterV3._zscore(
             trade_recent_pnl_velocity, trade_recent_pnl_velocity_std
         )
-        z_sa = QuickAdapterV3._zscore(
+        z_recent_a = QuickAdapterV3._zscore(
             trade_recent_pnl_acceleration, trade_recent_pnl_acceleration_std
         )
 
         trade_hist_len = len(trade_unrealized_pnl_history)
         trade_exit_thresholds = self._get_exit_thresholds(
             hist_len=trade_hist_len,
-            velocity_std_global=trade_pnl_velocity_std,
-            acceleration_std_global=trade_pnl_acceleration_std,
-            velocity_std_recent=trade_recent_pnl_velocity_std,
-            acceleration_std_recent=trade_recent_pnl_acceleration_std,
+            std_v_global=trade_global_pnl_velocity_std,
+            std_a_global=trade_global_pnl_acceleration_std,
+            std_v_recent=trade_recent_pnl_velocity_std,
+            std_a_recent=trade_recent_pnl_acceleration_std,
         )
-        k_spike_v = trade_exit_thresholds.get("k_spike_v")
-        k_spike_a = trade_exit_thresholds.get("k_spike_a")
         k_decl_v = trade_exit_thresholds.get("k_decl_v")
         k_decl_a = trade_exit_thresholds.get("k_decl_a")
 
-        trade_pnl_momentum_declining = (z_dv <= -k_decl_v) and (z_da <= -k_decl_a)
-        trade_recent_pnl_spiking = (z_sv >= k_spike_v) and (z_sa >= k_spike_a)
+        decl_checks: list[bool] = []
+        if np.isfinite(z_recent_v):
+            decl_checks.append(z_recent_v <= -k_decl_v)
+        if np.isfinite(z_recent_a):
+            decl_checks.append(z_recent_a <= -k_decl_a)
+        if len(decl_checks) == 0:
+            trade_recent_pnl_declining = True
+        else:
+            trade_recent_pnl_declining = all(decl_checks)
 
-        trade_exit = (
-            trade_take_profit_exit
-            and trade_pnl_momentum_declining
-            and not trade_recent_pnl_spiking
-        )
+        trade_exit = trade_take_profit_exit and trade_recent_pnl_declining
 
         if not trade_exit:
             self.throttle_callback(
@@ -1544,12 +1527,11 @@ class QuickAdapterV3(IStrategy):
                 callback=lambda: logger.info(
                     f"Trade {trade.trade_direction} {trade.pair} stage {trade_exit_stage} | "
                     f"Take Profit: {format_number(trade_take_profit_price)}, Rate: {format_number(current_rate)} | "
-                    f"Spiking: {trade_recent_pnl_spiking} "
-                    f"(zV:{format_number(z_sv)}>=k:{format_number(k_spike_v)}, zA:{format_number(z_sa)}>=k:{format_number(k_spike_a)}) | "
-                    f"Declining: {trade_pnl_momentum_declining} "
-                    f"(zV:{format_number(z_dv)}<=-k:{format_number(-k_decl_v)}, zA:{format_number(z_da)}<=-k:{format_number(-k_decl_a)})"
+                    f"Declining: {trade_recent_pnl_declining} "
+                    f"(zV:{format_number(z_recent_v)}<=-k:{format_number(-k_decl_v)}, zA:{format_number(z_recent_a)}<=-k:{format_number(-k_decl_a)})"
                 ),
             )
+
         if trade_exit:
             return f"take_profit_{trade.trade_direction}_{trade_exit_stage}"
 
