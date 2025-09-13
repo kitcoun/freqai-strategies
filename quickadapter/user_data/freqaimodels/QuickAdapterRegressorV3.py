@@ -760,7 +760,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "knn_d2_median",
             "knn_d2_max",
         }
-        label_metric = self.ft_params.get("label_metric", "seuclidean")
+        label_metric = self.ft_params.get("label_metric", "euclidean")
         if label_metric not in metrics:
             raise ValueError(
                 f"Unsupported label metric: {label_metric}. Supported metrics are {', '.join(metrics)}"
@@ -892,7 +892,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         normalized_matrix, n_clusters, rng=42, minit="++"
                     )
                 label_kmeans_metric = self.ft_params.get(
-                    "label_kmeans_metric", "seuclidean"
+                    "label_kmeans_metric", "euclidean"
                 )
                 cdist_kwargs = {}
                 if label_kmeans_metric == "minkowski" and isinstance(
@@ -1076,7 +1076,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 **self.get_optuna_params(pair, namespace),
             }
             metric_log_msg = (
-                f" using {self.ft_params.get('label_metric', 'seuclidean')} metric"
+                f" using {self.ft_params.get('label_metric', 'euclidean')} metric"
             )
         logger.info(
             f"Optuna {pair} {namespace} {objective_type} objective hyperopt done{metric_log_msg} ({time_spent:.2f} secs)"
