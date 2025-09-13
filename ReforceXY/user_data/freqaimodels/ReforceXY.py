@@ -968,16 +968,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             #         factor = 1
             #     return 25.0 * factor
 
-            # reward agent for entering trades
-            if (
-                action in (Actions.Long_enter.value, Actions.Short_enter.value)
-                and self._position == Positions.Neutral
-            ):
-                return self.rl_config.get("model_reward_parameters", {}).get(
-                    "enter_action", 1.0
-                )
-
-            # discourage agent from not entering trades
+            # discourage agent from sitting idle too long
             if action == Actions.Neutral.value and self._position == Positions.Neutral:
                 return float(
                     self.rl_config.get("model_reward_parameters", {}).get(
@@ -992,23 +983,31 @@ class ReforceXY(BaseReinforcementLearningModel):
             ):
                 duration_fraction = trade_duration / max_trade_duration
                 max_pnl = max(self.get_most_recent_max_pnl(), pnl)
+
                 if max_pnl > 0:
-                    drawdown_penalty = 0.0025 * factor * (max_pnl - pnl) * duration_fraction
+                    drawdown_penalty = (
+                        0.0025 * factor * (max_pnl - pnl) * duration_fraction
+                    )
                 else:
                     drawdown_penalty = 0.0
+
                 lambda1 = 0.05
                 lambda2 = 0.1
                 if pnl >= 0:
-                    if duration_fraction < 0.75:
+                    if duration_fraction <= 1.0:
                         duration_penalty_factor = 1.0
                     else:
-                        duration_penalty_factor = 1.0 / (1.0 + lambda1 * duration_fraction)
-                    return factor * pnl * duration_penalty_factor - lambda2 * duration_fraction - drawdown_penalty
+                        duration_penalty_factor = 1.0 / (
+                            1.0 + lambda1 * (duration_fraction - 1.0)
+                        )
+                    return (
+                        factor * pnl * duration_penalty_factor
+                        - lambda2 * duration_fraction
+                        - drawdown_penalty
+                    )
                 else:
                     return (
-                        factor
-                        * pnl
-                        * (1 + lambda1 * duration_fraction)
+                        factor * pnl * (1 + lambda1 * duration_fraction)
                         - 2 * lambda2 * duration_fraction
                         - drawdown_penalty
                     )
