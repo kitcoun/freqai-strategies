@@ -1203,9 +1203,6 @@ class ReforceXY(BaseReinforcementLearningModel):
             }
             self.execute_trade(action)
             info["position"] = self._position.value
-            info["force_action"] = (
-                self._force_action.name if self._force_action else None
-            )
             info["pnl"] = self.get_unrealized_profit()
             info["trade_duration"] = self.get_trade_duration()
             info["trade_count"] = len(self.trade_history)
