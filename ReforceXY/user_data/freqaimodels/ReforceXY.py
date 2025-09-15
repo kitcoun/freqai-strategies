@@ -558,6 +558,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             else:
                 observations = np_observation.flatten()
 
+            if observations.ndim == 1:
+                observations = observations.reshape(1, -1)
+            else:
+                observations = observations
+
             action, _ = model.predict(
                 observations, deterministic=True, **action_masks_param
             )
