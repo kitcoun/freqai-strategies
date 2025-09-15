@@ -1485,13 +1485,15 @@ class InfoMetricsCallback(TensorboardCallback):
             float(_lr) if isinstance(_lr, (int, float, np.floating)) else "lr_schedule"
         )
         n_stack = 1
-        if self.training_env is not None and hasattr(self.training_env, "get_attr"):
-            try:
-                stacks = self.training_env.get_attr("n_stack")
-                if isinstance(stacks, (list, tuple)) and stacks and stacks[0]:
-                    n_stack = int(stacks[0])
-            except Exception:
-                pass
+        training_env = getattr(self, "training_env", None)
+        while training_env is not None:
+            if hasattr(training_env, "n_stack"):
+                try:
+                    n_stack = int(getattr(training_env, "n_stack"))
+                except Exception:
+                    pass
+                break
+            training_env = getattr(training_env, "venv", None)
         hparam_dict: Dict[str, Any] = {
             "algorithm": self.model.__class__.__name__,
             "n_envs": int(self.model.n_envs),
