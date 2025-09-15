@@ -539,14 +539,6 @@ class ReforceXY(BaseReinforcementLearningModel):
                     action_masks_param = {"action_masks": _action_masks(position)}
 
             np_observation = observation.to_numpy(dtype=np.float32)
-            shape = getattr(self, "shape", None)
-            if shape and np_observation.shape != shape:
-                logger.error(
-                    "Frame shape mismatch: got %s expected %s",
-                    np_observation.shape,
-                    shape,
-                )
-                raise ValueError("Frame shape mismatch")
 
             frame_stacking = self.frame_stacking
             if frame_stacking and frame_stacking > 1:
