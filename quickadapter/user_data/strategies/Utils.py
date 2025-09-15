@@ -743,11 +743,11 @@ def fit_regressor(
     init_model: Any = None,
     callbacks: Optional[list[Callable]] = None,
 ) -> Any:
-    if model_training_parameters.get("seed") is None:
-        model_training_parameters["seed"] = 1
-
     if regressor == "xgboost":
         from xgboost import XGBRegressor
+
+        if model_training_parameters.get("random_state") is None:
+            model_training_parameters["random_state"] = 1
 
         model = XGBRegressor(
             objective="reg:squarederror",
@@ -765,6 +765,9 @@ def fit_regressor(
         )
     elif regressor == "lightgbm":
         from lightgbm import LGBMRegressor
+
+        if model_training_parameters.get("seed") is None:
+            model_training_parameters["seed"] = 1
 
         model = LGBMRegressor(objective="regression", **model_training_parameters)
         model.fit(
