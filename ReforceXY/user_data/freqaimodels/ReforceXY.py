@@ -261,6 +261,9 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         model_params: Dict[str, Any] = copy.deepcopy(self.model_training_parameters)
 
+        if model_params.get("seed") is None:
+            model_params["seed"] = 42
+
         if self.lr_schedule:
             lr = model_params.get("learning_rate", 0.0003)
             if isinstance(lr, (int, float)):

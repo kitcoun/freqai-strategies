@@ -743,6 +743,9 @@ def fit_regressor(
     init_model: Any = None,
     callbacks: Optional[list[Callable]] = None,
 ) -> Any:
+    if model_training_parameters.get("seed") is None:
+        model_training_parameters["seed"] = 1
+
     if regressor == "xgboost":
         from xgboost import XGBRegressor
 

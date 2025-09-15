@@ -290,7 +290,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         y_test = data_dictionary.get("test_labels")
         test_weights = data_dictionary.get("test_weights")
 
-        model_training_parameters = self.model_training_parameters
+        model_training_parameters = copy.deepcopy(self.model_training_parameters)
 
         start_time = time.time()
         if self._optuna_hyperopt:
