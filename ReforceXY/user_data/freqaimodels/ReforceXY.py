@@ -542,7 +542,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             return [_is_valid(action.value, position) for action in Actions]
 
         def _predict(window) -> int:
-            observation: DataFrame = dataframe.loc[window.index]
+            observation: DataFrame = dataframe.iloc[window.index]
             action_masks_param: Dict[str, Any] = {}
 
             if self.rl_config.get("add_state_info", False):
