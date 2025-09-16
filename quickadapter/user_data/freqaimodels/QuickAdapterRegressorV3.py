@@ -549,12 +549,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         label_period_candles: int,
     ) -> tuple[float, float]:
         label_period_cycles = fit_live_predictions_candles / label_period_candles
-        thresholds_candles = int(
-            self.freqai_info.get(
-                "prediction_thresholds_candles",
-                max(2, int(label_period_cycles)) * label_period_candles,
-            )
-        )
+        thresholds_candles = max(2, int(label_period_cycles)) * label_period_candles
+
         pred_extrema = pred_df.get(EXTREMA_COLUMN).iloc[-thresholds_candles:].copy()
         thresholds_smoothing = str(
             self.freqai_info.get("prediction_thresholds_smoothing", "mean")
@@ -1420,7 +1416,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 8.5, 15.5, step=0.05)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 8.5, 14.5, step=0.05)
 
     label_period_cycles = fit_live_predictions_candles / label_period_candles
     df = df.iloc[-(max(2, int(label_period_cycles)) * label_period_candles) :]
