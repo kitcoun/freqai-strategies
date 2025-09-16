@@ -755,6 +755,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "knn_d2_mean",
             "knn_d2_median",
             "knn_d2_max",
+            "medoid",
         }
         label_metric = self.ft_params.get("label_metric", "euclidean")
         if label_metric not in metrics:
@@ -796,7 +797,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             np_weights = np_weights / label_weights_sum
             knn_kwargs = {}
             label_knn_metric = self.ft_params.get("label_knn_metric", "euclidean")
-            if label_knn_metric == "minkowski" and isinstance(label_p_order, float):
+            if label_knn_metric == "minkowski":
                 knn_kwargs["p"] = label_p_order
 
             ideal_point = np.ones(n_objectives)
@@ -826,14 +827,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 "sqeuclidean",
                 # "yule",
             }:
-                cdist_kwargs = {"w": np_weights}
+                cdist_kwargs: dict[str, Any] = {"w": np_weights}
                 if metric in {
                     "jensenshannon",
                     "mahalanobis",
                     "seuclidean",
                 }:
                     del cdist_kwargs["w"]
-                if metric == "minkowski" and isinstance(label_p_order, float):
+                if metric == "minkowski":
                     cdist_kwargs["p"] = label_p_order
                 return sp.spatial.distance.cdist(
                     normalized_matrix,
@@ -873,7 +874,36 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 ) - sp.stats.pmean(normalized_matrix, p=p, weights=np_weights, axis=1)
             elif metric == "weighted_sum":
                 return np.sum(np_weights * (ideal_point - normalized_matrix), axis=1)
+            elif metric == "medoid":
+                if n_samples == 1:
+                    return np.array([0.0])
+                if n_samples < 2:
+                    return np.full(n_samples, np.inf)
+                label_medoid_metric = self.ft_params.get(
+                    "label_medoid_metric", "euclidean"
+                )
+
+                if label_medoid_metric in {
+                    "mahalanobis",
+                    "seuclidean",
+                    "jensenshannon",
+                }:
+                    raise ValueError(
+                        f"Unsupported label_medoid_metric: {label_medoid_metric}. Supported are euclidean/minkowski/cityblock/chebyshev/..."
+                    )
+                cdist_kwargs: dict[str, Any] = {"w": np_weights}
+                if label_medoid_metric == "minkowski":
+                    cdist_kwargs["p"] = label_p_order
+                pairwise_distances = sp.spatial.distance.cdist(
+                    normalized_matrix,
+                    normalized_matrix,
+                    metric=label_medoid_metric,
+                    **cdist_kwargs,
+                )
+                return np.sum(pairwise_distances, axis=1)
             elif metric in {"kmeans", "kmeans2"}:
+                if n_samples == 1:
+                    return np.array([0.0])
                 if n_samples < 2:
                     return np.full(n_samples, np.inf)
                 n_clusters = min(max(2, int(np.sqrt(n_samples / 2))), 10, n_samples)
@@ -890,18 +920,60 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 label_kmeans_metric = self.ft_params.get(
                     "label_kmeans_metric", "euclidean"
                 )
-                cdist_kwargs = {}
-                if label_kmeans_metric == "minkowski" and isinstance(
-                    label_p_order, float
-                ):
+                if label_kmeans_metric in {
+                    "mahalanobis",
+                    "seuclidean",
+                    "jensenshannon",
+                }:
+                    raise ValueError(
+                        f"Unsupported label_kmeans_metric: {label_kmeans_metric}. Supported are euclidean/minkowski/cityblock/chebyshev/..."
+                    )
+                cdist_kwargs: dict[str, Any] = {}
+                if label_kmeans_metric == "minkowski":
                     cdist_kwargs["p"] = label_p_order
-                cluster_distances_to_ideal = sp.spatial.distance.cdist(
+                cluster_center_distances_to_ideal = sp.spatial.distance.cdist(
                     cluster_centers,
                     ideal_point_2d,
                     metric=label_kmeans_metric,
                     **cdist_kwargs,
                 ).flatten()
-                return cluster_distances_to_ideal[cluster_labels]
+                label_kmeans_selection = self.ft_params.get(
+                    "label_kmeans_selection", "min"
+                )
+                ordered_cluster_labels = np.argsort(cluster_center_distances_to_ideal)
+                trial_distances = np.full(n_samples, np.inf)
+                best_cluster_indices = None
+                for cluster_label in ordered_cluster_labels:
+                    cluster_indices = np.flatnonzero(cluster_labels == cluster_label)
+                    if cluster_indices.size:
+                        best_cluster_indices = cluster_indices
+                        break
+                if best_cluster_indices is not None and best_cluster_indices.size > 0:
+                    if label_kmeans_selection == "medoid":
+                        best_cluster_matrix = normalized_matrix[best_cluster_indices]
+                        pairwise_distances = sp.spatial.distance.cdist(
+                            best_cluster_matrix,
+                            best_cluster_matrix,
+                            metric=label_kmeans_metric,
+                            **cdist_kwargs,
+                        )
+                        trial_distances[best_cluster_indices] = np.sum(
+                            pairwise_distances, axis=1
+                        )
+                    elif label_kmeans_selection == "min":
+                        trial_distances[best_cluster_indices] = (
+                            sp.spatial.distance.cdist(
+                                normalized_matrix[best_cluster_indices],
+                                ideal_point_2d,
+                                metric=label_kmeans_metric,
+                                **cdist_kwargs,
+                            ).flatten()
+                        )
+                    else:
+                        raise ValueError(
+                            f"Unsupported label_kmeans_selection: {label_kmeans_selection}. Supported are medoid/min"
+                        )
+                return trial_distances
             elif metric == "knn_d1":
                 if n_samples < 2:
                     return np.full(n_samples, np.inf)
