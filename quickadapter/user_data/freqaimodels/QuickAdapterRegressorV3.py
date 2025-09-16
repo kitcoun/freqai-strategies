@@ -882,7 +882,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 label_medoid_metric = self.ft_params.get(
                     "label_medoid_metric", "euclidean"
                 )
-
                 if label_medoid_metric in {
                     "mahalanobis",
                     "seuclidean",
