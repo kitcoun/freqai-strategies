@@ -1659,7 +1659,9 @@ class InfoMetricsCallback(TensorboardCallback):
             tensorboard_metrics_list = []
 
         aggregated_tensorboard_metrics: Dict[str, Dict[str, Any]] = defaultdict(dict)
-        aggregate_tensorboard_counts: Dict[str, Dict[str, int]] = defaultdict(dict)
+        aggregated_tensorboard_metric_counts: Dict[str, Dict[str, int]] = defaultdict(
+            dict
+        )
         for env_metrics in tensorboard_metrics_list or []:
             if not isinstance(env_metrics, dict):
                 continue
@@ -1667,7 +1669,7 @@ class InfoMetricsCallback(TensorboardCallback):
                 if not isinstance(metrics, dict):
                     continue
                 cat_dict = aggregated_tensorboard_metrics.setdefault(category, {})
-                cnt_dict = aggregate_tensorboard_counts.setdefault(category, {})
+                cnt_dict = aggregated_tensorboard_metric_counts.setdefault(category, {})
                 for metric, value in metrics.items():
                     if _is_finite_number(value):
                         v = float(value)
@@ -1679,7 +1681,7 @@ class InfoMetricsCallback(TensorboardCallback):
                         cnt_dict[metric] = cnt_dict.get(metric, 0) + 1
                     else:
                         if (
-                            aggregate_tensorboard_counts.get(category, {}).get(
+                            aggregated_tensorboard_metric_counts.get(category, {}).get(
                                 metric, 0
                             )
                             == 0
@@ -1748,17 +1750,17 @@ class InfoMetricsCallback(TensorboardCallback):
                         except Exception:
                             pass
                     try:
-                        count = aggregate_tensorboard_counts.get(category, {}).get(
-                            metric
-                        )
+                        count = aggregated_tensorboard_metric_counts.get(
+                            category, {}
+                        ).get(metric)
                         if isinstance(value, (int, float)) and count and count > 0:
                             mean = float(value) / float(count)
                             self.logger.record(f"{category}/{metric}_mean", mean)
                     except Exception:
                         try:
-                            count = aggregate_tensorboard_counts.get(category, {}).get(
-                                metric
-                            )
+                            count = aggregated_tensorboard_metric_counts.get(
+                                category, {}
+                            ).get(metric)
                             if isinstance(value, (int, float)) and count and count > 0:
                                 mean = float(value) / float(count)
                                 self.logger.record(
