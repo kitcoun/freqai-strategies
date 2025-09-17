@@ -1130,7 +1130,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             }
             metric_log_msg = ""
         else:
-            best_trial = self.get_multi_objective_study_best_trial("label", study)
+            try:
+                best_trial = self.get_multi_objective_study_best_trial("label", study)
+            except Exception as e:
+                logger.error(
+                    f"Optuna {pair} {namespace} {objective_type} objective hyperopt failed ({time_spent:.2f} secs): {repr(e)}",
+                    exc_info=True,
+                )
+                best_trial = None
             if not best_trial:
                 logger.error(
                     f"Optuna {pair} {namespace} {objective_type} objective hyperopt failed ({time_spent:.2f} secs): no study best trial found"
