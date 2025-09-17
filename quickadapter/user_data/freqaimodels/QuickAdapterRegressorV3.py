@@ -159,7 +159,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         "label_period_candles", 24
                     ),
                     "label_natr_ratio": float(
-                        self.ft_params.get("label_natr_ratio", 8.0)
+                        self.ft_params.get("label_natr_ratio", 8.5)
                     ),
                 }
             )
