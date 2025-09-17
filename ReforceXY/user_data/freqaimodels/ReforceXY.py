@@ -1673,7 +1673,7 @@ class InfoMetricsCallback(TensorboardCallback):
                         v = float(value)
                         try:
                             base = float(cat_dict.get(metric, 0.0))
-                        except Exception:
+                        except (ValueError, TypeError):
                             base = 0.0
                         cat_dict[metric] = base + v
                         cnt_dict[metric] = cnt_dict.get(metric, 0) + 1
