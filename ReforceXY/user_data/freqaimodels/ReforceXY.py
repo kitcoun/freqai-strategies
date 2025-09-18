@@ -193,14 +193,22 @@ class ReforceXY(BaseReinforcementLearningModel):
         if self.check_envs:
             logger.info("Checking environments")
             _train_env_check = self.MyRLEnv(
-                id="train_env_check", df=train_df, prices=prices_train, **env_dict
+                df=train_df,
+                prices=prices_train,
+                id="train_env_check",
+                seed=seed,
+                **env_dict,
             )
             try:
                 check_env(_train_env_check)
             finally:
                 _train_env_check.close()
             _eval_env_check = self.MyRLEnv(
-                id="eval_env_check", df=test_df, prices=prices_test, **env_dict
+                df=test_df,
+                prices=prices_test,
+                id="eval_env_check",
+                seed=seed + 10_000,
+                **env_dict,
             )
             try:
                 check_env(_eval_env_check)

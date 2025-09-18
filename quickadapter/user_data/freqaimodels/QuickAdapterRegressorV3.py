@@ -751,10 +751,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "weighted_sum",
             "kmeans",
             "kmeans2",
-            "knn_d1",
-            "knn_d2_mean",
-            "knn_d2_median",
-            "knn_d2_max",
+            "knn_power_mean",
+            "knn_percentile",
+            "knn_min",
+            "knn_max",
             "medoid",
         }
         label_metric = self.ft_params.get("label_metric", "euclidean")
@@ -783,7 +783,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         ) -> NDArray[np.floating]:
             n_objectives = normalized_matrix.shape[1]
             n_samples = normalized_matrix.shape[0]
-            label_p_order = float(self.ft_params.get("label_p_order", 2.0))
+            label_p_order = self.ft_params.get("label_p_order")
             np_weights = np.array(
                 self.ft_params.get("label_weights", [1.0] * n_objectives)
             )
@@ -795,10 +795,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             if np.isclose(label_weights_sum, 0.0):
                 raise ValueError("label_weights sum cannot be zero")
             np_weights = np_weights / label_weights_sum
-            knn_kwargs = {}
-            label_knn_metric = self.ft_params.get("label_knn_metric", "euclidean")
-            if label_knn_metric == "minkowski":
-                knn_kwargs["p"] = label_p_order
 
             ideal_point = np.ones(n_objectives)
             ideal_point_2d = ideal_point.reshape(1, -1)
@@ -835,7 +831,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 }:
                     del cdist_kwargs["w"]
                 if metric == "minkowski":
-                    cdist_kwargs["p"] = label_p_order
+                    cdist_kwargs["p"] = (
+                        label_p_order if label_p_order is not None else 2.0
+                    )
                 return sp.spatial.distance.cdist(
                     normalized_matrix,
                     ideal_point_2d,
@@ -867,7 +865,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     "arithmetic_mean": 1.0,
                     "quadratic_mean": 2.0,
                     "cubic_mean": 3.0,
-                    "power_mean": label_p_order,
+                    "power_mean": label_p_order if label_p_order is not None else 1.0,
                 }[metric]
                 return sp.stats.pmean(
                     ideal_point, p=p, weights=np_weights
@@ -892,7 +890,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     )
                 cdist_kwargs: dict[str, Any] = {"w": np_weights}
                 if label_medoid_metric == "minkowski":
-                    cdist_kwargs["p"] = label_p_order
+                    cdist_kwargs["p"] = (
+                        label_p_order if label_p_order is not None else 2.0
+                    )
                 pairwise_distances = sp.spatial.distance.cdist(
                     normalized_matrix,
                     normalized_matrix,
@@ -929,7 +929,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     )
                 cdist_kwargs: dict[str, Any] = {}
                 if label_kmeans_metric == "minkowski":
-                    cdist_kwargs["p"] = label_p_order
+                    cdist_kwargs["p"] = (
+                        label_p_order if label_p_order is not None else 2.0
+                    )
                 cluster_center_distances_to_ideal = sp.spatial.distance.cdist(
                     cluster_centers,
                     ideal_point_2d,
@@ -973,20 +975,20 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                             f"Unsupported label_kmeans_selection: {label_kmeans_selection}. Supported are medoid/min"
                         )
                 return trial_distances
-            elif metric == "knn_d1":
+            elif metric in {"knn_power_mean", "knn_percentile", "knn_min", "knn_max"}:
                 if n_samples < 2:
                     return np.full(n_samples, np.inf)
-                nbrs = sklearn.neighbors.NearestNeighbors(
-                    n_neighbors=2, metric=label_knn_metric, **knn_kwargs
-                ).fit(normalized_matrix)
-                distances, _ = nbrs.kneighbors(normalized_matrix)
-                return distances[:, 1]
-            elif metric in {"knn_d2_mean", "knn_d2_median", "knn_d2_max"}:
-                if n_samples < 2:
-                    return np.full(n_samples, np.inf)
+                label_knn_metric = self.ft_params.get("label_knn_metric", "minkowski")
+                knn_kwargs: dict[str, Any] = {}
+                if label_knn_metric == "minkowski":
+                    knn_kwargs["p"] = (
+                        label_p_order if label_p_order is not None else 2.0
+                    )
+                    knn_kwargs["metric_params"] = {"w": np_weights}
+                label_knn_p_order = self.ft_params.get("label_knn_p_order")
                 n_neighbors = (
                     min(
-                        int(self.ft_params.get("label_knn_d2_n_neighbors", 4)),
+                        int(self.ft_params.get("label_knn_n_neighbors", 5)),
                         n_samples - 1,
                     )
                     + 1
@@ -995,12 +997,25 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     n_neighbors=n_neighbors, metric=label_knn_metric, **knn_kwargs
                 ).fit(normalized_matrix)
                 distances, _ = nbrs.kneighbors(normalized_matrix)
-                if metric == "knn_d2_mean":
-                    return np.mean(distances[:, 1:], axis=1)
-                elif metric == "knn_d2_median":
-                    return np.median(distances[:, 1:], axis=1)
-                elif metric == "knn_d2_max":
-                    return np.max(distances[:, 1:], axis=1)
+                neighbor_distances = distances[:, 1:]
+                if neighbor_distances.shape[1] < 1:
+                    return np.full(n_samples, np.inf)
+                if metric == "knn_power_mean":
+                    label_knn_p_order = (
+                        label_knn_p_order if label_knn_p_order is not None else 1.0
+                    )
+                    return sp.stats.pmean(
+                        neighbor_distances, p=label_knn_p_order, axis=1
+                    )
+                elif metric == "knn_percentile":
+                    label_knn_p_order = (
+                        label_knn_p_order if label_knn_p_order is not None else 50.0
+                    )
+                    return np.percentile(neighbor_distances, label_knn_p_order, axis=1)
+                elif metric == "knn_min":
+                    return np.min(neighbor_distances, axis=1)
+                elif metric == "knn_max":
+                    return np.max(neighbor_distances, axis=1)
             else:
                 raise ValueError(
                     f"Unsupported label metric: {metric}. Supported metrics are {', '.join(metrics)}"
@@ -1494,7 +1509,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 8.5, 14.5, step=0.05)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 8.5, 12.5, step=0.05)
 
     label_period_cycles = fit_live_predictions_candles / label_period_candles
     df = df.iloc[-(max(2, int(label_period_cycles)) * label_period_candles) :]
