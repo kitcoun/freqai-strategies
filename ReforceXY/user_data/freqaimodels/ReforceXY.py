@@ -357,9 +357,6 @@ class ReforceXY(BaseReinforcementLearningModel):
         rollout_plot_callback = None
         verbose = int(self.get_model_params().get("verbose", 0))
 
-        if self.plot_new_best:
-            rollout_plot_callback = RolloutPlotCallback(verbose=verbose)
-
         if self.max_no_improvement_evals:
             no_improvement_callback = StopTrainingOnNoModelImprovement(
                 max_no_improvement_evals=self.max_no_improvement_evals,
@@ -370,6 +367,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         if self.activate_tensorboard:
             info_callback = InfoMetricsCallback(actions=Actions, verbose=verbose)
             callbacks.append(info_callback)
+            if self.plot_new_best:
+                rollout_plot_callback = RolloutPlotCallback(verbose=verbose)
 
         if self.rl_config.get("progress_bar", False):
             self.progressbar_callback = ProgressBarCallback()
@@ -389,13 +388,14 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             callbacks.append(self.eval_callback)
         else:
+            trial_data_path = f"{data_path}/trial_{trial.number}"
             self.optuna_callback = MaskableTrialEvalCallback(
                 self.eval_env,
                 trial,
                 eval_freq=eval_freq,
                 deterministic=True,
                 render=False,
-                best_model_save_path=data_path,
+                best_model_save_path=trial_data_path,
                 use_masking=self.is_maskable,
                 verbose=verbose,
             )
@@ -821,7 +821,11 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         if self.activate_tensorboard:
             tensorboard_log_path = Path(
-                self.full_path / "tensorboard" / dk.pair.split("/")[0]
+                self.full_path
+                / "tensorboard"
+                / dk.pair.split("/")[0]
+                / "hyperopt"
+                / f"trial_{trial.number}"
             )
         else:
             tensorboard_log_path = None
