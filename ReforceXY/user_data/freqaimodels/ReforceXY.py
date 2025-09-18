@@ -1093,8 +1093,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
             # discourage agent from sitting idle too long
             if action == Actions.Neutral.value and self._position == Positions.Neutral:
-                idle_duration = self.get_idle_duration()
-                return float(-0.01 * idle_duration**1.05)
+                return -0.01 * self.get_idle_duration() ** 1.05
 
             # pnl and duration aware agent reward while sitting in position
             if (
@@ -1357,21 +1356,41 @@ class ReforceXY(BaseReinforcementLearningModel):
             return self._current_tick - self._last_closed_trade_tick
 
         def get_most_recent_max_pnl(self) -> float:
+            """
+            Calculate the most recent maximum unrealized profit if in a trade
+            """
+            if self._last_trade_tick is None:
+                return -np.inf
+            if self._position == Positions.Neutral:
+                return -np.inf
             pnl_history = self.history.get("pnl")
-            return (
-                np.max(pnl_history) if pnl_history and len(pnl_history) > 0 else -np.inf
-            )
+            if not pnl_history or len(pnl_history) == 0:
+                return -np.inf
+
+            pnl_history = np.asarray(pnl_history)
+            ticks = self.history.get("tick")
+            if not ticks:
+                return -np.inf
+            ticks = np.asarray(ticks)
+            start = np.searchsorted(ticks, self._last_trade_tick, side="left")
+            if start >= ticks.shape[0]:
+                return -np.inf
+            trade_slice = pnl_history[start:]
+            if trade_slice.size == 0:
+                return -np.inf
+            return np.max(trade_slice)
 
         def get_most_recent_return(self) -> float:
             """
             Calculate the tick to tick return if in a trade.
-            Return is generated from rising prices in Long
-            and falling prices in Short positions.
+            Return is generated from rising prices in Long and falling prices in Short positions.
             The actions Sell/Buy or Hold during a Long position trigger the sell/buy-fee.
             """
-            if self._current_tick <= 0:
+            if self._last_trade_tick is None:
                 return 0.0
-            if self._position == Positions.Long:
+            if self._position == Positions.Neutral:
+                return 0.0
+            elif self._position == Positions.Long:
                 current_price = self.current_price()
                 previous_price = self.previous_price()
                 if (
@@ -1381,7 +1400,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 ):
                     previous_price = self.add_entry_fee(previous_price)
                 return np.log(current_price) - np.log(previous_price)
-            if self._position == Positions.Short:
+            elif self._position == Positions.Short:
                 current_price = self.current_price()
                 previous_price = self.previous_price()
                 if (
@@ -1402,7 +1421,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             """
             Calculate the tick to tick unrealized profit if in a trade
             """
-            if self._position == Positions.Long:
+            if self._last_trade_tick is None:
+                return 0.0
+            if self._position == Positions.Neutral:
+                return 0.0
+            elif self._position == Positions.Long:
                 current_price = self.add_exit_fee(self.current_price())
                 previous_price = self.add_entry_fee(self.previous_price())
                 return (current_price - previous_price) / previous_price
