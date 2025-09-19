@@ -2117,7 +2117,7 @@ class MaskableTrialEvalCallback(MaskableEvalCallback):
                     return False
             except Exception as e:
                 logger.warning(
-                    "Optuna: should_prune failed at eval %s: %r", self.eval_idx, e
+                    "Optuna: trial.should_prune failed at eval %s: %r", self.eval_idx, e
                 )
                 self.is_pruned = True
                 return False
