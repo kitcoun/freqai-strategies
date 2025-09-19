@@ -1375,10 +1375,10 @@ class ReforceXY(BaseReinforcementLearningModel):
             start = np.searchsorted(ticks, self._last_trade_tick, side="left")
             if start >= ticks.shape[0]:
                 return -np.inf
-            trade_slice = pnl_history[start:]
-            if trade_slice.size == 0:
+            trade_pnl_history = pnl_history[start:]
+            if trade_pnl_history.size == 0:
                 return -np.inf
-            return np.max(trade_slice)
+            return np.max(trade_pnl_history)
 
         def get_most_recent_return(self) -> float:
             """
