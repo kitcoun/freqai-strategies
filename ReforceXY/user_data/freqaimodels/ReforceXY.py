@@ -2001,6 +2001,39 @@ class InfoMetricsCallback(TensorboardCallback):
                                 )
                         except Exception:
                             pass
+
+        if not np.isclose(self._total_timesteps, 0.0):
+            try:
+                progress_done = float(self.num_timesteps) / float(self._total_timesteps)
+                progress_done = (
+                    0.0
+                    if progress_done < 0
+                    else (1.0 if progress_done > 1.0 else progress_done)
+                )
+            except Exception:
+                progress_done = 0.0
+        else:
+            progress_done = 0.0
+        progress_remaining = 1.0 - progress_done
+
+        try:
+            self.logger.record("train/progress_done", progress_done)
+            self.logger.record("train/progress_remaining", progress_remaining)
+        except Exception:
+            pass
+
+        lr_schedule = getattr(self.model, "lr_schedule", None)
+        if callable(lr_schedule):
+            try:
+                lr = lr_schedule(progress_remaining)
+                self.logger.record("train/learning_rate", lr)
+            except Exception:
+                pass
+        else:
+            lr = getattr(self.model, "learning_rate", None)
+            if isinstance(lr, (int, float, np.floating)):
+                self.logger.record("train/learning_rate", lr)
+
         return True
 
 
