@@ -170,16 +170,16 @@ class ReforceXY(BaseReinforcementLearningModel):
             action_mask[Actions.Short_exit.value] = True
 
         if force_action is not None and position in (Positions.Long, Positions.Short):
-            forced = np.zeros(len(Actions), dtype=bool)
+            force_action_mask = np.zeros(len(Actions), dtype=bool)
             try:
                 if position == Positions.Long:
-                    forced[Actions.Long_exit.value] = True
+                    force_action_mask[Actions.Long_exit.value] = True
                 elif position == Positions.Short:
-                    forced[Actions.Short_exit.value] = True
+                    force_action_mask[Actions.Short_exit.value] = True
             except Exception:
                 return action_mask
-            if forced.any():
-                return forced
+            if force_action_mask.any():
+                return force_action_mask
             return action_mask
 
         if not action_mask.any():
