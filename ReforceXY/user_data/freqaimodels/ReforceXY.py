@@ -7,7 +7,6 @@ import warnings
 from collections import defaultdict
 from collections.abc import Mapping
 from enum import IntEnum
-from functools import lru_cache
 from pathlib import Path
 from statistics import stdev
 from typing import Any, Callable, Dict, Literal, Optional, Tuple, Type, Union
@@ -2179,7 +2178,6 @@ def deepmerge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
     return dst_copy
 
 
-@lru_cache(maxsize=128)
 def linear_schedule(initial_value: float) -> Callable[[float], float]:
     def func(progress_remaining: float) -> float:
         return progress_remaining * initial_value
@@ -2187,7 +2185,6 @@ def linear_schedule(initial_value: float) -> Callable[[float], float]:
     return func
 
 
-@lru_cache(maxsize=128)
 def _compute_gradient_steps(tf: int, ss: int) -> int:
     if tf > 0 and ss > 0:
         return min(tf, max(tf // ss, 1))
@@ -2208,7 +2205,6 @@ def compute_gradient_steps(train_freq: Any, subsample_steps: Any) -> int:
     return -1
 
 
-@lru_cache(maxsize=32)
 def hours_to_seconds(hours: float) -> float:
     """
     Converts hours to seconds
@@ -2217,7 +2213,6 @@ def hours_to_seconds(hours: float) -> float:
     return seconds
 
 
-@lru_cache(maxsize=32)
 def steps_to_days(steps: int, timeframe: str) -> float:
     """
     Calculate the number of days based on the given number of steps
