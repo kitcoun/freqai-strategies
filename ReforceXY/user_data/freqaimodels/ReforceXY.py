@@ -154,10 +154,26 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.unset_unsupported()
 
     @staticmethod
+    def _normalize_position(position: Any) -> Positions:
+        if isinstance(position, Positions):
+            return position
+        try:
+            position = float(position)
+            if position == float(Positions.Long.value):
+                return Positions.Long
+            if position == float(Positions.Short.value):
+                return Positions.Short
+            return Positions.Neutral
+        except Exception:
+            return Positions.Neutral
+
+    @staticmethod
     @lru_cache(maxsize=8)
     def get_action_masks(
         position: Positions, force_action: Optional[ForceActions] = None
     ) -> NDArray[bool]:
+        position = ReforceXY._normalize_position(position)
+
         action_masks = np.zeros(len(Actions), dtype=bool)
 
         if force_action is not None and position in (Positions.Long, Positions.Short):
@@ -591,19 +607,6 @@ class ReforceXY(BaseReinforcementLearningModel):
         :param dk: FreqaiDatakitchen = data kitchen for the current pair
         :param model: Any = the trained model used to inference the features.
         """
-
-        def _normalize_position(position: Any) -> Positions:
-            if isinstance(position, Positions):
-                return position
-            try:
-                position = float(position)
-                if position == float(Positions.Long.value):
-                    return Positions.Long
-                if position == float(Positions.Short.value):
-                    return Positions.Short
-                return Positions.Neutral
-            except Exception:
-                return Positions.Neutral
 
         simulated_position: Positions = Positions.Neutral
 
