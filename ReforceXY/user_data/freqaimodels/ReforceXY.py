@@ -2002,9 +2002,10 @@ class InfoMetricsCallback(TensorboardCallback):
                         except Exception:
                             pass
 
-        if not np.isclose(self._total_timesteps, 0.0):
+        total_timesteps = getattr(self.model, "_total_timesteps", None)
+        if total_timesteps is not None and not np.isclose(total_timesteps, 0.0):
             try:
-                progress_done = float(self.num_timesteps) / float(self._total_timesteps)
+                progress_done = float(self.num_timesteps) / float(total_timesteps)
                 progress_done = (
                     0.0
                     if progress_done < 0
