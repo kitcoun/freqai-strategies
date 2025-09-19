@@ -168,7 +168,6 @@ class ReforceXY(BaseReinforcementLearningModel):
             return Positions.Neutral
 
     @staticmethod
-    @lru_cache(maxsize=8)
     def get_action_masks(
         position: Positions, force_action: Optional[ForceActions] = None
     ) -> NDArray[bool]:
