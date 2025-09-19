@@ -159,7 +159,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         "label_period_candles", 24
                     ),
                     "label_natr_ratio": float(
-                        self.ft_params.get("label_natr_ratio", 8.5)
+                        self.ft_params.get("label_natr_ratio", 9.0)
                     ),
                 }
             )
@@ -1509,7 +1509,7 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 8.5, 12.5, step=0.05)
+    label_natr_ratio = trial.suggest_float("label_natr_ratio", 9.0, 12.0, step=0.05)
 
     label_period_cycles = fit_live_predictions_candles / label_period_candles
     df = df.iloc[-(max(2, int(label_period_cycles)) * label_period_candles) :]
