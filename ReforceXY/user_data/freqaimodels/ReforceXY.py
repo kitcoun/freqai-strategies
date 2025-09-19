@@ -2009,11 +2009,7 @@ class InfoMetricsCallback(TensorboardCallback):
         if total_timesteps is not None and not np.isclose(total_timesteps, 0.0):
             try:
                 progress_done = float(self.num_timesteps) / float(total_timesteps)
-                progress_done = (
-                    0.0
-                    if progress_done < 0
-                    else (1.0 if progress_done > 1.0 else progress_done)
-                )
+                progress_done = np.clip(progress_done, 0.0, 1.0)
             except Exception:
                 progress_done = 0.0
         else:
