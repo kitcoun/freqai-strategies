@@ -107,8 +107,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             ]
         return copy.deepcopy(self._optuna_label_candle_pool_full_cache[cache_key])
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.pairs: list[str] = self.config.get("exchange", {}).get("pair_whitelist")
         if not self.pairs:
             raise ValueError(
