@@ -535,7 +535,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
 
         eval_freq = self.get_eval_freq(train_timesteps, model_params)
-        callbacks = self.get_callbacks(eval_freq, self.eval_env, str(dk.data_path))
+        callbacks = self.get_callbacks(self.eval_env, eval_freq, str(dk.data_path))
         try:
             model.learn(total_timesteps=total_timesteps, callback=callbacks)
         except KeyboardInterrupt:
@@ -990,7 +990,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
 
         eval_freq = self.get_eval_freq(len(train_df), params)
-        callbacks = self.get_callbacks(eval_freq, eval_env, str(dk.data_path), trial)
+        callbacks = self.get_callbacks(eval_env, eval_freq, str(dk.data_path), trial)
         try:
             model.learn(total_timesteps=total_timesteps, callback=callbacks)
         except AssertionError:
