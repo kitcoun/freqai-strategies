@@ -937,6 +937,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         """
         Defines a single trial for hyperparameter optimization using Optuna
         """
+        logger.info("------------ Hyperopt trial %d ------------", trial.number)
+
         if "PPO" in self.model_type:
             params = sample_params_ppo(trial, self.n_envs)
             if params.get("n_steps", 0) * self.n_envs > total_timesteps:
@@ -962,6 +964,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         # Ensure that the sampled parameters take precedence
         params = deepmerge(self.get_model_params(), params)
 
+        logger.info("Trial %s params: %s", trial.number, params)
+
         nan_encountered = False
 
         if self.activate_tensorboard:
@@ -974,9 +978,6 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
         else:
             tensorboard_log_path = None
-
-        logger.info("------------ Hyperopt trial %d ------------", trial.number)
-        logger.info("Trial %s params: %s", trial.number, params)
 
         train_env, eval_env = self._get_train_and_eval_environments(
             train_df, test_df, dk, trial=trial
