@@ -996,8 +996,10 @@ class QuickAdapterV3(IStrategy):
         return None
 
     @staticmethod
-    def weighted_close(series: Series) -> float:
-        return (series.get("high") + series.get("low") + 2 * series.get("close")) / 4.0
+    def weighted_close(series: Series, weight: float = 2.0) -> float:
+        return (
+            series.get("high") + series.get("low") + weight * series.get("close")
+        ) / (2.0 + weight)
 
     @staticmethod
     def _normalize_candle_idx(length: int, idx: int) -> int:
