@@ -742,12 +742,18 @@ def fit_regressor(
     model_training_parameters: dict[str, Any],
     init_model: Any = None,
     callbacks: Optional[list[Callable]] = None,
+    trial: Optional[optuna.trial.Trial] = None,
 ) -> Any:
     if regressor == "xgboost":
         from xgboost import XGBRegressor
 
         if model_training_parameters.get("random_state") is None:
             model_training_parameters["random_state"] = 1
+
+        if trial is not None:
+            model_training_parameters["random_state"] = (
+                model_training_parameters["random_state"] + trial.number
+            )
 
         model = XGBRegressor(
             objective="reg:squarederror",
@@ -768,6 +774,11 @@ def fit_regressor(
 
         if model_training_parameters.get("seed") is None:
             model_training_parameters["seed"] = 1
+
+        if trial is not None:
+            model_training_parameters["seed"] = (
+                model_training_parameters["seed"] + trial.number
+            )
 
         model = LGBMRegressor(objective="regression", **model_training_parameters)
         model.fit(

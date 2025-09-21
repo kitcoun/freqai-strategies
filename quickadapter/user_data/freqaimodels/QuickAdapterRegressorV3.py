@@ -1450,6 +1450,7 @@ def train_objective(
         eval_weights=[test_weights],
         model_training_parameters=model_training_parameters,
         callbacks=get_optuna_callbacks(trial, regressor),
+        trial=trial,
     )
     y_pred = model.predict(X_test)
 
@@ -1485,6 +1486,7 @@ def hp_objective(
         eval_weights=[test_weights],
         model_training_parameters=model_training_parameters,
         callbacks=get_optuna_callbacks(trial, regressor),
+        trial=trial,
     )
     y_pred = model.predict(X_test)
 

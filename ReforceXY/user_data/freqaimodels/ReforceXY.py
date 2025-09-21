@@ -963,6 +963,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         # Ensure that the sampled parameters take precedence
         params = deepmerge(self.get_model_params(), params)
+        params["seed"] = params.get("seed", 42) + trial.number
 
         logger.info("Trial %s params: %s", trial.number, params)
 
