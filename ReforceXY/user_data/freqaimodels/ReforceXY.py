@@ -1802,7 +1802,7 @@ class InfoMetricsCallback(TensorboardCallback):
                 self.logger.record(key, value, exclude=exclude)
             except Exception as e:
                 logger.error(
-                    "logger.record retry on stdout failed again at %r: %r", key, e
+                    "logger.record retry on stdout failed at %r: %r", key, e
                 )
                 pass
 
