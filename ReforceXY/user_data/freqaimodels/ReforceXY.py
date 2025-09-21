@@ -527,24 +527,24 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         start_time = time.time()
         if self.hyperopt:
-            best_trial_params = self.study(dk, total_timesteps)
-            if best_trial_params is None:
+            best_params = self.optimize(dk, total_timesteps)
+            if best_params is None:
                 logger.error(
                     "Hyperopt failed. Using default configured model params instead"
                 )
-                best_trial_params = self.get_model_params()
-            model_params = best_trial_params
+                best_params = self.get_model_params()
+            model_params = best_params
         else:
             model_params = self.get_model_params()
         logger.info("%s params: %s", self.model_type, model_params)
 
         if "PPO" in self.model_type:
-            min_steps = 2 * model_params.get("n_steps", 0) * self.n_envs
-            if total_timesteps < min_steps:
+            min_timesteps = 2 * model_params.get("n_steps", 0) * self.n_envs
+            if total_timesteps < min_timesteps:
                 logger.warning(
                     "total_timesteps=%s is less than 2*n_steps*n_envs=%s. This may lead to suboptimal training results",
                     total_timesteps,
-                    min_steps,
+                    min_timesteps,
                 )
 
         if self.activate_tensorboard:
@@ -718,7 +718,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         except (ValueError, KeyError):
             return False
 
-    def study(
+    def optimize(
         self, dk: FreqaiDataKitchen, total_timesteps: int
     ) -> Optional[Dict[str, Any]]:
         """
