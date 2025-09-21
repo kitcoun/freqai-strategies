@@ -1801,9 +1801,7 @@ class InfoMetricsCallback(TensorboardCallback):
             try:
                 self.logger.record(key, value, exclude=exclude)
             except Exception as e:
-                logger.error(
-                    "logger.record retry on stdout failed at %r: %r", key, e
-                )
+                logger.error("logger.record retry on stdout failed at %r: %r", key, e)
                 pass
 
     def _on_training_start(self) -> None:
