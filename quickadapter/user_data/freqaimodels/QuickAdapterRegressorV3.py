@@ -503,7 +503,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
 
         dk.data["DI_value_mean"] = di_values.mean()
-        dk.data["DI_value_std"] = di_values.std()
+        dk.data["DI_value_std"] = di_values.std(ddof=1)
         dk.data["extra_returns_per_train"]["DI_value_param1"] = f[0]
         dk.data["extra_returns_per_train"]["DI_value_param2"] = f[1]
         dk.data["extra_returns_per_train"]["DI_value_param3"] = f[2]

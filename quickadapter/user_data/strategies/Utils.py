@@ -222,7 +222,7 @@ def vwapb(
     dataframe: pd.DataFrame, window: int = 20, std_factor: float = 1.0
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     vwap = qtpylib.rolling_vwap(dataframe, window=window)
-    rolling_std = vwap.rolling(window=window, min_periods=window).std()
+    rolling_std = vwap.rolling(window=window, min_periods=window).std(ddof=1)
     vwap_low = vwap - (rolling_std * std_factor)
     vwap_high = vwap + (rolling_std * std_factor)
     return vwap_low, vwap, vwap_high

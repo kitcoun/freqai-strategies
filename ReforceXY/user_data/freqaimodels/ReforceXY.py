@@ -1971,11 +1971,10 @@ class InfoMetricsCallback(TensorboardCallback):
             for k, values in numeric_acc.items():
                 if not values:
                     continue
-                mean = np.mean(values)
-                aggregated_info[k] = mean
+                aggregated_info[k] = np.mean(values)
                 if len(values) > 1:
                     try:
-                        aggregated_info[f"{k}_std"] = np.std(values)
+                        aggregated_info[f"{k}_std"] = np.std(values, ddof=1)
                     except Exception:
                         pass
 
@@ -2011,7 +2010,12 @@ class InfoMetricsCallback(TensorboardCallback):
             try:
                 self.logger.record("info/n_envs", int(len(infos_list)))
             except Exception:
-                pass
+                try:
+                    self.logger.record(
+                        "info/n_envs", int(len(infos_list)), exclude=("tensorboard",)
+                    )
+                except Exception:
+                    pass
 
             if filtered_values > 0:
                 try:
@@ -2127,18 +2131,18 @@ class InfoMetricsCallback(TensorboardCallback):
                             category, {}
                         ).get(metric)
                         if isinstance(value, (int, float)) and count and count > 0:
-                            mean = float(value) / float(count)
-                            self.logger.record(f"{category}/{metric}_mean", mean)
+                            self.logger.record(
+                                f"{category}/{metric}_mean", float(value) / float(count)
+                            )
                     except Exception:
                         try:
                             count = aggregated_tensorboard_metric_counts.get(
                                 category, {}
                             ).get(metric)
                             if isinstance(value, (int, float)) and count and count > 0:
-                                mean = float(value) / float(count)
                                 self.logger.record(
                                     f"{category}/{metric}_mean",
-                                    mean,
+                                    float(value) / float(count),
                                     exclude=("tensorboard",),
                                 )
                         except Exception:
@@ -2152,8 +2156,23 @@ class InfoMetricsCallback(TensorboardCallback):
             else:
                 progress_done = 0.0
             progress_remaining = 1.0 - progress_done
-            self.logger.record("train/progress_done", progress_done)
-            self.logger.record("train/progress_remaining", progress_remaining)
+            try:
+                self.logger.record("train/progress_done", progress_done)
+                self.logger.record("train/progress_remaining", progress_remaining)
+            except Exception:
+                try:
+                    self.logger.record(
+                        "train/progress_done",
+                        progress_done,
+                        exclude=("tensorboard",),
+                    )
+                    self.logger.record(
+                        "train/progress_remaining",
+                        progress_remaining,
+                        exclude=("tensorboard",),
+                    )
+                except Exception:
+                    pass
         except Exception:
             progress_remaining = 1.0
 
@@ -2162,7 +2181,17 @@ class InfoMetricsCallback(TensorboardCallback):
             if callable(lr):
                 lr = lr(progress_remaining)
             if isinstance(lr, (int, float)) and np.isfinite(lr):
-                self.logger.record("train/learning_rate", float(lr))
+                try:
+                    self.logger.record("train/learning_rate", float(lr))
+                except Exception:
+                    try:
+                        self.logger.record(
+                            "train/learning_rate",
+                            float(lr),
+                            exclude=("tensorboard",),
+                        )
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -2172,7 +2201,17 @@ class InfoMetricsCallback(TensorboardCallback):
                 if callable(cr):
                     cr = cr(progress_remaining)
                 if isinstance(cr, (int, float)) and np.isfinite(cr):
-                    self.logger.record("train/clip_range", float(cr))
+                    try:
+                        self.logger.record("train/clip_range", float(cr))
+                    except Exception:
+                        try:
+                            self.logger.record(
+                                "train/clip_range",
+                                float(cr),
+                                exclude=("tensorboard",),
+                            )
+                        except Exception:
+                            pass
             except Exception:
                 pass
 
