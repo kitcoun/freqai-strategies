@@ -87,8 +87,10 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "n_envs": 1,                        // Number of DummyVecEnv or SubProcVecEnv environments
                 "multiprocessing": false,           // Use SubprocVecEnv if n_envs>1 (otherwise DummyVecEnv)
                 "frame_stacking": 0,                // Number of VecFrameStack stacks (set > 1 to use)
+                "inference_masking": true,          // Enable action masking during inference
                 "lr_schedule": false,               // Enable learning rate linear schedule
                 "cr_schedule": false,               // Enable clip range linear schedule
+                "n_eval_steps": 10_000,             // Number of environment steps between evaluations
                 "max_no_improvement_evals": 0,      // Maximum consecutive evaluations without a new best model
                 "min_evals": 0,                     // Number of evaluations before start to count evaluations without improvements
                 "check_envs": true,                 // Check that an environment follows Gym API
@@ -127,6 +129,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.n_envs: int = self.rl_config.get("n_envs", 1)
         self.multiprocessing: bool = self.rl_config.get("multiprocessing", False)
         self.frame_stacking: int = self.rl_config.get("frame_stacking", 0)
+        self.n_eval_steps: int = self.rl_config.get("n_eval_steps", 10_000)
         self.max_no_improvement_evals: int = self.rl_config.get(
             "max_no_improvement_evals", 0
         )
@@ -223,6 +226,12 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self.frame_stacking,
             )
             self.frame_stacking = 0
+        if self.n_eval_steps <= 0:
+            logger.warning(
+                "Invalid n_eval_steps=%s. Forcing n_eval_steps=10_000",
+                self.n_eval_steps,
+            )
+            self.n_eval_steps = 10_000
         if self.continual_learning and self.frame_stacking:
             logger.warning(
                 "User tried to use continual_learning with frame_stacking. \
@@ -373,29 +382,37 @@ class ReforceXY(BaseReinforcementLearningModel):
         return copy.deepcopy(self._model_params_cache)
 
     def get_eval_freq(
-        self, train_timesteps: int, model_params: Optional[Dict[str, Any]] = None
+        self,
+        total_timesteps: int,
+        hyperopt: bool = False,
+        hyperopt_reduction_factor: float = 4.0,
+        model_params: Optional[Dict[str, Any]] = None,
     ) -> int:
-        if train_timesteps <= 0:
+        if total_timesteps <= 0:
             return 1
         if "PPO" in self.model_type:
             eval_freq = None
             if model_params:
                 n_steps = model_params.get("n_steps")
                 if isinstance(n_steps, int) and n_steps > 0:
-                    eval_freq = n_steps
+                    eval_freq = max(1, n_steps)
             if eval_freq is None:
                 eval_freq = next(
                     (
                         step
                         for step in sorted(PPO_N_STEPS, reverse=True)
-                        if step <= train_timesteps
+                        if step <= total_timesteps
                     ),
                     PPO_N_STEPS[0],
                 )
         else:
-            eval_freq = max(1, train_timesteps // self.n_envs)
+            if hyperopt and hyperopt_reduction_factor > 1.0:
+                eval_freq = int(self.n_eval_steps / hyperopt_reduction_factor)
+            else:
+                eval_freq = self.n_eval_steps
+            eval_freq = max(1, (eval_freq + self.n_envs - 1) // self.n_envs)
 
-        return max(1, min(eval_freq, train_timesteps))
+        return min(eval_freq, total_timesteps)
 
     def get_callbacks(
         self,
@@ -474,6 +491,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         """
         train_df = data_dictionary.get("train_features")
         train_timesteps = len(train_df)
+        if train_timesteps <= 0:
+            raise ValueError("train_features dataframe has zero length")
         test_df = data_dictionary.get("test_features")
         test_timesteps = len(test_df)
         train_cycles = max(1, int(self.rl_config.get("train_cycles", 25)))
@@ -513,6 +532,15 @@ class ReforceXY(BaseReinforcementLearningModel):
             model_params = self.get_model_params()
         logger.info("%s params: %s", self.model_type, model_params)
 
+        if "PPO" in self.model_type:
+            min_steps = 2 * model_params.get("n_steps", 0) * self.n_envs
+            if total_timesteps < min_steps:
+                logger.warning(
+                    "total_timesteps=%s is less than 2*n_steps*n_envs=%s. This may lead to suboptimal training results",
+                    total_timesteps,
+                    min_steps,
+                )
+
         if self.activate_tensorboard:
             tensorboard_log_path = Path(
                 self.full_path / "tensorboard" / dk.pair.split("/")[0]
@@ -534,7 +562,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 **model_params,
             )
 
-        eval_freq = self.get_eval_freq(train_timesteps, model_params)
+        eval_freq = self.get_eval_freq(total_timesteps, model_params=model_params)
         callbacks = self.get_callbacks(self.eval_env, eval_freq, str(dk.data_path))
         try:
             model.learn(total_timesteps=total_timesteps, callback=callbacks)
@@ -706,14 +734,10 @@ class ReforceXY(BaseReinforcementLearningModel):
             else self.get_storage()
         )
         if "PPO" in self.model_type:
-            resource_eval_freq = min(PPO_N_STEPS)
+            resource_eval_freq = max(PPO_N_STEPS)
         else:
-            resource_eval_freq = self.get_eval_freq(len(train_df))
-        max_resource = max(
-            1,
-            (total_timesteps // self.n_envs + resource_eval_freq - 1)
-            // resource_eval_freq,
-        )
+            resource_eval_freq = self.get_eval_freq(total_timesteps, hyperopt=True)
+        max_resource = max(1, total_timesteps // (resource_eval_freq * self.n_envs))
         min_resource = min(3, max_resource)
         study: Study = create_study(
             study_name=study_name,
@@ -991,7 +1015,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             **params,
         )
 
-        eval_freq = self.get_eval_freq(len(train_df), params)
+        eval_freq = self.get_eval_freq(
+            total_timesteps, hyperopt=True, model_params=params
+        )
         callbacks = self.get_callbacks(eval_env, eval_freq, str(dk.data_path), trial)
         try:
             model.learn(total_timesteps=total_timesteps, callback=callbacks)
