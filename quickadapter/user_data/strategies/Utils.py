@@ -718,7 +718,9 @@ def zigzag(
 regressors = {"xgboost", "lightgbm"}
 
 
-def get_optuna_callbacks(trial: optuna.trial.Trial, regressor: str) -> list[Callable]:
+def get_optuna_callbacks(
+    trial: optuna.trial.Trial, regressor: str
+) -> list[Callable[[optuna.trial.Trial, str], None]]:
     if regressor == "xgboost":
         callbacks = [
             optuna.integration.XGBoostPruningCallback(trial, "validation_0-rmse")
@@ -741,7 +743,7 @@ def fit_regressor(
     eval_weights: Optional[list[NDArray[np.floating]]],
     model_training_parameters: dict[str, Any],
     init_model: Any = None,
-    callbacks: Optional[list[Callable]] = None,
+    callbacks: Optional[list[Callable[[optuna.trial.Trial, str], None]]] = None,
     trial: Optional[optuna.trial.Trial] = None,
 ) -> Any:
     if regressor == "xgboost":
