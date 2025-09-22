@@ -1832,7 +1832,7 @@ class InfoMetricsCallback(TensorboardCallback):
                 pass
 
     @staticmethod
-    def build_train_freq(
+    def _build_train_freq(
         train_freq: Optional[Union[int, Tuple[int, ...], List[int]]],
     ) -> Optional[int]:
         train_freq_val: Optional[int] = None
@@ -1906,7 +1906,7 @@ class InfoMetricsCallback(TensorboardCallback):
                     "exploration_rate": float(self.model.exploration_rate),
                 }
             )
-            train_freq = InfoMetricsCallback.build_train_freq(
+            train_freq = InfoMetricsCallback._build_train_freq(
                 getattr(self.model, "train_freq", None)
             )
             if train_freq is not None:
