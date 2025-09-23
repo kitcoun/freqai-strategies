@@ -17,7 +17,7 @@ import sklearn
 from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 from numpy.typing import NDArray
-
+from sklearn_extra.cluster import KMedoids
 from Utils import (
     calculate_min_extrema,
     calculate_n_extrema,
@@ -60,7 +60,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
     https://github.com/sponsors/robcaulk
     """
 
-    version = "3.7.112"
+    version = "3.7.113"
 
     @cached_property
     def _optuna_config(self) -> dict[str, Any]:
@@ -795,6 +795,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "weighted_sum",
             "kmeans",
             "kmeans2",
+            "kmedoids",
             "knn_power_mean",
             "knn_percentile",
             "knn_min",
@@ -984,11 +985,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 label_kmeans_selection = self.ft_params.get(
                     "label_kmeans_selection", "min"
                 )
-                ordered_cluster_labels = np.argsort(cluster_center_distances_to_ideal)
+                ordered_cluster_indices = np.argsort(cluster_center_distances_to_ideal)
                 trial_distances = np.full(n_samples, np.inf)
                 best_cluster_indices = None
-                for cluster_label in ordered_cluster_labels:
-                    cluster_indices = np.flatnonzero(cluster_labels == cluster_label)
+                for cluster_index in ordered_cluster_indices:
+                    cluster_indices = np.flatnonzero(cluster_labels == cluster_index)
                     if cluster_indices.size:
                         best_cluster_indices = cluster_indices
                         break
@@ -1019,6 +1020,86 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     else:
                         raise ValueError(
                             f"Unsupported label_kmeans_selection: {label_kmeans_selection}. Supported are medoid/min"
+                        )
+                return trial_distances
+            elif metric == "kmedoids":
+                if n_samples == 1:
+                    return np.array([0.0])
+                if n_samples < 2:
+                    return np.full(n_samples, np.inf)
+                n_clusters = min(max(2, int(np.sqrt(n_samples / 2))), 10, n_samples)
+                label_kmedoids_metric = self.ft_params.get(
+                    "label_kmedoids_metric", "euclidean"
+                )
+                if label_kmedoids_metric in {
+                    "mahalanobis",
+                    "seuclidean",
+                    "jensenshannon",
+                }:
+                    raise ValueError(
+                        f"Unsupported label_kmedoids_metric: {label_kmedoids_metric}. Supported are euclidean/minkowski/cityblock/chebyshev/..."
+                    )
+                kmedoids_kwargs: dict[str, Any] = {
+                    "metric": label_kmedoids_metric,
+                    "random_state": 42,
+                    "init": "k-medoids++",
+                    "method": "pam",
+                }
+                kmedoids = KMedoids(n_clusters=n_clusters, **kmedoids_kwargs)
+                cluster_labels = kmedoids.fit_predict(normalized_matrix)
+                medoid_indices = kmedoids.medoid_indices_
+                cdist_kwargs: dict[str, Any] = {}
+                if label_kmedoids_metric == "minkowski":
+                    cdist_kwargs["p"] = (
+                        label_p_order if label_p_order is not None else 2.0
+                    )
+                medoid_distances_to_ideal = sp.spatial.distance.cdist(
+                    normalized_matrix[medoid_indices],
+                    ideal_point_2d,
+                    metric=label_kmedoids_metric,
+                    **cdist_kwargs,
+                ).flatten()
+                ordered_medoid_indices = medoid_indices[
+                    np.argsort(medoid_distances_to_ideal)
+                ]
+                label_kmedoids_selection = self.ft_params.get(
+                    "label_kmedoids_selection", "min"
+                )
+                trial_distances = np.full(n_samples, np.inf)
+                best_cluster_indices = None
+                for medoid_index in ordered_medoid_indices:
+                    cluster_index = cluster_labels[medoid_index]
+                    cluster_indices = np.flatnonzero(cluster_labels == cluster_index)
+                    if cluster_indices.size:
+                        best_cluster_indices = cluster_indices
+                        break
+                if best_cluster_indices is not None and best_cluster_indices.size > 0:
+                    if label_kmedoids_selection == "medoid":
+                        best_cluster_matrix = normalized_matrix[best_cluster_indices]
+                        trial_distances[best_cluster_indices] = (
+                            self._pairwise_distance_sums(
+                                best_cluster_matrix,
+                                label_kmedoids_metric,
+                                p=(
+                                    label_p_order
+                                    if label_kmedoids_metric == "minkowski"
+                                    and label_p_order is not None
+                                    else None
+                                ),
+                            )
+                        )
+                    elif label_kmedoids_selection == "min":
+                        trial_distances[best_cluster_indices] = (
+                            sp.spatial.distance.cdist(
+                                normalized_matrix[best_cluster_indices],
+                                ideal_point_2d,
+                                metric=label_kmedoids_metric,
+                                **cdist_kwargs,
+                            ).flatten()
+                        )
+                    else:
+                        raise ValueError(
+                            f"Unsupported label_kmedoids_selection: {label_kmedoids_selection}. Supported are medoid/min"
                         )
                 return trial_distances
             elif metric in {"knn_power_mean", "knn_percentile", "knn_min", "knn_max"}:

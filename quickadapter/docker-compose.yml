@@ -19,10 +19,12 @@ services:
         FROM freqtradeorg/freqtrade:stable_freqai
 
         ARG optuna_version
+        ARG scikit_learn_extra_version
         ARG skimage_version
-        RUN pip install --user optuna==$${optuna_version} optuna-integration==$${optuna_version} optuna-dashboard scikit-image==$${skimage_version}
+        RUN pip install --user optuna==$${optuna_version} optuna-integration==$${optuna_version} optuna-dashboard scikit-learn-extra==$${scikit_learn_extra_version} scikit-image==$${skimage_version}
       args:
         - optuna_version=4.5.0
+        - scikit_learn_extra_version=0.3.0
         - skimage_version=0.25.2
     restart: unless-stopped
     container_name: freqtrade-quickadapter
