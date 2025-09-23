@@ -1572,29 +1572,6 @@ class MyRLEnv(Base5ActionRLEnv):
             return self._current_tick - self._start_tick
         return self._current_tick - self._last_closed_trade_tick
 
-    def get_previous_unrealized_profit(self) -> float:
-        """
-        Get the previous tick unrealized profit if the agent is in a trade
-        """
-        if self._last_trade_tick is None:
-            return 0.0
-        if self._position == Positions.Neutral:
-            return 0.0
-        elif self._position == Positions.Short:
-            previous_price = self.add_entry_fee(self.previous_price())
-            last_trade_price = self.add_exit_fee(
-                self.prices.iloc[self._last_trade_tick].open
-            )
-            return (last_trade_price - previous_price) / last_trade_price
-        elif self._position == Positions.Long:
-            previous_price = self.add_exit_fee(self.previous_price())
-            last_trade_price = self.add_entry_fee(
-                self.prices.iloc[self._last_trade_tick].open
-            )
-            return (previous_price - last_trade_price) / last_trade_price
-        else:
-            return 0.0
-
     def get_max_unrealized_profit(self) -> float:
         """
         Get the maximum unrealized profit if the agent is in a trade
