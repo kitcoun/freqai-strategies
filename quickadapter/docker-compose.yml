@@ -21,7 +21,17 @@ services:
         ARG optuna_version
         ARG scikit_learn_extra_version
         ARG skimage_version
-        RUN pip install --user optuna==$${optuna_version} optuna-integration==$${optuna_version} optuna-dashboard scikit-learn-extra==$${scikit_learn_extra_version} scikit-image==$${skimage_version}
+        USER root
+        RUN apt-get update \
+         && apt-get install -y --no-install-recommends build-essential \
+         && rm -rf /var/lib/apt/lists/*
+        USER ftuser
+        RUN pip install --user --no-cache-dir \
+            optuna==$${optuna_version} \
+            optuna-integration==$${optuna_version} \
+            optuna-dashboard \
+            scikit-learn-extra==$${scikit_learn_extra_version} \
+            scikit-image==$${skimage_version}
       args:
         - optuna_version=4.5.0
         - scikit_learn_extra_version=0.3.0
