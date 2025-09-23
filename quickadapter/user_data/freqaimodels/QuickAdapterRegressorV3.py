@@ -18,6 +18,7 @@ from freqtrade.freqai.base_models.BaseRegressionModel import BaseRegressionModel
 from freqtrade.freqai.data_kitchen import FreqaiDataKitchen
 from numpy.typing import NDArray
 from sklearn_extra.cluster import KMedoids
+
 from Utils import (
     calculate_min_extrema,
     calculate_n_extrema,
