@@ -1926,7 +1926,7 @@ class InfoMetricsCallback(TensorboardCallback):
 
     @staticmethod
     def _build_train_freq(
-        train_freq: Optional[Union[int, Tuple[int], List[int]]],
+        train_freq: Optional[Union[TrainFreq, int, Tuple[int], List[int]]],
     ) -> Optional[int]:
         train_freq_val: Optional[int] = None
         if isinstance(train_freq, TrainFreq):
