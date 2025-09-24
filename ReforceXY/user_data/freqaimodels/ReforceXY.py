@@ -1331,21 +1331,37 @@ class MyRLEnv(Base5ActionRLEnv):
             self._position in (Positions.Short, Positions.Long)
             and action == Actions.Neutral.value
         ):
-            holding_duration_grace = float(
-                model_reward_parameters.get("holding_duration_grace", 1.0)
+            holding_duration_ratio_grace = float(
+                model_reward_parameters.get("holding_duration_ratio_grace", 1.0)
             )
-            holding_overage_scale = float(
-                model_reward_parameters.get("holding_overage_scale", 1.0)
+            holding_penalty_scale = float(
+                model_reward_parameters.get("holding_penalty_scale", 0.3)
             )
-            holding_overage_power = float(
-                model_reward_parameters.get("holding_overage_power", 1.1)
+            holding_penalty_power = float(
+                model_reward_parameters.get("holding_penalty_power", 1.0)
             )
-            duration_overage_ratio = max(0.0, duration_ratio - holding_duration_grace)
-            if duration_overage_ratio > 0.0 or pnl > pnl_target:
+            if pnl >= pnl_target:
+                if duration_ratio <= holding_duration_ratio_grace and not np.isclose(
+                    holding_duration_ratio_grace, 0.0
+                ):
+                    effective_duration_ratio = (
+                        duration_ratio / holding_duration_ratio_grace
+                    )
+                else:
+                    effective_duration_ratio = 1.0 + (
+                        duration_ratio - holding_duration_ratio_grace
+                    )
                 return (
                     -holding_factor
-                    * holding_overage_scale
-                    * duration_overage_ratio**holding_overage_power
+                    * holding_penalty_scale
+                    * effective_duration_ratio**holding_penalty_power
+                )
+            if duration_ratio > holding_duration_ratio_grace:
+                return (
+                    -holding_factor
+                    * holding_penalty_scale
+                    * (1.0 + (duration_ratio - holding_duration_ratio_grace))
+                    ** holding_penalty_power
                 )
             return 0.0
 
