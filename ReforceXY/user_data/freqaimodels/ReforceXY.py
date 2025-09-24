@@ -91,7 +91,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "inference_masking": true,          // Enable action masking during inference
                 "lr_schedule": false,               // Enable learning rate linear schedule
                 "cr_schedule": false,               // Enable clip range linear schedule
-                "n_eval_steps": 10_000,             // Number of environment steps between evaluations
+                "n_steps_eval": 10_000,             // Number of environment steps between evaluations
                 "max_no_improvement_evals": 0,      // Maximum consecutive evaluations without a new best model
                 "min_evals": 0,                     // Number of evaluations before start to count evaluations without improvements
                 "check_envs": true,                 // Check that an environment follows Gym API
@@ -130,7 +130,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.n_envs: int = self.rl_config.get("n_envs", 1)
         self.multiprocessing: bool = self.rl_config.get("multiprocessing", False)
         self.frame_stacking: int = self.rl_config.get("frame_stacking", 0)
-        self.n_eval_steps: int = self.rl_config.get("n_eval_steps", 10_000)
+        self.n_steps_eval: int = self.rl_config.get("n_steps_eval", 10_000)
         self.max_no_improvement_evals: int = self.rl_config.get(
             "max_no_improvement_evals", 0
         )
@@ -227,12 +227,12 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self.frame_stacking,
             )
             self.frame_stacking = 0
-        if self.n_eval_steps <= 0:
+        if self.n_steps_eval <= 0:
             logger.warning(
-                "Invalid n_eval_steps=%s. Forcing n_eval_steps=10_000",
-                self.n_eval_steps,
+                "Invalid n_steps_eval=%s. Forcing n_steps_eval=10_000",
+                self.n_steps_eval,
             )
-            self.n_eval_steps = 10_000
+            self.n_steps_eval = 10_000
         if self.continual_learning and self.frame_stacking:
             logger.warning(
                 "User tried to use continual_learning with frame_stacking. \
@@ -414,9 +414,9 @@ class ReforceXY(BaseReinforcementLearningModel):
                 )
         else:
             if hyperopt and hyperopt_reduction_factor > 1.0:
-                eval_freq = int(self.n_eval_steps / hyperopt_reduction_factor)
+                eval_freq = int(self.n_steps_eval / hyperopt_reduction_factor)
             else:
-                eval_freq = self.n_eval_steps
+                eval_freq = self.n_steps_eval
             eval_freq = max(1, (eval_freq + self.n_envs - 1) // self.n_envs)
 
         return min(eval_freq, total_timesteps)
@@ -2419,7 +2419,7 @@ def deepmerge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
 
 def _compute_gradient_steps(tf: int, ss: int) -> int:
     if tf > 0 and ss > 0:
-        return min(tf, max(tf // ss, 1))
+        return min(tf, max(math.ceil(tf / ss), 1))
     return -1
 
 
