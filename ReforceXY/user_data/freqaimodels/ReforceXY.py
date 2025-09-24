@@ -1930,8 +1930,8 @@ class InfoMetricsCallback(TensorboardCallback):
     ) -> Optional[int]:
         train_freq_val: Optional[int] = None
         if isinstance(train_freq, TrainFreq):
-            if isinstance(train_freq.freq, int):
-                train_freq_val = train_freq.freq
+            if isinstance(train_freq.frequency, int):
+                train_freq_val = train_freq.frequency
         elif isinstance(train_freq, (tuple, list)) and train_freq:
             if isinstance(train_freq[0], int):
                 train_freq_val = train_freq[0]
@@ -2448,7 +2448,7 @@ def _compute_gradient_steps(tf: int, ss: int) -> int:
 def compute_gradient_steps(train_freq: Any, subsample_steps: Any) -> int:
     tf: Optional[int] = None
     if isinstance(train_freq, TrainFreq):
-        tf = train_freq.freq if isinstance(train_freq.freq, int) else None
+        tf = train_freq.frequency if isinstance(train_freq.frequency, int) else None
     if isinstance(train_freq, (tuple, list)) and train_freq:
         tf = train_freq[0] if isinstance(train_freq[0], int) else None
     elif isinstance(train_freq, int):
