@@ -1929,7 +1929,7 @@ class InfoMetricsCallback(TensorboardCallback):
 
     @staticmethod
     def _build_train_freq(
-        train_freq: Optional[Union[TrainFreq, int, Tuple[int], List[int]]],
+        train_freq: Optional[Union[TrainFreq, int, Tuple[int, ...], List[int]]],
     ) -> Optional[int]:
         train_freq_val: Optional[int] = None
         if isinstance(train_freq, TrainFreq):
@@ -2646,7 +2646,7 @@ def convert_optuna_params_to_model_params(
     return model_params
 
 
-PPO_N_STEPS: tuple[int, ...] = (512, 1024, 2048, 4096)
+PPO_N_STEPS: Tuple[int, ...] = (512, 1024, 2048, 4096)
 
 
 def sample_params_ppo(trial: Trial, n_envs: int) -> Dict[str, Any]:
