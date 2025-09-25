@@ -742,8 +742,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             resource_eval_freq = max(PPO_N_STEPS)
         else:
             resource_eval_freq = self.get_eval_freq(total_timesteps, hyperopt=True)
-        max_resource = max(1, total_timesteps // (resource_eval_freq * self.n_envs))
-        min_resource = min(3, max_resource)
+        reduction_factor = 3
+        max_resource = max(
+            reduction_factor * 2, total_timesteps // (resource_eval_freq * self.n_envs)
+        )
+        min_resource = min(reduction_factor, max_resource // reduction_factor)
         study: Study = create_study(
             study_name=study_name,
             sampler=TPESampler(
@@ -755,7 +758,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             pruner=HyperbandPruner(
                 min_resource=min_resource,
                 max_resource=max_resource,
-                reduction_factor=3,
+                reduction_factor=reduction_factor,
             ),
             direction=StudyDirection.MAXIMIZE,
             storage=storage,
