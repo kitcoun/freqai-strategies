@@ -53,6 +53,7 @@ from stable_baselines3.common.utils import ConstantSchedule, set_random_seed
 from stable_baselines3.common.vec_env import (
     DummyVecEnv,
     SubprocVecEnv,
+    VecEnv,
     VecFrameStack,
     VecMonitor,
 )
@@ -898,7 +899,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         seed: Optional[int] = None,
         env_info: Optional[Dict[str, Any]] = None,
         trial: Optional[Trial] = None,
-    ) -> Tuple[BaseEnvironment, BaseEnvironment]:
+    ) -> Tuple[VecEnv, VecEnv]:
         if (
             train_df is None
             or test_df is None
