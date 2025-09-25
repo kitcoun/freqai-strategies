@@ -1120,8 +1120,8 @@ class QuickAdapterV3(IStrategy):
         order: Literal["entry", "exit"],
         rate: float,
         min_natr_ratio_percent: float = 0.005,
-        max_natr_ratio_percent: float = 0.05,
-        lookback_period: int = 0,
+        max_natr_ratio_percent: float = 0.025,
+        lookback_period: int = 1,
         decay_ratio: float = 0.5,
     ) -> bool:
         """
