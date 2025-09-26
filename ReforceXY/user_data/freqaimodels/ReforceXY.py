@@ -1233,7 +1233,7 @@ class MyRLEnv(Base5ActionRLEnv):
         Compute the reward factor at trade exit
         """
         model_reward_parameters = self.rl_config.get("model_reward_parameters", {})
-        exit_factor_mode = model_reward_parameters.get("exit_factor_mode", "linear")
+        exit_factor_mode = model_reward_parameters.get("exit_factor_mode", "piecewise")
 
         if exit_factor_mode == "legacy":
             if duration_ratio <= 1.0:
@@ -1243,7 +1243,52 @@ class MyRLEnv(Base5ActionRLEnv):
         elif exit_factor_mode == "sqrt":
             factor /= math.sqrt(1.0 + duration_ratio)
         elif exit_factor_mode == "linear":
-            factor /= 1.0 + duration_ratio
+            exit_linear_slope = float(
+                model_reward_parameters.get("exit_linear_slope", 1.0)
+            )
+            if exit_linear_slope < 0.0:
+                exit_linear_slope = 1.0
+            factor /= 1.0 + exit_linear_slope * duration_ratio
+        elif exit_factor_mode == "power":
+            exit_power_alpha = model_reward_parameters.get("exit_power_alpha")
+            if isinstance(exit_power_alpha, (int, float)) and exit_power_alpha < 0.0:
+                exit_power_alpha = None
+            if exit_power_alpha is None:
+                exit_power_tau = model_reward_parameters.get("exit_power_tau")
+                if isinstance(exit_power_tau, (int, float)):
+                    exit_power_tau = float(exit_power_tau)
+                    if 0.0 < exit_power_tau <= 1.0:
+                        exit_power_alpha = -math.log(exit_power_tau) / math.log(2.0)
+            if not isinstance(exit_power_alpha, (int, float)):
+                exit_power_alpha = 1.0
+            else:
+                exit_power_alpha = float(exit_power_alpha)
+            factor /= math.pow(1.0 + duration_ratio, exit_power_alpha)
+        elif exit_factor_mode == "piecewise":
+            exit_piecewise_grace = float(
+                model_reward_parameters.get("exit_piecewise_grace", 1.0)
+            )
+            if not (0.0 <= exit_piecewise_grace <= 1.0):
+                exit_piecewise_grace = 1.0
+
+            exit_piecewise_slope = float(
+                model_reward_parameters.get("exit_piecewise_slope", 1.0)
+            )
+            if exit_piecewise_slope < 0.0:
+                exit_piecewise_slope = 1.0
+            if duration_ratio <= exit_piecewise_grace:
+                duration_divisor = 1.0
+            else:
+                duration_divisor = 1.0 + exit_piecewise_slope * (
+                    duration_ratio - exit_piecewise_grace
+                )
+            factor /= duration_divisor
+        elif exit_factor_mode == "half_life":
+            exit_half_life = float(model_reward_parameters.get("exit_half_life", 0.5))
+            if exit_half_life <= 0.0:
+                exit_half_life = 0.5
+            attenuation = math.pow(2.0, -duration_ratio / exit_half_life)
+            factor *= attenuation
 
         factor *= self._get_pnl_factor(pnl, self.profit_aim * self.rr)
 
@@ -1272,7 +1317,9 @@ class MyRLEnv(Base5ActionRLEnv):
         efficiency_weight = float(
             model_reward_parameters.get("efficiency_weight", 0.75)
         )
-        efficiency_center = float(model_reward_parameters.get("efficiency_center", 0.5))
+        efficiency_center = float(
+            model_reward_parameters.get("efficiency_center", 0.75)
+        )
         if efficiency_weight != 0.0 and pnl >= 0.0:
             max_pnl = max(self.get_max_unrealized_profit(), pnl)
             min_pnl = min(self.get_min_unrealized_profit(), pnl)
@@ -1315,9 +1362,9 @@ class MyRLEnv(Base5ActionRLEnv):
         trade_duration = self.get_trade_duration()
         duration_ratio = trade_duration / max_trade_duration
 
-        factor = 100.0
+        base_factor = float(model_reward_parameters.get("base_factor", 100.0))
         pnl_target = self.profit_aim * self.rr
-        idle_factor = factor * pnl_target / 3.0
+        idle_factor = base_factor * pnl_target / 3.0
         holding_factor = idle_factor * self._get_pnl_factor(pnl, pnl_target)
 
         # Force exits
@@ -1326,7 +1373,7 @@ class MyRLEnv(Base5ActionRLEnv):
             ForceActions.Stop_loss,
             ForceActions.Timeout,
         ):
-            return pnl * self._get_exit_reward_factor(factor, pnl, duration_ratio)
+            return pnl * self._get_exit_reward_factor(base_factor, pnl, duration_ratio)
 
         # # you can use feature values from dataframe
         # rsi_now = self.get_feature_value(
@@ -1410,11 +1457,11 @@ class MyRLEnv(Base5ActionRLEnv):
 
         # close long
         if action == Actions.Long_exit.value and self._position == Positions.Long:
-            return pnl * self._get_exit_reward_factor(factor, pnl, duration_ratio)
+            return pnl * self._get_exit_reward_factor(base_factor, pnl, duration_ratio)
 
         # close short
         if action == Actions.Short_exit.value and self._position == Positions.Short:
-            return pnl * self._get_exit_reward_factor(factor, pnl, duration_ratio)
+            return pnl * self._get_exit_reward_factor(base_factor, pnl, duration_ratio)
 
         return 0.0
 
