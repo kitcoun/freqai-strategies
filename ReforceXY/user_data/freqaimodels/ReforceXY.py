@@ -474,14 +474,19 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             callbacks.append(self.eval_callback)
         else:
-            trial_data_path = f"{data_path}/hyperopt/trial_{trial.number}"
+            data_path: Path = Path(data_path)
+            trial_data_path = (
+                data_path.parent
+                / f"{data_path.name}-hyperopt"
+                / f"trial-{trial.number}"
+            )
             self.optuna_eval_callback = MaskableTrialEvalCallback(
                 eval_env,
                 trial,
                 eval_freq=eval_freq,
                 deterministic=True,
                 render=False,
-                best_model_save_path=trial_data_path,
+                best_model_save_path=str(trial_data_path),
                 use_masking=use_masking,
                 verbose=verbose,
             )
@@ -1008,7 +1013,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 / "tensorboard"
                 / dk.pair.split("/")[0]
                 / "hyperopt"
-                / f"trial_{trial.number}"
+                / f"trial-{trial.number}"
             )
         else:
             tensorboard_log_path = None
