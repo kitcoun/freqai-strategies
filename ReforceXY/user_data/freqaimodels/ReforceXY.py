@@ -1286,8 +1286,7 @@ class MyRLEnv(Base5ActionRLEnv):
             exit_half_life = float(model_reward_parameters.get("exit_half_life", 0.5))
             if exit_half_life <= 0.0:
                 exit_half_life = 0.5
-            attenuation = math.pow(2.0, -duration_ratio / exit_half_life)
-            factor *= attenuation
+            factor *= math.pow(2.0, -duration_ratio / exit_half_life)
 
         factor *= self._get_pnl_factor(pnl, self.profit_aim * self.rr)
 
