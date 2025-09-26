@@ -494,7 +494,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 eval_freq=eval_freq,
                 deterministic=True,
                 render=False,
-                best_model_save_path=str(trial_data_path),
+                best_model_save_path=trial_data_path,
                 use_masking=use_masking,
                 verbose=verbose,
             )
