@@ -1270,7 +1270,6 @@ class MyRLEnv(Base5ActionRLEnv):
             )
             if not (0.0 <= exit_piecewise_grace <= 1.0):
                 exit_piecewise_grace = 1.0
-
             exit_piecewise_slope = float(
                 model_reward_parameters.get("exit_piecewise_slope", 1.0)
             )
