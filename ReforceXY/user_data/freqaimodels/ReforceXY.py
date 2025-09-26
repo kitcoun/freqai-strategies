@@ -474,12 +474,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             callbacks.append(self.eval_callback)
         else:
-            data_path: Path = Path(data_path)
-            trial_data_path = (
-                data_path.parent
-                / f"{data_path.name}-hyperopt"
-                / f"trial-{trial.number}"
-            )
+            trial_data_path = f"{data_path}/hyperopt/trial-{trial.number}"
             self.optuna_eval_callback = MaskableTrialEvalCallback(
                 eval_env,
                 trial,
