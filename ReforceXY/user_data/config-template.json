@@ -171,7 +171,7 @@
       "max_training_drawdown_pct": 0.02,
       "max_trade_duration_candles": 96, // Timeout exit value used with force_actions
       "force_actions": false, // Utilize minimal_roi, stoploss, and max_trade_duration_candles as TP/SL/Timeout in the environment
-      "n_envs": 32, // Number of DummyVecEnv or SubProcVecEnv environments
+      "n_envs": 32, // Number of DummyVecEnv or SubProcVecEnv training environments
       "multiprocessing": false, // Use SubprocVecEnv if n_envs>1 (otherwise DummyVecEnv)
       "frame_stacking": 2, // Number of VecFrameStack stacks (set > 1 to use)
       "lr_schedule": false, // Enable learning rate linear schedule
