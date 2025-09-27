@@ -338,7 +338,11 @@ class ReforceXY(BaseReinforcementLearningModel):
             finally:
                 _eval_env_check.close()
 
-        logger.info("Populating environments: %s", self.n_envs)
+        logger.info(
+            "Populating train %s and eval %s environments",
+            self.n_envs,
+            self.n_eval_envs,
+        )
         self.train_env, self.eval_env = self._get_train_and_eval_environments(
             dk,
             train_df=train_df,
@@ -488,7 +492,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         callbacks: List[BaseCallback] = []
         no_improvement_callback = None
         rollout_plot_callback = None
-        verbose = int(self.get_model_params().get("verbose", 0))
+        verbose = self.get_model_params().get("verbose", 0)
 
         if self.max_no_improvement_evals:
             no_improvement_callback = StopTrainingOnNoModelImprovement(
@@ -557,13 +561,13 @@ class ReforceXY(BaseReinforcementLearningModel):
         if train_timesteps <= 0:
             raise ValueError("train_features dataframe has zero length")
         test_df = data_dictionary.get("test_features")
-        test_timesteps = len(test_df)
+        eval_timesteps = len(test_df)
         train_cycles = max(1, int(self.rl_config.get("train_cycles", 25)))
         total_timesteps = (
             (train_timesteps * train_cycles + self.n_envs - 1) // self.n_envs
         ) * self.n_envs
         train_days = steps_to_days(train_timesteps, self.config.get("timeframe"))
-        test_days = steps_to_days(test_timesteps, self.config.get("timeframe"))
+        eval_days = steps_to_days(eval_timesteps, self.config.get("timeframe"))
         total_days = steps_to_days(total_timesteps, self.config.get("timeframe"))
 
         logger.info("Model: %s", self.model_type)
@@ -576,7 +580,12 @@ class ReforceXY(BaseReinforcementLearningModel):
             total_timesteps,
             total_days,
         )
-        logger.info("Test: %s steps (%s days)", test_timesteps, test_days)
+        logger.info(
+            "Eval: %s steps (%s days), %s envs",
+            eval_timesteps,
+            eval_days,
+            self.n_eval_envs,
+        )
         logger.info("Multiprocessing: %s", self.multiprocessing)
         logger.info("Eval multiprocessing: %s", self.eval_multiprocessing)
         logger.info("Frame stacking: %s", self.frame_stacking)
