@@ -2,9 +2,9 @@
 set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-FREQTRADE_CONFIG="${SCRIPT_DIR}/user_data/config.json"
-LOCAL_DOCKER_IMAGE="reforcexy-freqtrade"
-REMOTE_DOCKER_IMAGE="freqtradeorg/freqtrade:stable_freqairl"
+FREQTRADE_CONFIG="${FREQTRADE_CONFIG:-$SCRIPT_DIR}/user_data/config.json}"
+LOCAL_DOCKER_IMAGE="${LOCAL_DOCKER_IMAGE:-reforcexy-freqtrade}"
+REMOTE_DOCKER_IMAGE="${REMOTE_DOCKER_IMAGE:-freqtradeorg/freqtrade:stable_freqairl}"
 
 ################################
 
@@ -208,7 +208,7 @@ if [ ! -f "${SCRIPT_DIR}/docker-compose.yml" ] && [ ! -f "${SCRIPT_DIR}/docker-c
 fi
 
 if [ ! -f "$FREQTRADE_CONFIG" ]; then
-  echo_timestamped "Error: ${FREQTRADE_CONFIG} file not found from current directory"
+  echo_timestamped "Error: ${FREQTRADE_CONFIG} file not found"
   exit 1
 fi
 
@@ -237,6 +237,9 @@ if [ "$rebuild_local_image" = true ]; then
   echo_timestamped "Info: $message"
   send_telegram_message "$message"
   cd -- "$SCRIPT_DIR" || exit 1
+  if ! command docker compose pull --quiet >/dev/null 2>&1; then
+    echo_timestamped "Warning: docker compose pull failed"
+  fi
   if ! command docker compose --progress quiet down; then
     echo_timestamped "Error: docker compose down failed"
     exit 1

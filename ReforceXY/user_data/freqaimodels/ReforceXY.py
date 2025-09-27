@@ -160,7 +160,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         self.unset_unsupported()
 
     @staticmethod
-    def is_short_allowed(trading_mode: str) -> bool:
+    def _is_short_allowed(trading_mode: str) -> bool:
         if trading_mode in {"margin", "futures"}:
             return True
         elif trading_mode == "spot":
@@ -188,7 +188,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         position: Positions,
         force_action: Optional[ForceActions] = None,
     ) -> NDArray[np.bool_]:
-        is_short_allowed = ReforceXY.is_short_allowed(trading_mode)
+        is_short_allowed = ReforceXY._is_short_allowed(trading_mode)
         position = ReforceXY._normalize_position(position)
 
         action_masks = np.zeros(len(Actions), dtype=np.bool_)
@@ -684,14 +684,18 @@ class ReforceXY(BaseReinforcementLearningModel):
                     del fb[0 : len(fb) - frame_stacking]
                 if len(fb) < frame_stacking:
                     pad_count = frame_stacking - len(fb)
-                    pad_frame = fb[0] if fb else np_observation
+                    pad_frame = np.zeros_like(np_observation, dtype=np.float32)
                     fb_padded = [pad_frame] * pad_count + fb
                 else:
                     fb_padded = fb
                 stacked_observations = np.concatenate(fb_padded, axis=1)
-                observations = stacked_observations.reshape(1, -1)
+                observations = stacked_observations.reshape(
+                    1, stacked_observations.shape[0], stacked_observations.shape[1]
+                )
             else:
-                observations = np_observation.reshape(1, -1)
+                observations = np_observation.reshape(
+                    1, np_observation.shape[0], np_observation.shape[1]
+                )
 
             if self.action_masking and self.inference_masking:
                 action_masks_param["action_masks"] = ReforceXY.get_action_masks(

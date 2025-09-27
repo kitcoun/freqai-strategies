@@ -224,17 +224,14 @@ class QuickAdapterV3(IStrategy):
                     ),
                 }
             )
+        self._candle_duration_secs = int(
+            timeframe_to_minutes(self.config.get("timeframe")) * 60
+        )
+        self.last_candle_start_secs: dict[str, Optional[int]] = {
+            pair: None for pair in self.pairs
+        }
         process_throttle_secs = self.config.get("internals", {}).get(
             "process_throttle_secs", 5
-        )
-        self._throttle_modulo = max(
-            1,
-            int(
-                round(
-                    (timeframe_to_minutes(self.config.get("timeframe")) * 60)
-                    / process_throttle_secs
-                )
-            ),
         )
         self._max_history_size = int(12 * 60 * 60 / process_throttle_secs)
         self._pnl_momentum_window_size = int(30 * 60 / process_throttle_secs)
@@ -791,7 +788,10 @@ class QuickAdapterV3(IStrategy):
         current_time: datetime.datetime,
         callback: Callable[[], None],
     ) -> None:
-        if hash(pair + str(current_time)) % self._throttle_modulo == 0:
+        timestamp = int(current_time.timestamp())
+        candle_start_secs = timestamp - (timestamp % self._candle_duration_secs)
+        if candle_start_secs != self.last_candle_start_secs.get(pair):
+            self.last_candle_start_secs[pair] = candle_start_secs
             try:
                 callback()
             except Exception as e:
@@ -1119,7 +1119,7 @@ class QuickAdapterV3(IStrategy):
         side: str,
         order: Literal["entry", "exit"],
         rate: float,
-        min_natr_ratio_percent: float = 0.005,
+        min_natr_ratio_percent: float = 0.0075,
         max_natr_ratio_percent: float = 0.025,
         lookback_period: int = 1,
         decay_ratio: float = 0.5,
@@ -1551,6 +1551,11 @@ class QuickAdapterV3(IStrategy):
         side: str,
         **kwargs,
     ) -> bool:
+        if side not in {"long", "short"}:
+            return False
+        if side == "short" and not self.can_short:
+            logger.info(f"User denied short entry for {pair}: shorting not allowed")
+            return False
         if Trade.get_open_trade_count() >= self.config.get("max_open_trades"):
             return False
         max_open_trades_per_side = self.max_open_trades_per_side
