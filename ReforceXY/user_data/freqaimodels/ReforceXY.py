@@ -339,7 +339,7 @@ class ReforceXY(BaseReinforcementLearningModel):
                 _eval_env_check.close()
 
         logger.info(
-            "Populating train %s and eval %s environments",
+            "Populating %s train and %s eval environments",
             self.n_envs,
             self.n_eval_envs,
         )
@@ -572,7 +572,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         logger.info("Model: %s", self.model_type)
         logger.info(
-            "Train: %s steps (%s days), %s cycles, %s envs -> total %s steps (%s days)",
+            "Train: %s steps (%s days), %s cycles, %s env(s) -> total %s steps (%s days)",
             train_timesteps,
             train_days,
             train_cycles,
@@ -581,7 +581,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             total_days,
         )
         logger.info(
-            "Eval: %s steps (%s days), %s envs",
+            "Eval: %s steps (%s days), %s env(s)",
             eval_timesteps,
             eval_days,
             self.n_eval_envs,
