@@ -2,7 +2,7 @@
 set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-FREQTRADE_CONFIG="${FREQTRADE_CONFIG:-$SCRIPT_DIR}/user_data/config.json}"
+FREQTRADE_CONFIG="${FREQTRADE_CONFIG:-${SCRIPT_DIR}/user_data/config.json}"
 LOCAL_DOCKER_IMAGE="${LOCAL_DOCKER_IMAGE:-reforcexy-freqtrade}"
 REMOTE_DOCKER_IMAGE="${REMOTE_DOCKER_IMAGE:-freqtradeorg/freqtrade:stable_freqairl}"
 
