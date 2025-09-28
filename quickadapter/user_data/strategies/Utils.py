@@ -506,6 +506,7 @@ def zigzag(
     indices: list[int] = df.index.tolist()
     thresholds: NDArray[np.floating] = natr_values * natr_ratio
     closes = df.get("close").to_numpy()
+    log_closes = np.log(closes)
     highs = df.get("high").to_numpy()
     lows = df.get("low").to_numpy()
 
@@ -590,8 +591,8 @@ def zigzag(
             slope_ok_cache[cache_key] = False
             return slope_ok_cache[cache_key]
 
-        log_candidate_pivot_close = np.log(closes[candidate_pivot_pos])
-        log_current_close = np.log(closes[pos])
+        log_candidate_pivot_close = log_closes[candidate_pivot_pos]
+        log_current_close = log_closes[pos]
 
         log_slope_close = (log_current_close - log_candidate_pivot_close) / (
             pos - candidate_pivot_pos
