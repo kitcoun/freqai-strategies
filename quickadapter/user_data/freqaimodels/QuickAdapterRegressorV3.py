@@ -857,14 +857,11 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 if n_samples <= 1:
                     return 1
                 n_uniques = np.unique(matrix, axis=0).shape[0]
-                upper_bound = max(1, min(max_n_clusters, n_uniques, n_samples))
-                lower_bound = max(2, min(min_n_clusters, upper_bound))
+                upper_bound = min(max_n_clusters, n_uniques, n_samples)
                 if upper_bound < 2:
                     return 1
-                try:
-                    n_clusters = int(round(np.log2(max(n_samples, 2))))
-                except Exception:
-                    n_clusters = min_n_clusters
+                lower_bound = min(min_n_clusters, upper_bound)
+                n_clusters = int(round(np.log2(max(n_uniques, 2))))
                 return max(lower_bound, min(n_clusters, upper_bound))
 
             if metric in {
