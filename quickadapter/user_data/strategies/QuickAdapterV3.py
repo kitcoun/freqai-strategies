@@ -1,4 +1,6 @@
 import datetime
+import functools
+import hashlib
 import json
 import logging
 import math
@@ -227,9 +229,7 @@ class QuickAdapterV3(IStrategy):
         self._candle_duration_secs = int(
             timeframe_to_minutes(self.config.get("timeframe")) * 60
         )
-        self.last_candle_start_secs: dict[str, Optional[int]] = {
-            pair: None for pair in self.pairs
-        }
+        self.last_candle_start_secs: dict[str, Optional[int]] = {}
         process_throttle_secs = self.config.get("internals", {}).get(
             "process_throttle_secs", 5
         )
@@ -634,7 +634,7 @@ class QuickAdapterV3(IStrategy):
 
         total_weight = entry_weight + current_weight + median_weight
         if np.isclose(total_weight, 0.0):
-            return None
+            return np.mean([entry_natr, current_natr, median_natr])
         entry_weight /= total_weight
         current_weight /= total_weight
         median_weight /= total_weight
@@ -670,7 +670,7 @@ class QuickAdapterV3(IStrategy):
             trade_label_natr.to_numpy(), entry_natr
         )
         if isna(trade_volatility_quantile):
-            return None
+            trade_volatility_quantile = 0.5
         return np.interp(
             trade_volatility_quantile,
             [0.0, 1.0],
@@ -688,11 +688,11 @@ class QuickAdapterV3(IStrategy):
         if trade_duration_candles >= 2:
             zl_kama = get_zl_ma_fn("kama")
             try:
-                trade_kama_natr_values = zl_kama(
-                    label_natr, timeperiod=trade_duration_candles
+                trade_kama_natr_values = np.asarray(
+                    zl_kama(label_natr, timeperiod=trade_duration_candles)
                 )
                 trade_kama_natr_values = trade_kama_natr_values[
-                    ~np.isnan(trade_kama_natr_values)
+                    np.isfinite(trade_kama_natr_values)
                 ]
                 if trade_kama_natr_values.size > 0:
                     return trade_kama_natr_values[-1]
@@ -791,9 +791,25 @@ class QuickAdapterV3(IStrategy):
         if not callable(callback):
             raise ValueError("callback must be callable")
         timestamp = int(current_time.timestamp())
-        candle_start_secs = timestamp - (timestamp % self._candle_duration_secs)
-        if candle_start_secs != self.last_candle_start_secs.get(pair):
-            self.last_candle_start_secs[pair] = candle_start_secs
+        candle_duration_secs = max(1, int(self._candle_duration_secs))
+        candle_start_secs = (timestamp // candle_duration_secs) * candle_duration_secs
+        callback_code = getattr(callback, "__code__", None)
+        if callback_code is None and isinstance(callback, functools.partial):
+            func = callback.func
+            callback_code = getattr(func, "__code__", None)
+            if callback_code is None and hasattr(func, "__func__"):
+                callback_code = getattr(func.__func__, "__code__", None)
+        if callback_code is None and hasattr(callback, "__func__"):
+            callback_code = getattr(callback.__func__, "__code__", None)
+        if callback_code is None and hasattr(callback, "__call__"):
+            callback_code = getattr(callback.__call__, "__code__", None)
+        if callback_code is None:
+            raise ValueError("Unable to retrieve code object from callback")
+        key = hashlib.sha256(
+            f"{pair}|{callback_code.co_filename}|{callback_code.co_firstlineno}|{callback_code.co_name}".encode()
+        ).hexdigest()
+        if candle_start_secs != self.last_candle_start_secs.get(key):
+            self.last_candle_start_secs[key] = candle_start_secs
             try:
                 callback()
             except Exception as e:
@@ -1310,9 +1326,8 @@ class QuickAdapterV3(IStrategy):
         if hist_len <= 0:
             alpha_len = 1.0
         else:
-            alpha_len = recent_hist_len / hist_len if hist_len > 0 else 1.0
-            if alpha_len < min_alpha:
-                alpha_len = min_alpha
+            alpha_len = recent_hist_len / hist_len
+        alpha_len = max(min_alpha, alpha_len)
 
         def volatility_adjusted_alpha(
             alpha_base: float,
