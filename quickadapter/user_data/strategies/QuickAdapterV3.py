@@ -788,6 +788,8 @@ class QuickAdapterV3(IStrategy):
         current_time: datetime.datetime,
         callback: Callable[[], None],
     ) -> None:
+        if not callable(callback):
+            raise ValueError("callback must be callable")
         timestamp = int(current_time.timestamp())
         candle_start_secs = timestamp - (timestamp % self._candle_duration_secs)
         if candle_start_secs != self.last_candle_start_secs.get(pair):
