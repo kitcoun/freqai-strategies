@@ -861,7 +861,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 if upper_bound < 2:
                     return 1
                 lower_bound = min(min_n_clusters, upper_bound)
-                n_clusters = int(round(np.log2(max(n_uniques, 2))))
+                n_uniques_bounded = max(n_uniques, 2)
+                n_clusters = int(
+                    round(
+                        (np.log2(n_uniques_bounded) + np.sqrt(n_uniques_bounded)) / 2.0
+                    )
+                )
                 return max(lower_bound, min(n_clusters, upper_bound))
 
             if metric in {
