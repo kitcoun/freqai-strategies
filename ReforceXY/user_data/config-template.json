@@ -15,10 +15,11 @@
   // "trading_mode": "futures",
   // "margin_mode": "isolated",
   "trading_mode": "spot",
-  "minimal_roi": {
-    "0": 0.03
-  }, // Take_profit exit value used with force_actions
-  "stoploss": -0.02, // Stop_loss exit value used with force_actions
+  // "minimal_roi": {
+  //   "0": 0.03
+  // }, // Take_profit exit value used with force_actions
+  // "stoploss": -0.02, // Stop_loss exit value used with force_actions
+  "stoploss": -0.99,
   "unfilledtimeout": {
     "entry": 10,
     "exit": 10,
