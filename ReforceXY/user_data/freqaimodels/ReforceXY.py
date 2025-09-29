@@ -2032,6 +2032,7 @@ class MyRLEnv(Base5ActionRLEnv):
         return fig
 
     def close(self) -> None:
+        super().close()
         plt.close()
         gc.collect()
         if th.cuda.is_available():
