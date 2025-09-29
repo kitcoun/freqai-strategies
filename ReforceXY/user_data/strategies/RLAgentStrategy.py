@@ -3,6 +3,7 @@ from functools import cached_property, reduce
 from typing import Any
 
 # import talib.abstract as ta
+from freqtrade.persistence import Trade
 from freqtrade.strategy import IStrategy
 from pandas import DataFrame
 
@@ -104,6 +105,16 @@ class RLAgentStrategy(IStrategy):
         dataframe.loc[
             reduce(lambda x, y: x & y, exit_short_conditions), "exit_short"
         ] = 1
+
+        last_candle = dataframe.iloc[-1]
+        if last_candle.get("do_predict") == 2:
+            trades = Trade.get_trades_proxy(pair=metadata.get("pair"), is_open=True)
+            for trade in trades:
+                last_index = dataframe.index[-1]
+                if trade.is_short:
+                    dataframe.at[last_index, "exit_short"] = 1
+                else:
+                    dataframe.at[last_index, "exit_long"] = 1
 
         return dataframe
 
