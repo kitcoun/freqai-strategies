@@ -1011,17 +1011,17 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     "label_kmeans_selection", "min"
                 )
                 ordered_cluster_indices = np.argsort(cluster_center_distances_to_ideal)
-                trial_distances = np.full(n_samples, np.inf)
                 best_cluster_indices = None
                 for cluster_index in ordered_cluster_indices:
                     cluster_indices = np.flatnonzero(cluster_labels == cluster_index)
-                    if cluster_indices.size:
+                    if cluster_indices.size > 0:
                         best_cluster_indices = cluster_indices
                         break
+                trial_distances = np.full(n_samples, np.inf)
                 if best_cluster_indices is not None and best_cluster_indices.size > 0:
                     if label_kmeans_selection == "medoid":
                         best_cluster_matrix = normalized_matrix[best_cluster_indices]
-                        trial_distances[best_cluster_indices] = (
+                        best_medoid_position = np.argmin(
                             self._pairwise_distance_sums(
                                 best_cluster_matrix,
                                 label_kmeans_metric,
@@ -1033,15 +1033,26 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                                 ),
                             )
                         )
+                        best_trial_index = best_cluster_indices[best_medoid_position]
+                        best_trial_distance = sp.spatial.distance.cdist(
+                            normalized_matrix[[best_trial_index]],
+                            ideal_point_2d,
+                            metric=label_kmeans_metric,
+                            **cdist_kwargs,
+                        ).item()
+                        trial_distances[best_trial_index] = best_trial_distance
                     elif label_kmeans_selection == "min":
-                        trial_distances[best_cluster_indices] = (
-                            sp.spatial.distance.cdist(
-                                normalized_matrix[best_cluster_indices],
-                                ideal_point_2d,
-                                metric=label_kmeans_metric,
-                                **cdist_kwargs,
-                            ).flatten()
-                        )
+                        best_cluster_distances = sp.spatial.distance.cdist(
+                            normalized_matrix[best_cluster_indices],
+                            ideal_point_2d,
+                            metric=label_kmeans_metric,
+                            **cdist_kwargs,
+                        ).flatten()
+                        min_distance_position = np.argmin(best_cluster_distances)
+                        best_trial_index = best_cluster_indices[min_distance_position]
+                        trial_distances[best_trial_index] = best_cluster_distances[
+                            min_distance_position
+                        ]
                     else:
                         raise ValueError(
                             f"Unsupported label_kmeans_selection: {label_kmeans_selection}. Supported are medoid/min"
@@ -1084,44 +1095,31 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     metric=label_kmedoids_metric,
                     **cdist_kwargs,
                 ).flatten()
-                ordered_medoid_indices = medoid_indices[
-                    np.argsort(medoid_distances_to_ideal)
-                ]
                 label_kmedoids_selection = self.ft_params.get(
                     "label_kmedoids_selection", "min"
                 )
+                best_medoid_distance_position = np.argmin(medoid_distances_to_ideal)
+                best_medoid_index = medoid_indices[best_medoid_distance_position]
+                cluster_index = cluster_labels[best_medoid_index]
+                best_cluster_indices = np.flatnonzero(cluster_labels == cluster_index)
                 trial_distances = np.full(n_samples, np.inf)
-                best_cluster_indices = None
-                for medoid_index in ordered_medoid_indices:
-                    cluster_index = cluster_labels[medoid_index]
-                    cluster_indices = np.flatnonzero(cluster_labels == cluster_index)
-                    if cluster_indices.size:
-                        best_cluster_indices = cluster_indices
-                        break
                 if best_cluster_indices is not None and best_cluster_indices.size > 0:
                     if label_kmedoids_selection == "medoid":
-                        best_cluster_matrix = normalized_matrix[best_cluster_indices]
-                        trial_distances[best_cluster_indices] = (
-                            self._pairwise_distance_sums(
-                                best_cluster_matrix,
-                                label_kmedoids_metric,
-                                p=(
-                                    label_p_order
-                                    if label_kmedoids_metric == "minkowski"
-                                    and label_p_order is not None
-                                    else None
-                                ),
-                            )
-                        )
+                        trial_distances[best_medoid_index] = medoid_distances_to_ideal[
+                            best_medoid_distance_position
+                        ]
                     elif label_kmedoids_selection == "min":
-                        trial_distances[best_cluster_indices] = (
-                            sp.spatial.distance.cdist(
-                                normalized_matrix[best_cluster_indices],
-                                ideal_point_2d,
-                                metric=label_kmedoids_metric,
-                                **cdist_kwargs,
-                            ).flatten()
-                        )
+                        best_cluster_distances = sp.spatial.distance.cdist(
+                            normalized_matrix[best_cluster_indices],
+                            ideal_point_2d,
+                            metric=label_kmedoids_metric,
+                            **cdist_kwargs,
+                        ).flatten()
+                        min_distance_position = np.argmin(best_cluster_distances)
+                        best_trial_index = best_cluster_indices[min_distance_position]
+                        trial_distances[best_trial_index] = best_cluster_distances[
+                            min_distance_position
+                        ]
                     else:
                         raise ValueError(
                             f"Unsupported label_kmedoids_selection: {label_kmedoids_selection}. Supported are medoid/min"
