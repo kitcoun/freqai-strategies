@@ -26,7 +26,7 @@ from freqtrade.freqai.tensorboard.TensorboardCallback import TensorboardCallback
 from freqtrade.strategy import timeframe_to_minutes
 from gymnasium.spaces import Box
 from numpy.typing import NDArray
-from optuna import Trial, TrialPruned, create_study
+from optuna import Trial, TrialPruned, create_study, delete_study
 from optuna.exceptions import ExperimentalWarning
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
@@ -627,7 +627,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         if self.activate_tensorboard:
             tensorboard_log_path = Path(
-                self.full_path / "tensorboard" / dk.pair.split("/")[0]
+                self.full_path / "tensorboard" / Path(dk.data_path).name
             )
         else:
             tensorboard_log_path = None
@@ -780,6 +780,13 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         return DataFrame({label: actions["action"] for label in dk.label_list})
 
+    @staticmethod
+    def study_delete(study_name: str, storage: BaseStorage) -> None:
+        try:
+            delete_study(study_name=study_name, storage=storage)
+        except Exception:
+            pass
+
     def get_storage(self, pair: Optional[str] = None) -> BaseStorage:
         """
         Get the storage for Optuna
@@ -830,6 +837,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             if self.rl_config_optuna.get("per_pair", False)
             else self.get_storage()
         )
+        continuous = self.rl_config_optuna.get("continuous", False)
+        if continuous:
+            ReforceXY.study_delete(study_name, storage)
         if "PPO" in self.model_type:
             resource_eval_freq = min(PPO_N_STEPS)
         else:
@@ -854,8 +864,14 @@ class ReforceXY(BaseReinforcementLearningModel):
             ),
             direction=StudyDirection.MAXIMIZE,
             storage=storage,
-            load_if_exists=True,
+            load_if_exists=not continuous,
         )
+        if self.rl_config_optuna.get("warm_start", False):
+            best_trial_params = self.load_best_trial_params(
+                dk.pair if self.rl_config_optuna.get("per_pair", False) else None
+            )
+            if best_trial_params:
+                study.enqueue_trial(best_trial_params)
         hyperopt_failed = False
         start_time = time.time()
         try:
@@ -1106,7 +1122,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             tensorboard_log_path = Path(
                 self.full_path
                 / "tensorboard"
-                / dk.pair.split("/")[0]
+                / Path(dk.data_path).name
                 / "hyperopt"
                 / f"trial-{trial.number}"
             )
