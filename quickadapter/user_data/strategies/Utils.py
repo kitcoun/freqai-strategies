@@ -1,4 +1,6 @@
 import copy
+import functools
+import hashlib
 import math
 from enum import IntEnum
 from functools import lru_cache
@@ -109,6 +111,24 @@ def smooth_extrema(
         method,
         smoothing_methods["gaussian"],
     )
+
+
+def get_callable_sha256(fn: Callable) -> str:
+    if not callable(fn):
+        raise ValueError("fn must be callable")
+    code = getattr(fn, "__code__", None)
+    if code is None and isinstance(fn, functools.partial):
+        fn = fn.func
+        code = getattr(fn, "__code__", None)
+        if code is None and hasattr(fn, "__func__"):
+            code = getattr(fn.__func__, "__code__", None)
+    if code is None and hasattr(fn, "__func__"):
+        code = getattr(fn.__func__, "__code__", None)
+    if code is None and hasattr(fn, "__call__"):
+        code = getattr(fn.__call__, "__code__", None)
+    if code is None:
+        raise ValueError("Unable to retrieve code object from fn")
+    return hashlib.sha256(code.co_code).hexdigest()
 
 
 @lru_cache(maxsize=128)

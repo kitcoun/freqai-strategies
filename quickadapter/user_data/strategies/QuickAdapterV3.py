@@ -1,5 +1,4 @@
 import datetime
-import functools
 import hashlib
 import json
 import logging
@@ -27,6 +26,7 @@ from Utils import (
     calculate_quantile,
     ewo,
     format_number,
+    get_callable_sha256,
     get_distance,
     get_zl_ma_fn,
     non_zero_diff,
@@ -793,21 +793,8 @@ class QuickAdapterV3(IStrategy):
         timestamp = int(current_time.timestamp())
         candle_duration_secs = max(1, int(self._candle_duration_secs))
         candle_start_secs = (timestamp // candle_duration_secs) * candle_duration_secs
-        callback_code = getattr(callback, "__code__", None)
-        if callback_code is None and isinstance(callback, functools.partial):
-            func = callback.func
-            callback_code = getattr(func, "__code__", None)
-            if callback_code is None and hasattr(func, "__func__"):
-                callback_code = getattr(func.__func__, "__code__", None)
-        if callback_code is None and hasattr(callback, "__func__"):
-            callback_code = getattr(callback.__func__, "__code__", None)
-        if callback_code is None and hasattr(callback, "__call__"):
-            callback_code = getattr(callback.__call__, "__code__", None)
-        if callback_code is None:
-            raise ValueError("Unable to retrieve code object from callback")
-        key = hashlib.sha256(
-            f"{pair}|{callback_code.co_filename}|{callback_code.co_firstlineno}|{callback_code.co_name}".encode()
-        ).hexdigest()
+        callback_hash = get_callable_sha256(callback)
+        key = hashlib.sha256(f"{pair}|{callback_hash}".encode()).hexdigest()
         if candle_start_secs != self.last_candle_start_secs.get(key):
             self.last_candle_start_secs[key] = candle_start_secs
             try:
