@@ -999,7 +999,7 @@ def get_min_max_label_period_candles(
     candles_step: int,
     min_label_period_candles: int = 12,
     max_label_period_candles: int = 36,
-    max_time_candles: int = 36,
+    max_period_candles: int = 36,
     max_horizon_fraction: float = 1.0 / 3.0,
     min_label_period_candles_fallback: int = 12,
     max_label_period_candles_fallback: int = 36,
@@ -1009,7 +1009,7 @@ def get_min_max_label_period_candles(
             "min_label_period_candles must be less than or equal to max_label_period_candles"
         )
 
-    capped_time_candles = max(1, floor_to_step(max_time_candles, candles_step))
+    capped_period_candles = max(1, floor_to_step(max_period_candles, candles_step))
     capped_horizon_candles = max(
         1,
         floor_to_step(
@@ -1018,13 +1018,13 @@ def get_min_max_label_period_candles(
         ),
     )
     max_label_period_candles = min(
-        max_label_period_candles, capped_time_candles, capped_horizon_candles
+        max_label_period_candles, capped_period_candles, capped_horizon_candles
     )
 
     if min_label_period_candles > max_label_period_candles:
         fallback_high = min(
             max_label_period_candles_fallback,
-            capped_time_candles,
+            capped_period_candles,
             capped_horizon_candles,
         )
         return (
