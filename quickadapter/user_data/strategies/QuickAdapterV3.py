@@ -67,7 +67,7 @@ class QuickAdapterV3(IStrategy):
     INTERFACE_VERSION = 3
 
     def version(self) -> str:
-        return "3.3.159"
+        return "3.3.160"
 
     timeframe = "5m"
 
@@ -104,8 +104,17 @@ class QuickAdapterV3(IStrategy):
         2: (0.7640, 0.2),
     }
 
-    timeframe_minutes = timeframe_to_minutes(timeframe)
-    minimal_roi = {str(timeframe_minutes * 864): -1}
+    @property
+    def minimal_roi(self) -> dict[str, Any]:
+        timeframe_minutes = timeframe_to_minutes(self.config.get("timeframe", "5m"))
+        fit_live_predictions_candles = int(
+            self.freqai_info.get("fit_live_predictions_candles", 100)
+        )
+        return {str(timeframe_minutes * fit_live_predictions_candles): -1}
+
+    @minimal_roi.setter
+    def minimal_roi(self, value: dict[str, Any]) -> None:
+        pass
 
     process_only_new_candles = True
 
@@ -151,7 +160,7 @@ class QuickAdapterV3(IStrategy):
                         stoploss_guard_lookback_period_candles
                         / estimated_trade_duration_candles
                     )
-                    * 0.75
+                    * 0.5
                 )
             ),
         )
