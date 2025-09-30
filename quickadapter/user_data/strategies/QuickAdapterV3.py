@@ -108,7 +108,7 @@ class QuickAdapterV3(IStrategy):
     def minimal_roi(self) -> dict[str, Any]:
         timeframe_minutes = timeframe_to_minutes(self.config.get("timeframe", "5m"))
         fit_live_predictions_candles = int(
-            self.freqai_info.get("fit_live_predictions_candles", 100)
+            self.config.get("freqai", {}).get("fit_live_predictions_candles", 100)
         )
         return {str(timeframe_minutes * fit_live_predictions_candles): -1}
 
@@ -146,7 +146,7 @@ class QuickAdapterV3(IStrategy):
     @cached_property
     def protections(self) -> list[dict[str, Any]]:
         fit_live_predictions_candles = int(
-            self.freqai_info.get("fit_live_predictions_candles", 100)
+            self.config.get("freqai", {}).get("fit_live_predictions_candles", 100)
         )
         estimated_trade_duration_candles = int(
             self.config.get("estimated_trade_duration_candles", 48)
@@ -187,7 +187,7 @@ class QuickAdapterV3(IStrategy):
     @cached_property
     def startup_candle_count(self) -> int:
         # Match the predictions warmup period
-        return self.freqai_info.get("fit_live_predictions_candles", 100)
+        return self.config.get("freqai", {}).get("fit_live_predictions_candles", 100)
 
     @cached_property
     def max_open_trades_per_side(self) -> int:

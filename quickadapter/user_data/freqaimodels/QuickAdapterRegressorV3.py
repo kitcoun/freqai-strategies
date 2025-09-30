@@ -68,7 +68,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         optuna_default_config = {
             "enabled": False,
             "n_jobs": min(
-                self.freqai_info.get("optuna_hyperopt", {}).get("n_jobs", 1),
+                self.config.get("freqai", {})
+                .get("optuna_hyperopt", {})
+                .get("n_jobs", 1),
                 max(int(self.max_system_threads / 4), 1),
             ),
             "storage": "file",
@@ -84,7 +86,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         }
         return {
             **optuna_default_config,
-            **self.freqai_info.get("optuna_hyperopt", {}),
+            **self.config.get("freqai", {}).get("optuna_hyperopt", {}),
         }
 
     @property
@@ -95,7 +97,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         n_pairs = len(self.pairs)
         label_frequency_candles = max(
-            2, 2 * n_pairs, int(self.ft_params.get("label_frequency_candles", 12))
+            2,
+            2 * n_pairs,
+            int(
+                self.config.get("feature_parameters", {}).get(
+                    "label_frequency_candles", 12
+                )
+            ),
         )
         cache_key = label_frequency_candles
         if cache_key not in self._optuna_label_candle_pool_full_cache:
