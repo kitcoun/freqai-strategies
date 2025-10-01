@@ -213,7 +213,7 @@ class QuickAdapterV3(IStrategy):
             )
         if (
             not isinstance(self.freqai_info.get("identifier"), str)
-            or self.freqai_info.get("identifier").strip() == ""
+            or not self.freqai_info.get("identifier").strip()
         ):
             raise ValueError(
                 "FreqAI strategy requires 'identifier' defined in the freqai section configuration"
@@ -487,8 +487,7 @@ class QuickAdapterV3(IStrategy):
                 f"{pair}: no extrema to label (label_period={QuickAdapterV3.td_format(label_period)} / {label_period_candles=} / {label_natr_ratio=:.2f})"
             )
         else:
-            for pivot_idx, pivot_dir in zip(pivots_indices, pivots_directions):
-                dataframe.at[pivot_idx, EXTREMA_COLUMN] = pivot_dir
+            dataframe.loc[pivots_indices, EXTREMA_COLUMN] = pivots_directions
             dataframe["minima"] = np.where(
                 dataframe[EXTREMA_COLUMN] == TrendDirection.DOWN, -1, 0
             )
@@ -759,6 +758,10 @@ class QuickAdapterV3(IStrategy):
         current_rate: float,
         natr_ratio_percent: float,
     ) -> Optional[float]:
+        if not (0.0 <= natr_ratio_percent <= 1.0):
+            raise ValueError(
+                f"natr_ratio_percent must be in [0, 1], got {natr_ratio_percent}"
+            )
         trade_duration_candles = self.get_trade_duration_candles(df, trade)
         if not QuickAdapterV3.is_trade_duration_valid(trade_duration_candles):
             return None
@@ -807,7 +810,7 @@ class QuickAdapterV3(IStrategy):
         candle_duration_secs = max(1, int(self._candle_duration_secs))
         candle_start_secs = (timestamp // candle_duration_secs) * candle_duration_secs
         callback_hash = get_callable_sha256(callback)
-        key = hashlib.sha256(f"{pair}|{callback_hash}".encode()).hexdigest()
+        key = hashlib.sha256(f"{pair}\x00{callback_hash}".encode()).hexdigest()
         if candle_start_secs != self.last_candle_start_secs.get(key):
             self.last_candle_start_secs[key] = candle_start_secs
             try:
@@ -816,6 +819,15 @@ class QuickAdapterV3(IStrategy):
                 logger.error(
                     f"Error executing callback for {pair}: {repr(e)}", exc_info=True
                 )
+
+            threshold_secs = 10 * candle_duration_secs
+            keys_to_remove = [
+                key
+                for key, ts in self.last_candle_start_secs.items()
+                if ts is not None and timestamp - ts > threshold_secs
+            ]
+            for key in keys_to_remove:
+                del self.last_candle_start_secs[key]
 
     def custom_stoploss(
         self,

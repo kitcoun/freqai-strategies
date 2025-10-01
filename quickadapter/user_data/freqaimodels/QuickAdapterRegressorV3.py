@@ -125,7 +125,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         if (
             not isinstance(self.freqai_info.get("identifier"), str)
-            or self.freqai_info.get("identifier").strip() == ""
+            or not self.freqai_info.get("identifier").strip()
         ):
             raise ValueError(
                 "FreqAI model requires 'identifier' defined in the freqai section configuration"
@@ -1322,6 +1322,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         direction: Optional[optuna.study.StudyDirection] = None,
         directions: Optional[list[optuna.study.StudyDirection]] = None,
     ) -> Optional[optuna.study.Study]:
+        if direction is not None and directions is not None:
+            raise ValueError(
+                "Cannot specify both 'direction' and 'directions'. Use one or the other"
+            )
         is_study_single_objective = direction is not None and directions is None
         if (
             not is_study_single_objective
@@ -1458,6 +1462,10 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         direction: Optional[optuna.study.StudyDirection] = None,
         directions: Optional[list[optuna.study.StudyDirection]] = None,
     ) -> Optional[optuna.study.Study]:
+        if direction is not None and directions is not None:
+            raise ValueError(
+                "Cannot specify both 'direction' and 'directions'. Use one or the other"
+            )
         identifier = self.freqai_info.get("identifier")
         study_name = f"{identifier}-{pair}-{namespace}"
         try:
