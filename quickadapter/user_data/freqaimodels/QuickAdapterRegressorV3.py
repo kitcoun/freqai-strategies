@@ -125,7 +125,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             )
         if (
             not isinstance(self.freqai_info.get("identifier"), str)
-            or not self.freqai_info.get("identifier").strip()
+            or not self.freqai_info.get("identifier", "").strip()
         ):
             raise ValueError(
                 "FreqAI model requires 'identifier' defined in the freqai section configuration"

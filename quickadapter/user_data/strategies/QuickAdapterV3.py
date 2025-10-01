@@ -213,7 +213,7 @@ class QuickAdapterV3(IStrategy):
             )
         if (
             not isinstance(self.freqai_info.get("identifier"), str)
-            or not self.freqai_info.get("identifier").strip()
+            or not self.freqai_info.get("identifier", "").strip()
         ):
             raise ValueError(
                 "FreqAI strategy requires 'identifier' defined in the freqai section configuration"

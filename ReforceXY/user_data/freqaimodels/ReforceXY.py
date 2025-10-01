@@ -239,17 +239,20 @@ class ReforceXY(BaseReinforcementLearningModel):
             self.n_eval_envs = 1
         if self.multiprocessing and self.n_envs <= 1:
             logger.warning(
-                "User tried to use multiprocessing with n_envs=1. Deactivating multiprocessing"
+                "User tried to use multiprocessing with n_envs=%s. Deactivating multiprocessing",
+                self.n_envs,
             )
             self.multiprocessing = False
         if self.eval_multiprocessing and self.n_eval_envs <= 1:
             logger.warning(
-                "User tried to use eval_multiprocessing with n_eval_envs=1. Deactivating eval_multiprocessing"
+                "User tried to use eval_multiprocessing with n_eval_envs=%s. Deactivating eval_multiprocessing",
+                self.n_eval_envs,
             )
             self.eval_multiprocessing = False
         if self.multiprocessing and self.plot_new_best:
             logger.warning(
-                "User tried to use plot_new_best with multiprocessing. Deactivating plot_new_best"
+                "User tried to use plot_new_best with multiprocessing=%s. Deactivating plot_new_best",
+                self.multiprocessing,
             )
             self.plot_new_best = False
         if not isinstance(self.frame_stacking, int) or self.frame_stacking < 0:
@@ -264,13 +267,13 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self.frame_stacking,
             )
             self.frame_stacking = 0
-        if self.n_eval_steps <= 0:
+        if not isinstance(self.n_eval_steps, int) or self.n_eval_steps <= 0:
             logger.warning(
                 "Invalid n_eval_steps=%s. Forcing n_eval_steps=10_000",
                 self.n_eval_steps,
             )
             self.n_eval_steps = 10_000
-        if self.n_eval_episodes <= 0:
+        if not isinstance(self.n_eval_episodes, int) or self.n_eval_episodes <= 0:
             logger.warning(
                 "Invalid n_eval_episodes=%s. Forcing n_eval_episodes=5",
                 self.n_eval_episodes,
@@ -285,8 +288,9 @@ class ReforceXY(BaseReinforcementLearningModel):
             self.rl_config["tensorboard_throttle"] = 1
         if self.continual_learning and self.frame_stacking:
             logger.warning(
-                "User tried to use continual_learning with frame_stacking. \
-                Deactivating continual_learning"
+                "User tried to use continual_learning with frame_stacking=%s. "
+                "Deactivating continual_learning",
+                self.frame_stacking,
             )
             self.continual_learning = False
 

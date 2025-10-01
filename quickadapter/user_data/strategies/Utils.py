@@ -387,7 +387,7 @@ def smma(series: pd.Series, period: int, zero_lag=False, offset=0) -> pd.Series:
     values = series.to_numpy()
 
     smma_values = np.full(n, np.nan)
-    smma_values[period - 1] = np.mean(values[:period])
+    smma_values[period - 1] = np.nanmean(values[:period])
     for i in range(period, n):
         smma_values[i] = (smma_values[i - 1] * (period - 1) + values[i]) / period
 
