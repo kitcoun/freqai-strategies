@@ -723,41 +723,81 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         weights: Optional[NDArray[np.floating]] = None,
         p: Optional[float] = None,
     ) -> NDArray[np.floating]:
-        """Return, for each sample, the sum of its distances to all other samples.
+        """
+        Calculate the sum of pairwise distances for each sample in a matrix.
 
-        Typical usage: representative (e.g., medoid) selection by taking argmin of
-        the returned vector. Function is generic and not tied to the medoid concept.
+        Typical usage: medoid selection by taking argmin of the returned vector.
 
         Parameters:
-        - matrix: 2D array (n_samples, n_features) assumed already normalized.
-        - metric: distance metric name accepted by scipy.spatial.distance.cdist.
-        - weights: optional weight vector (broadcast via cdist 'w' parameter) for metrics supporting it.
-        - p: optional Minkowski order when metric == 'minkowski'.
+        - matrix: 2D array (n_samples, n_features), assumed normalized.
+          Must contain only finite values (no NaN or inf).
+        - metric: distance metric name accepted by scipy.spatial.distance.pdist.
+        - weights: optional weight vector per feature (passed as 'w' to pdist).
+                   Not supported by mahalanobis, seuclidean, jensenshannon.
+                   Must have size equal to n_features and contain finite non-negative values.
+        - p: optional Minkowski order (default 2.0 if metric=='minkowski').
+
+        Returns:
+        - 1D array of shape (n_samples,) with sum of distances per sample.
 
         Notes:
-        - Caller must validate metric compatibility (e.g. exclude mahalanobis / seuclidean / jensenshannon here).
-        - Behavior for n_samples in {0,1} is handled to preserve previous semantics.
+        - For n_samples==0, returns empty array [].
+        - For n_samples==1, returns [0.0].
+        - Raises ValueError if matrix is not 2D, has 0 features, contains non-finite values,
+          or if weights are invalid or incompatible with the metric.
+        - Memory usage: O(n²/2) for the condensed distance vector (vs O(n²) for full matrix).
+        - Time complexity: O(n² × d) where d is the number of features.
+
+        Example:
+            >>> matrix = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+            >>> _pairwise_distance_sums(matrix, "euclidean")
+            array([2.        , 2.41421356, 2.41421356])
         """
         if matrix.ndim != 2:
             raise ValueError("matrix must be 2-dimensional")
         if matrix.shape[1] == 0:
             raise ValueError("matrix must have at least one feature")
-        if matrix.shape[0] == 1:
-            return np.array([0.0])
-        if matrix.shape[0] < 2:
-            return np.full(matrix.shape[0], np.inf)
-        cdist_kwargs: dict[str, Any] = {}
+
+        if not np.all(np.isfinite(matrix)):
+            raise ValueError("matrix must contain only finite values (no NaN or inf)")
+
         if weights is not None:
-            cdist_kwargs["w"] = weights
+            if weights.size != matrix.shape[1]:
+                raise ValueError(
+                    f"weights size {weights.size} must match number of features {matrix.shape[1]}"
+                )
+            if not np.all(np.isfinite(weights)) or np.any(weights < 0):
+                raise ValueError("weights must be finite and non-negative")
+            if metric in {"mahalanobis", "seuclidean", "jensenshannon"}:
+                raise ValueError(f"weights not supported for metric '{metric}'")
+
+        matrix = np.asarray(matrix, dtype=np.float64)
+        if weights is not None:
+            weights = np.asarray(weights, dtype=np.float64)
+
+        n = matrix.shape[0]
+        if n == 0:
+            return np.array([])
+        if n == 1:
+            return np.array([0.0])
+
+        pdist_kwargs = {}
+        if weights is not None:
+            pdist_kwargs["w"] = weights
         if metric == "minkowski" and p is not None:
-            cdist_kwargs["p"] = p
-        pairwise_distances = sp.spatial.distance.cdist(
-            matrix,
-            matrix,
-            metric=metric,
-            **cdist_kwargs,
+            pdist_kwargs["p"] = p
+
+        pairwise_distances_vector = sp.spatial.distance.pdist(
+            matrix, metric=metric, **pdist_kwargs
         )
-        return np.sum(pairwise_distances, axis=1)
+
+        sums = np.zeros(n, dtype=float)
+
+        idx_i, idx_j = np.triu_indices(n, k=1)
+        np.add.at(sums, idx_i, pairwise_distances_vector)
+        np.add.at(sums, idx_j, pairwise_distances_vector)
+
+        return sums
 
     def get_multi_objective_study_best_trial(
         self, namespace: str, study: optuna.study.Study
