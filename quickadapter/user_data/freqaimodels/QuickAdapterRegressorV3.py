@@ -784,7 +784,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         pdist_kwargs = {}
         if weights is not None:
             pdist_kwargs["w"] = weights
-        if metric == "minkowski" and p is not None:
+        if metric == "minkowski" and p is not None and np.isfinite(p):
             pdist_kwargs["p"] = p
 
         pairwise_distances_vector = sp.spatial.distance.pdist(
@@ -866,7 +866,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 isinstance(trial.values, list)
                 and len(trial.values) == n_objectives
                 and all(
-                    isinstance(value, (int, float)) and not np.isnan(value)
+                    isinstance(value, (int, float))
+                    and (np.isfinite(value) or np.isinf(value))
                     for value in trial.values
                 )
             )
@@ -877,14 +878,26 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         def calculate_distances(
             normalized_matrix: NDArray[np.floating], metric: str
         ) -> NDArray[np.floating]:
+            if normalized_matrix.ndim != 2:
+                raise ValueError("normalized_matrix must be 2-dimensional")
             n_objectives = normalized_matrix.shape[1]
             n_samples = normalized_matrix.shape[0]
+            if n_samples == 0 or n_objectives == 0:
+                raise ValueError(
+                    "normalized_matrix must have at least one sample and one objective"
+                )
+            if not np.all(np.isfinite(normalized_matrix)):
+                raise ValueError(
+                    "normalized_matrix must contain only finite values (no NaN or inf)"
+                )
             label_p_order = self.ft_params.get("label_p_order")
             np_weights = np.array(
                 self.ft_params.get("label_weights", [1.0] * n_objectives)
             )
             if np_weights.size != n_objectives:
                 raise ValueError("label_weights length must match number of objectives")
+            if not np.all(np.isfinite(np_weights)):
+                raise ValueError("label_weights must contain only finite values")
             if np.any(np_weights < 0):
                 raise ValueError("label_weights values must be non-negative")
             label_weights_sum = np.sum(np_weights)
@@ -909,13 +922,25 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 if upper_bound < 2:
                     return 1
                 lower_bound = min(min_n_clusters, upper_bound)
-                n_uniques_bounded = max(n_uniques, 2)
-                n_clusters = int(
-                    round(
-                        (np.log2(n_uniques_bounded) + np.sqrt(n_uniques_bounded)) / 2.0
-                    )
-                )
+                if n_uniques <= 3:
+                    return min(n_uniques, upper_bound)
+                n_clusters = int(round((np.log2(n_uniques) + np.sqrt(n_uniques)) / 2.0))
                 return max(lower_bound, min(n_clusters, upper_bound))
+
+            if n_samples == 0:
+                return np.array([])
+            if n_samples == 1:
+                if metric in {
+                    "medoid",
+                    "kmeans",
+                    "kmeans2",
+                    "kmedoids",
+                    "knn_power_mean",
+                    "knn_percentile",
+                    "knn_min",
+                    "knn_max",
+                }:
+                    return np.array([0.0])
 
             if metric in {
                 # "braycurtis",
@@ -941,16 +966,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 "sqeuclidean",
                 # "yule",
             }:
-                cdist_kwargs: dict[str, Any] = {"w": np_weights}
-                if metric in {
-                    "jensenshannon",
-                    "mahalanobis",
-                    "seuclidean",
-                }:
-                    del cdist_kwargs["w"]
+                cdist_kwargs: dict[str, Any] = {}
+                if metric not in {"mahalanobis", "seuclidean", "jensenshannon"}:
+                    cdist_kwargs["w"] = np_weights
                 if metric == "minkowski":
                     cdist_kwargs["p"] = (
-                        label_p_order if label_p_order is not None else 2.0
+                        label_p_order
+                        if label_p_order is not None and np.isfinite(label_p_order)
+                        else 2.0
                     )
                 return sp.spatial.distance.cdist(
                     normalized_matrix,
@@ -961,7 +984,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             elif metric in {"hellinger", "shellinger"}:
                 np_sqrt_normalized_matrix = np.sqrt(normalized_matrix)
                 if metric == "shellinger":
-                    np_weights = 1 / np.var(np_sqrt_normalized_matrix, axis=0, ddof=1)
+                    variances = np.var(np_sqrt_normalized_matrix, axis=0, ddof=1)
+                    if np.any(variances <= 0):
+                        raise ValueError(
+                            "shellinger metric requires non-zero variance for all objectives"
+                        )
+                    np_weights = 1 / variances
                 return np.sqrt(
                     np.sum(
                         np_weights
@@ -983,7 +1011,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     "arithmetic_mean": 1.0,
                     "quadratic_mean": 2.0,
                     "cubic_mean": 3.0,
-                    "power_mean": label_p_order if label_p_order is not None else 1.0,
+                    "power_mean": label_p_order
+                    if label_p_order is not None and np.isfinite(label_p_order)
+                    else 1.0,
                 }[metric]
                 return sp.stats.pmean(
                     ideal_point, p=p, weights=np_weights
@@ -991,10 +1021,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             elif metric == "weighted_sum":
                 return np.sum(np_weights * (ideal_point - normalized_matrix), axis=1)
             elif metric == "medoid":
-                if n_samples == 1:
-                    return np.array([0.0])
-                if n_samples < 2:
-                    return np.full(n_samples, np.inf)
                 label_medoid_metric = self.ft_params.get(
                     "label_medoid_metric", "euclidean"
                 )
@@ -1006,22 +1032,20 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     raise ValueError(
                         f"Unsupported label_medoid_metric: {label_medoid_metric}. Supported are euclidean/minkowski/cityblock/chebyshev/..."
                     )
+                p = None
+                if label_medoid_metric == "minkowski":
+                    p = (
+                        label_p_order
+                        if label_p_order is not None and np.isfinite(label_p_order)
+                        else 2.0
+                    )
                 return self._pairwise_distance_sums(
                     normalized_matrix,
                     label_medoid_metric,
                     weights=np_weights,
-                    p=(
-                        label_p_order
-                        if label_medoid_metric == "minkowski"
-                        and label_p_order is not None
-                        else None
-                    ),
+                    p=p,
                 )
             elif metric in {"kmeans", "kmeans2"}:
-                if n_samples == 1:
-                    return np.array([0.0])
-                if n_samples < 2:
-                    return np.full(n_samples, np.inf)
                 n_clusters = _get_n_clusters(normalized_matrix)
                 if metric == "kmeans":
                     kmeans = sklearn.cluster.KMeans(
@@ -1047,7 +1071,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 cdist_kwargs: dict[str, Any] = {}
                 if label_kmeans_metric == "minkowski":
                     cdist_kwargs["p"] = (
-                        label_p_order if label_p_order is not None else 2.0
+                        label_p_order
+                        if label_p_order is not None and np.isfinite(label_p_order)
+                        else 2.0
                     )
                 cluster_center_distances_to_ideal = sp.spatial.distance.cdist(
                     cluster_centers,
@@ -1068,16 +1094,19 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 trial_distances = np.full(n_samples, np.inf)
                 if best_cluster_indices is not None and best_cluster_indices.size > 0:
                     if label_kmeans_selection == "medoid":
+                        p = None
+                        if label_kmeans_metric == "minkowski":
+                            p = (
+                                label_p_order
+                                if label_p_order is not None
+                                and np.isfinite(label_p_order)
+                                else 2.0
+                            )
                         best_medoid_position = np.argmin(
                             self._pairwise_distance_sums(
                                 normalized_matrix[best_cluster_indices],
                                 label_kmeans_metric,
-                                p=(
-                                    label_p_order
-                                    if label_kmeans_metric == "minkowski"
-                                    and label_p_order is not None
-                                    else None
-                                ),
+                                p=p,
                             )
                         )
                         best_trial_index = best_cluster_indices[best_medoid_position]
@@ -1106,10 +1135,6 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         )
                 return trial_distances
             elif metric == "kmedoids":
-                if n_samples == 1:
-                    return np.array([0.0])
-                if n_samples < 2:
-                    return np.full(n_samples, np.inf)
                 n_clusters = _get_n_clusters(normalized_matrix)
                 label_kmedoids_metric = self.ft_params.get(
                     "label_kmedoids_metric", "euclidean"
@@ -1134,7 +1159,9 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 cdist_kwargs: dict[str, Any] = {}
                 if label_kmedoids_metric == "minkowski":
                     cdist_kwargs["p"] = (
-                        label_p_order if label_p_order is not None else 2.0
+                        label_p_order
+                        if label_p_order is not None and np.isfinite(label_p_order)
+                        else 2.0
                     )
                 medoid_distances_to_ideal = sp.spatial.distance.cdist(
                     normalized_matrix[medoid_indices],
@@ -1181,13 +1208,13 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         )
                 return trial_distances
             elif metric in {"knn_power_mean", "knn_percentile", "knn_min", "knn_max"}:
-                if n_samples < 2:
-                    return np.full(n_samples, np.inf)
                 label_knn_metric = self.ft_params.get("label_knn_metric", "minkowski")
                 knn_kwargs: dict[str, Any] = {}
                 if label_knn_metric == "minkowski":
                     knn_kwargs["p"] = (
-                        label_p_order if label_p_order is not None else 2.0
+                        label_p_order
+                        if label_p_order is not None and np.isfinite(label_p_order)
+                        else 2.0
                     )
                     knn_kwargs["metric_params"] = {"w": np_weights}
                 label_knn_p_order = self.ft_params.get("label_knn_p_order")
@@ -1207,14 +1234,20 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     return np.full(n_samples, np.inf)
                 if metric == "knn_power_mean":
                     label_knn_p_order = (
-                        label_knn_p_order if label_knn_p_order is not None else 1.0
+                        label_knn_p_order
+                        if label_knn_p_order is not None
+                        and np.isfinite(label_knn_p_order)
+                        else 1.0
                     )
                     return sp.stats.pmean(
                         neighbor_distances, p=label_knn_p_order, axis=1
                     )
                 elif metric == "knn_percentile":
                     label_knn_p_order = (
-                        label_knn_p_order if label_knn_p_order is not None else 50.0
+                        label_knn_p_order
+                        if label_knn_p_order is not None
+                        and np.isfinite(label_knn_p_order)
+                        else 50.0
                     )
                     return np.percentile(neighbor_distances, label_knn_p_order, axis=1)
                 elif metric == "knn_min":
