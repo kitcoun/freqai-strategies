@@ -280,6 +280,13 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self.n_eval_episodes,
             )
             self.n_eval_episodes = 5
+
+        add_state_info = self.rl_config.get("add_state_info", False)
+        if not add_state_info:
+            logger.warning(
+                "Setting add_state_info=%s will lead to desynchronized trade states during inference after restart",
+                add_state_info,
+            )
         tensorboard_throttle = self.rl_config.get("tensorboard_throttle", 1)
         if not isinstance(tensorboard_throttle, int) or tensorboard_throttle < 1:
             logger.warning(
