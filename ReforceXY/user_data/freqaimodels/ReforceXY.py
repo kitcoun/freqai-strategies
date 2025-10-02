@@ -1120,7 +1120,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         else:
             eval_env = DummyVecEnv(eval_fns)
 
-        if bool(self.frame_stacking):
+        if bool(self.frame_stacking) and self.frame_stacking > 1:
             train_env = VecFrameStack(train_env, n_stack=self.frame_stacking)
             eval_env = VecFrameStack(eval_env, n_stack=self.frame_stacking)
 
