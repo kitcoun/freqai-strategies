@@ -727,7 +727,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         :param dk: FreqaiDatakitchen = data kitchen for the current pair
         :param model: Any = the trained model used to inference the features.
         """
-        add_state_info = self.rl_config.get("add_state_info", False)
+        add_state_info: bool = self.rl_config.get("add_state_info", False)
         virtual_position: Positions = Positions.Neutral
         virtual_trade_duration: int = 0
         if add_state_info and self.live:
@@ -737,11 +737,11 @@ class ReforceXY(BaseReinforcementLearningModel):
         np_dataframe: NDArray[np.float32] = dataframe.to_numpy(
             dtype=np.float32, copy=False
         )
-        n = int(np_dataframe.shape[0])
-        window_length = int(self.CONV_WIDTH)
-        frame_stacking = self.frame_stacking
-        frame_stacking_activated = bool(frame_stacking) and frame_stacking > 1
-        inference_masking = self.action_masking and self.inference_masking
+        n = np_dataframe.shape[0]
+        window_size: int = self.CONV_WIDTH
+        frame_stacking: int = self.frame_stacking
+        frame_stacking_activated: bool = bool(frame_stacking) and frame_stacking > 1
+        inference_masking: bool = self.action_masking and self.inference_masking
 
         def _update_virtual_position(action: int, position: Positions) -> Positions:
             if action == Actions.Long_enter.value and position == Positions.Neutral:
@@ -771,7 +771,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         def _predict(start_idx: int) -> int:
             nonlocal zero_frame
-            end_idx = start_idx + window_length
+            end_idx: int = start_idx + window_size
             np_observation = np_dataframe[start_idx:end_idx, :]
             action_masks_param: Dict[str, Any] = {}
 
@@ -832,7 +832,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             return int(action)
 
         predicted_actions: List[int] = []
-        for start_idx in range(0, n - window_length + 1):
+        for start_idx in range(0, n - window_size + 1):
             action = _predict(start_idx)
             predicted_actions.append(action)
             previous_virtual_position = virtual_position
