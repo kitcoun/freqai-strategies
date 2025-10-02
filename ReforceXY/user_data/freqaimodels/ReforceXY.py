@@ -280,7 +280,6 @@ class ReforceXY(BaseReinforcementLearningModel):
                 self.n_eval_episodes,
             )
             self.n_eval_episodes = 5
-
         add_state_info = self.rl_config.get("add_state_info", False)
         if not add_state_info:
             logger.warning(
