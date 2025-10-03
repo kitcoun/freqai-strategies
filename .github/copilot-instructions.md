@@ -65,18 +65,21 @@ These instructions guide GitHub Copilot to generate changes consistent with this
 - Build/lint/type checks pass (where applicable).
 - Tests pass (where applicable).
 - Documentation updated to reflect changes.
+- Logs use appropriate levels (error, warn, info, debug).
 
 ## Examples
 
 ### Naming coherence
 
 **Good** (consistent style, clear semantics):
+
 ```python
 threshold_value = 0.06
 processing_mode = "piecewise"
 ```
 
 **Bad** (mixed styles, ambiguous):
+
 ```python
 thresholdValue = 0.06    # inconsistent case style
 threshold_aim = 0.06     # synonym creates ambiguity
@@ -98,10 +101,10 @@ def add_cli_options(parser):
 ### Statistical reporting
 
 ```markdown
-| Metric       | Value | Interpretation           |
-|--------------|-------|--------------------------|
-| KL(A‖B)      | 0.023 | < 0.1: low divergence    |
-| Effect size  | 0.12  | small to medium          |
+| Metric      | Value | Interpretation        |
+| ----------- | ----- | --------------------- |
+| KL(A‖B)     | 0.023 | < 0.1: low divergence |
+| Effect size | 0.12  | small to medium       |
 ```
 
 ---
