@@ -967,7 +967,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             hyperopt_failed = True
         time_spent = time.time() - start_time
-        if not ReforceXY.study_has_best_trial(study):
+        study_has_best_trial = ReforceXY.study_has_best_trial(study)
+        if not study_has_best_trial:
             logger.error(
                 f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no study best trial found"
             )
@@ -990,7 +991,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             study_name,
             time_spent,
         )
-        if ReforceXY.study_has_best_trial(study):
+        if study_has_best_trial:
             logger.info(
                 "Best trial: %s. Score: %s",
                 study.best_trial.number,
