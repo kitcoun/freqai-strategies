@@ -10,9 +10,6 @@ Usage:
 """
 
 import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent))
 
 from reward_space_analysis import (
     DEFAULT_MODEL_REWARD_PARAMETERS,
