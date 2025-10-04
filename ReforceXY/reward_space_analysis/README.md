@@ -52,7 +52,7 @@ python test_reward_alignment.py
 
 > Deactivate the environment with `deactivate` when you're done.
 
-Unless otherwise noted, the command examples below assume your current working directory is `ReforceXY/reward_space_analysis` (and the virtual environment is activated).
+Unless otherwise noted, the command examples below assume your current working directory is `ReforceXY/reward_space_analysis` and the virtual environment is activated.
 
 ---
 
