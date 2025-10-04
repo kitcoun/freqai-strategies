@@ -1792,7 +1792,7 @@ class MyRLEnv(Base5ActionRLEnv):
         )
 
     def is_terminated(self) -> bool:
-        return bool(
+        return (
             self._current_tick == self._end_tick
             or self._total_profit <= self.max_drawdown
             or self._total_unrealized_profit <= self.max_drawdown
