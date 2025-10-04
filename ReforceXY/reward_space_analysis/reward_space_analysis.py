@@ -375,11 +375,7 @@ def _compute_exit_reward(
     context: RewardContext,
     params: Dict[str, float | str],
 ) -> float:
-    """Compose the exit reward: pnl * exit_factor.
-
-    The exit_factor already includes time attenuation AND pnl_factor multiplication
-    as done in ReforceXY._get_exit_factor().
-    """
+    """Compose the exit reward: pnl * exit_factor."""
     duration_ratio = context.trade_duration / max(1, context.max_trade_duration)
     exit_factor = _get_exit_factor(
         base_factor,
@@ -837,9 +833,7 @@ def write_relationship_reports(
 
 
 def _compute_representativity_stats(
-    df: pd.DataFrame,
-    profit_target: float,
-    max_trade_duration: int,
+    df: pd.DataFrame, profit_target: float
 ) -> Dict[str, Any]:
     """Compute representativity statistics for the reward space."""
     total = len(df)
