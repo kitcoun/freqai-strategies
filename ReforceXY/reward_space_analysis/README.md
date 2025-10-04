@@ -1,6 +1,6 @@
 # 📊 Reward Space Analysis - User Guide
 
-**Analyze and validate ReforceXY reward logic with synthetic data (with built‑in runtime statistical & invariant validations)**
+**Analyze and validate ReforceXY reward logic with synthetic data**
 
 ---
 
@@ -340,7 +340,7 @@ The analysis generates the following output files:
 - **Distribution Shift** - Real vs synthetic divergence (KL, JS, Wasserstein, KS)
 - **Diagnostics Validation Summary**   
   - Pass/fail snapshot of all runtime checks
-  - Consolidated pass/fail state of every validation layer (invariants,     parameter bounds, bootstrap CIs, distribution metrics, diagnostics, hypothesis tests)
+  - Consolidated pass/fail state of every validation layer (invariants, parameter bounds, bootstrap CIs, distribution metrics, diagnostics, hypothesis tests)
 
 ### Data Exports
 
@@ -430,7 +430,7 @@ done
 python test_reward_space_analysis.py
 ```
 
-The unified suite currently contains 32 focused tests (coverage ~84%). Example (abridged) successful run shows all test_* cases passing (see file for full list). Number may increase as validations expand.
+The suite currently contains 32 focused tests (coverage ~84%). Example (abridged) successful run shows all test_* cases passing (see file for full list). Number may increase as validations expand.
 
 ### Test Categories
 
