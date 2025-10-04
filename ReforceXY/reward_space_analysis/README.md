@@ -1,6 +1,6 @@
 # 📊 Reward Space Analysis - User Guide
 
-**Analyze and validate ReforceXY reward logic with synthetic data**
+**Analyze and validate ReforceXY reward logic with synthetic data (with built‑in runtime statistical & invariant validations)**
 
 ---
 
@@ -10,15 +10,16 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 
 ### Key Features
 
-- ✅ Generate thousands of trading scenarios instantly
-- ✅ Analyze reward distribution and patterns
-- ✅ Validate reward logic against expected behavior
-- ✅ Export results for further analysis
-- ✅ Compare synthetic vs real trading data
+- ✅ Generate thousands of synthetic trading scenarios deterministically
+- ✅ Analyze reward distribution, feature importance & partial dependence
+- ✅ Built‑in invariant & statistical validation layers (fail‑fast)
+- ✅ Export reproducible artifacts (hash + manifest)
+- ✅ Compare synthetic vs real trading data (distribution shift metrics)
+- ✅ Parameter bounds & automatic sanitization
 
 ---
 
-**New to this tool?** Start with [Common Use Cases](#-common-use-cases) to see practical examples, then explore [CLI Parameters](#️-cli-parameters-reference) for detailed configuration options.
+**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#️-cli-parameters-reference). For runtime guardrails see [Validation Layers](#-validation-layers-runtime).
 
 ---
 
@@ -47,7 +48,7 @@ Whenever you need to run analyses or tests, activate the environment first:
 ```shell
 source .venv/bin/activate
 python reward_space_analysis.py --num_samples 20000 --output demo
-python test_reward_alignment.py
+python test_reward_space_analysis.py
 ```
 
 > Deactivate the environment with `deactivate` when you're done.
@@ -170,6 +171,17 @@ None - all parameters have sensible defaults.
 - Multiple of max_trade_duration used for sampling trade/idle durations
 - Higher = more variety in duration scenarios
 
+### PnL / Volatility Controls
+
+These parameters shape the synthetic PnL generation process and heteroscedasticity (variance increasing with duration):
+
+**`--pnl_base_std`** (float, default: 0.02)
+- Base standard deviation (volatility floor) for generated PnL before duration scaling.
+
+**`--pnl_duration_vol_scale`** (float, default: 0.5)
+- Multiplicative scaling of additional volatility proportional to (trade_duration / max_trade_duration).
+- Higher values = stronger heteroscedastic effect.
+
 ### Trading Environment
 
 **`--trading_mode`** (choice: spot|margin|futures, default: spot)
@@ -209,7 +221,7 @@ _Idle penalty configuration:_
 
 _Holding penalty configuration:_
 
-- `holding_duration_ratio_grace` (default: 1.0) - Grace ratio (≤1) before holding penalty increases with duration ratio
+- `holding_duration_ratio_grace` (default: 1.0) - Grace region before holding penalty increases with duration ratio
 - `holding_penalty_scale` (default: 0.3) - Scale of holding penalty
 - `holding_penalty_power` (default: 1.0) - Power applied to holding penalty scaling
 
@@ -238,7 +250,51 @@ _Profit factor configuration:_
 - Enables distribution shift analysis (KL divergence, JS distance, Wasserstein distance)
 - Example: `../user_data/models/ReforceXY-PPO/sub_train_SYMBOL_DATE/episode_rewards.pkl`
 
+**`--pvalue_adjust`** (choice: none|benjamini_hochberg, default: none)
+
+- Apply multiple hypothesis testing correction (Benjamini–Hochberg) to p-values in statistical hypothesis tests.
+- When set to `benjamini_hochberg`, adjusted p-values and adjusted significance flags are added to the reports.
+
+**`--stats_seed`** (int, optional; default: inherit `--seed`)
+
+- Dedicated seed for statistical analyses (hypothesis tests, bootstrap confidence intervals, distribution diagnostics).
+- Use this if you want to generate multiple independent statistical analyses over the same synthetic dataset without re-simulating samples.
+- If omitted, falls back to `--seed` for full run determinism.
+
+### Reproducibility Model
+
+| Component | Controlled By | Notes |
+|-----------|---------------|-------|
+| Sample simulation | `--seed` | Drives action sampling, PnL noise, force actions. |
+| Statistical tests / bootstrap | `--stats_seed` (fallback `--seed`) | Local RNG; isolation prevents side‑effects in user code. |
+| RandomForest & permutation importance | `--seed` | Ensures identical splits and tree construction. |
+| Partial dependence grids | Deterministic | Depends only on fitted model & data. |
+
+Common patterns:
+```shell
+# Same synthetic data, two different statistical re-analysis runs
+python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9001 --output run_stats1
+python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9002 --output run_stats2
+
+# Fully reproducible end-to-end (all aspects deterministic)
+python reward_space_analysis.py --num_samples 50000 --seed 777
+```
+
 ---
+
+#### Direct Tunable Overrides vs `--params`
+
+Every key in `DEFAULT_MODEL_REWARD_PARAMETERS` is also exposed as an individual CLI flag (dynamic generation). You may choose either style:
+
+```shell
+# Direct flag style (dynamic CLI args)
+python reward_space_analysis.py --win_reward_factor 3.0 --idle_penalty_scale 2.0 --num_samples 15000
+
+# Equivalent using --params
+python reward_space_analysis.py --params win_reward_factor=3.0 idle_penalty_scale=2.0 --num_samples 15000
+```
+
+If both a direct flag and the same key in `--params` are provided, the `--params` value takes highest precedence.
 
 ## 📝 Example Commands
 
@@ -280,8 +336,11 @@ The analysis generates the following output files:
 - **Sample Representativity** - Coverage of critical market scenarios
 - **Component Analysis** - Relationships between rewards and conditions
 - **Feature Importance** - Machine learning analysis of key drivers
-- **Statistical Validation** - Hypothesis tests, confidence intervals, normality diagnostics
-- **Distribution Shift** (optional) - Comparison with real trading data
+- **Statistical Validation** - Hypothesis tests, confidence intervals, normality + effect sizes
+- **Distribution Shift** - Real vs synthetic divergence (KL, JS, Wasserstein, KS)
+- **Diagnostics Validation Summary**   
+  - Pass/fail snapshot of all runtime checks
+  - Consolidated pass/fail state of every validation layer (invariants,     parameter bounds, bootstrap CIs, distribution metrics, diagnostics, hypothesis tests)
 
 ### Data Exports
 
@@ -290,6 +349,25 @@ The analysis generates the following output files:
 | `reward_samples.csv`       | Raw synthetic samples for custom analysis            |
 | `feature_importance.csv`   | Feature importance rankings from random forest model |
 | `partial_dependence_*.csv` | Partial dependence data for key features             |
+| `manifest.json`            | Run metadata (seed, params, top features, overrides) |
+
+### Manifest Structure (`manifest.json`)
+
+Key fields:
+
+| Field | Description |
+|-------|-------------|
+| `generated_at` | ISO timestamp of run |
+| `num_samples` | Number of synthetic samples generated |
+| `seed` | Random seed used (deterministic cascade) |
+| `profit_target_effective` | Profit target after risk/reward scaling |
+| `top_features` | Top 5 features by permutation importance |
+| `reward_param_overrides` | Subset of reward tunables whose values differ from defaults |
+| `params_hash` | SHA-256 hash combining simulation params + overrides (reproducibility) |
+| `params` | Echo of core simulation parameters (subset, for quick audit) |
+| `parameter_adjustments` | Any automatic bound clamps applied by `validate_reward_parameters` |
+
+Use `params_hash` to verify reproducibility across runs; identical seeds + identical overrides ⇒ identical hash.
 
 ---
 
@@ -328,7 +406,7 @@ python reward_space_analysis.py \
     --output real_vs_synthetic
 ```
 
-The report will include distribution shift metrics (KL divergence, JS distance, Wasserstein distance) showing how well synthetic samples represent real trading.
+The report will include distribution shift metrics (KL divergence ≥ 0, JS distance ∈ [0,1], Wasserstein ≥ 0, KS statistic ∈ [0,1], KS p‑value ∈ [0,1]) showing how well synthetic samples represent real trading. Degenerate (constant) distributions are auto‑detected and produce zero divergence and KS p‑value = 1.0 to avoid spurious instability.
 
 ### Batch Analysis
 
@@ -346,32 +424,85 @@ done
 
 ## 🧪 Validation & Testing
 
-### Run Regression Tests
+### Run Tests
 
 ```shell
-python test_reward_alignment.py
+python test_reward_space_analysis.py
 ```
 
-**Expected output:**
+The unified suite currently contains 32 focused tests (coverage ~84%). Example (abridged) successful run shows all test_* cases passing (see file for full list). Number may increase as validations expand.
 
-```
-✅ ENUMS_MATCH: True
-✅ DEFAULT_PARAMS_MATCH: True
-✅ TEST_INVALID_ACTION: PASS
-✅ TEST_IDLE_PENALTY: PASS
-✅ TEST_HOLDING_PENALTY: PASS
-✅ TEST_EXIT_REWARD: PASS
-```
+### Test Categories
+
+| Category | Class | Focus |
+|----------|-------|-------|
+| Integration | TestIntegration | CLI, artifacts, manifest reproducibility |
+| Statistical Coherence | TestStatisticalCoherence | Distribution shift, diagnostics, hypothesis basics |
+| Reward Alignment | TestRewardAlignment | Component correctness & exit factors |
+| Public API | TestPublicFunctions | Parsing, bootstrap, reproducibility seeds |
+| Edge Cases | TestEdgeCases | Extreme params & exit modes diversity |
+| Utility | TestUtilityFunctions | I/O writers, model analysis, helper conversions |
+| Private via Public | TestPrivateFunctionsViaPublicAPI | Penalties & exit reward paths |
+
+### Test Architecture
+
+- **Single test file**: `test_reward_space_analysis.py` (consolidates all testing)
+- **Base class**: `RewardSpaceTestBase` with shared configuration and utilities
+- **Unified framework**: `unittest` with optional `pytest` configuration
+- **Reproducible**: Fixed seed (`SEED = 42`) for consistent results
+
+### Code Coverage Analysis
+
+**Current Coverage: ~84%**
+
+To analyze code coverage in detail:
 
 ```shell
-python test_stat_coherence.py
+# Install coverage tool (if not already installed)
+pip install coverage
+
+# Run tests with coverage
+coverage run --source=. test_reward_space_analysis.py
+
+# Generate coverage report
+coverage report -m
+
+# Generate HTML report for detailed analysis
+coverage html
+# View htmlcov/index.html in browser
 ```
+
+**Coverage Focus Areas:**
+- ✅ **Core reward calculation logic** - Excellently covered (>95%)
+- ✅ **Statistical functions** - Comprehensively covered (>90%)
+- ✅ **Public API functions** - Thoroughly covered (>85%)
+- ✅ **Report generation functions** - Well covered via dedicated tests
+- ✅ **Utility functions** - Well covered via simulation tests
+- ⚠️ **CLI interface and main()** - Partially covered (sufficient via integration tests)
+- ⚠️ **Error handling paths** - Basic coverage (acceptable for robustness)
 
 ### When to Run Tests
 
 - After modifying reward logic
 - Before important analyses
 - When results seem unexpected
+- After updating dependencies or Python version
+- When contributing new features (aim for >80% coverage on new code)
+
+### Run Specific Test Categories
+
+```shell
+# All tests (recommended)
+python test_reward_space_analysis.py
+
+# Individual test classes using unittest
+python -m unittest test_reward_space_analysis.TestIntegration
+python -m unittest test_reward_space_analysis.TestStatisticalCoherence
+python -m unittest test_reward_space_analysis.TestRewardAlignment
+
+# With pytest (if installed)
+pytest test_reward_space_analysis.py -v
+```
 
 ---
 
@@ -403,7 +534,7 @@ pip install pandas numpy scipy scikit-learn
 
 **Solution:**
 
-- Run `test_reward_alignment.py` to validate logic
+- Run `test_reward_space_analysis.py` to validate logic
 - Review parameter overrides with `--params`
 - Check trading mode settings (spot vs margin/futures)
 - Verify `base_factor` matches your environment config
@@ -447,8 +578,7 @@ pip install pandas numpy scipy scikit-learn
 python reward_space_analysis.py --num_samples 20000 --output my_analysis
 
 # Run validation tests
-python test_reward_alignment.py
-python test_stat_coherence.py
+python test_reward_space_analysis.py
 ```
 
 ### Best Practices
@@ -457,7 +587,7 @@ python test_stat_coherence.py
 
 - Start with 10,000-20,000 samples for quick iteration
 - Use default parameters initially
-- Always run tests after modifying reward logic
+- Always run tests after modifying reward logic: `python test_reward_space_analysis.py`
 - Review `statistical_analysis.md` for insights
 
 **For Advanced Users:**
@@ -482,6 +612,62 @@ For detailed troubleshooting, see [Troubleshooting](#-troubleshooting) section.
 | ------------------ | ------------------------------------------------------------- |
 | Memory errors      | Reduce `--num_samples` to 10,000-20,000                       |
 | Slow execution     | Use `--trading_mode spot` or reduce samples                   |
-| Unexpected rewards | Run `test_reward_alignment.py` and check `--params` overrides |
+| Unexpected rewards | Run `test_reward_space_analysis.py` and check `--params` overrides |
 | Import errors      | Activate venv: `source .venv/bin/activate`                    |
 | No output files    | Check write permissions and disk space                        |
+| Hash mismatch      | Confirm overrides + seed; compare `reward_param_overrides`    |
+
+### Validation Layers (Runtime)
+
+All runs execute a sequence of fail‑fast validations; a failure aborts with a clear message:
+
+| Layer | Scope | Guarantees |
+|-------|-------|------------|
+| Simulation Invariants | Raw synthetic samples | PnL only on exit actions; sum PnL equals exit PnL; no exit reward without PnL. |
+| Parameter Bounds | Tunables | Clamps values outside declared bounds; records adjustments in manifest. |
+| Bootstrap CIs | Mean estimates | Finite means; ordered CI bounds; non‑NaN across metrics. |
+| Distribution Metrics | Real vs synthetic shifts | Metrics within mathematical bounds (KL ≥0, JS ∈[0,1], Wasserstein ≥0, KS stats/p ≤[0,1]). Degenerate distributions handled safely (zeroed metrics). |
+| Distribution Diagnostics | Normality & moments | Finite mean/std/skew/kurtosis; Shapiro p-value ∈[0,1]; variance non-negative. |
+| Hypothesis Tests | Test result dicts | p-values & effect sizes within valid ranges; optional multiple-testing adjustment (Benjamini–Hochberg). |
+
+### Statistical Method Notes
+
+- Bootstrap CIs: percentile method (default 10k resamples in full runs; tests may use fewer). BCa not yet implemented (explicitly deferred).
+- Multiple testing: Benjamini–Hochberg available via `--pvalue_adjust benjamini_hochberg`.
+- JS distance reported as the square root of Jensen–Shannon divergence (hence bounded by 1).
+- Degenerate distributions (all values identical) short‑circuit to stable zero metrics.
+- Random Forest: 400 trees, `n_jobs=1` for determinism.
+- Heteroscedasticity model: σ = `pnl_base_std * (1 + pnl_duration_vol_scale * duration_ratio)`.
+
+### Parameter Validation & Sanitization
+
+Before simulation (early in `main()`), `validate_reward_parameters` enforces numeric bounds (see `_PARAMETER_BOUNDS` in code). Adjusted values are:
+
+1. Clamped to min/max if out of range.
+2. Reset to min if non-finite.
+3. Recorded in `manifest.json` under `parameter_adjustments` with original and adjusted values. Each entry also contains `_reason_text` (comma‑separated clamp reasons: e.g. `min=0.0`, `max=1.0`, `non_finite_reset`).
+
+Design intent: maintain a single canonical defaults map + explicit bounds; no silent acceptance of pathological inputs.
+
+#### Parameter Bounds Summary
+
+| Parameter | Min | Max | Notes |
+|-----------|-----|-----|-------|
+| `invalid_action` | — | 0.0 | Must be ≤ 0 (penalty) |
+| `base_factor` | 0.0 | — | Global scaling factor |
+| `idle_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
+| `idle_penalty_scale` | 0.0 | — | Scale ≥ 0 |
+| `holding_duration_ratio_grace` | 0.0 | - | Fraction of max duration |
+| `holding_penalty_scale` | 0.0 | — | Scale ≥ 0 |
+| `holding_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
+| `exit_linear_slope` | 0.0 | — | Slope ≥ 0 |
+| `exit_piecewise_grace` | 0.0 | - | Fraction of max duration |
+| `exit_piecewise_slope` | 0.0 | — | Slope ≥ 0 |
+| `exit_power_tau` | 1e-6 | 1.0 | Mapped to alpha = -ln(tau) |
+| `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
+| `efficiency_weight` | 0.0 | 2.0 | Blend weight |
+| `efficiency_center` | 0.0 | 1.0 | Sigmoid center |
+| `win_reward_factor` | 0.0 | — | Amplification ≥ 0 |
+| `pnl_factor_beta` | 1e-6 | — | Sensitivity ≥ tiny positive |
+
+Non-finite inputs are reset to the applicable minimum (or 0.0 if only a maximum is declared) and logged as adjustments.

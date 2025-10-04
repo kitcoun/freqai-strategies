@@ -1,0 +1,45 @@
+[tool.pytest.ini_options]
+# Pytest configuration following GitHub Copilot instructions:
+# - Single source of truth for test configuration
+# - Reproducible test execution
+# - Clear error reporting
+
+minversion = "6.0"
+testpaths = [
+    "."
+]
+python_files = [
+    "test_*.py"
+]
+python_classes = [
+    "Test*"
+]
+python_functions = [
+    "test_*"
+]
+
+# Logging configuration
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+# Coverage configuration
+addopts = [
+    "--verbose",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings",
+    "--color=yes"
+]
+
+# Test markers
+markers = [
+    "integration: Integration tests requiring external dependencies",
+    "unit: Fast unit tests",
+    "statistical: Statistical validation tests",
+    "slow: Tests that take more than a few seconds"
+]
+
+# Minimum Python version
+python_version = "3.8"
