@@ -450,6 +450,12 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                         ),
                         fit_live_predictions_candles,
                         self._optuna_config.get("label_candles_step"),
+                        min_label_natr_ratio=self.ft_params.get(
+                            "min_label_natr_ratio", 9.0
+                        ),
+                        max_label_natr_ratio=self.ft_params.get(
+                            "max_label_natr_ratio", 12.0
+                        ),
                     ),
                     directions=[
                         optuna.study.StudyDirection.MAXIMIZE,
@@ -1759,6 +1765,8 @@ def label_objective(
     df: pd.DataFrame,
     fit_live_predictions_candles: int,
     candles_step: int,
+    min_label_natr_ratio: float = 9.0,
+    max_label_natr_ratio: float = 12.0,
 ) -> tuple[float, int]:
     min_label_period_candles, max_label_period_candles, candles_step = (
         get_min_max_label_period_candles(fit_live_predictions_candles, candles_step)
@@ -1770,7 +1778,9 @@ def label_objective(
         max_label_period_candles,
         step=candles_step,
     )
-    label_natr_ratio = trial.suggest_float("label_natr_ratio", 9.0, 12.0, step=0.05)
+    label_natr_ratio = trial.suggest_float(
+        "label_natr_ratio", min_label_natr_ratio, max_label_natr_ratio, step=0.05
+    )
 
     label_period_cycles = fit_live_predictions_candles / label_period_candles
     df = df.iloc[-(max(2, int(label_period_cycles)) * label_period_candles) :]

@@ -102,7 +102,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     # Efficiency keys (env defaults)
     "efficiency_weight": 0.75,
     "efficiency_center": 0.75,
-    # Profit factor params (env-compatible)
+    # Profit factor params (env defaults)
     "win_reward_factor": 2.0,
     "pnl_factor_beta": 0.5,
 }
