@@ -2781,6 +2781,8 @@ def get_schedule(
         return SimpleLinearSchedule(initial_value)
     elif schedule_type == "constant":
         return ConstantSchedule(initial_value)
+    else:
+        return ConstantSchedule(initial_value)
 
 
 def get_net_arch(
