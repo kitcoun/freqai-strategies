@@ -13,9 +13,9 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 - ✅ Generate thousands of synthetic trading scenarios deterministically
 - ✅ Analyze reward distribution, feature importance & partial dependence
 - ✅ Built‑in invariant & statistical validation layers (fail‑fast)
-- ✅ Export reproducible artifacts (hash + manifest)
+- ✅ Export reproducible artifacts (parameter hash + execution manifest)
 - ✅ Compare synthetic vs real trading data (distribution shift metrics)
-- ✅ Parameter bounds & automatic sanitization
+- ✅ Parameter bounds validation & automatic sanitization
 
 ---
 
@@ -47,7 +47,7 @@ Whenever you need to run analyses or tests, activate the environment first:
 
 ```shell
 source .venv/bin/activate
-python reward_space_analysis.py --num_samples 20000 --output demo
+python reward_space_analysis.py --num_samples 20000 --output reward_space_outputs
 python test_reward_space_analysis.py
 ```
 
@@ -64,14 +64,15 @@ Unless otherwise noted, the command examples below assume your current working d
 **Goal:** Ensure rewards behave as expected in different scenarios
 
 ```shell
-python reward_space_analysis.py --num_samples 20000 --output validation
+python reward_space_analysis.py --num_samples 20000 --output reward_space_outputs
 ```
 
 **Check in `statistical_analysis.md`:**
 
 - Long/Short exits should have positive average rewards
-- Invalid actions should have negative penalties
-- Idle periods should reduce rewards
+- Invalid actions should have negative penalties (default: -2.0)
+- Idle periods should reduce rewards progressively
+- Validation layers report any invariant violations
 
 ### 2. Analyze Parameter Sensitivity
 
@@ -82,12 +83,12 @@ python reward_space_analysis.py --num_samples 20000 --output validation
 python reward_space_analysis.py \
     --num_samples 30000 \
     --params win_reward_factor=2.0 \
-    --output conservative
+    --output conservative_rewards
 
 python reward_space_analysis.py \
     --num_samples 30000 \
     --params win_reward_factor=4.0 \
-    --output aggressive
+    --output aggressive_rewards
 ```
 
 **Compare:** Reward distributions between runs in `statistical_analysis.md`
@@ -120,7 +121,7 @@ python reward_space_analysis.py \
 python reward_space_analysis.py \
     --num_samples 100000 \
     --real_episodes ../user_data/transitions/*.pkl \
-    --output comparison
+    --output real_vs_synthetic
 ```
 
 ---
@@ -221,8 +222,7 @@ _Idle penalty configuration:_
 
 _Holding penalty configuration:_
 
-- `holding_duration_ratio_grace` (default: 1.0) - Grace region before holding penalty increases with duration ratio
-- `holding_penalty_scale` (default: 0.3) - Scale of holding penalty
+- `holding_penalty_scale` (default: 0.5) - Scale of holding penalty
 - `holding_penalty_power` (default: 1.0) - Power applied to holding penalty scaling
 
 _Exit factor configuration:_
@@ -284,10 +284,10 @@ python reward_space_analysis.py --num_samples 50000 --seed 777
 
 #### Direct Tunable Overrides vs `--params`
 
-Every key in `DEFAULT_MODEL_REWARD_PARAMETERS` is also exposed as an individual CLI flag (dynamic generation). You may choose either style:
+All reward parameters are also available as individual CLI flags. You may choose either style:
 
 ```shell
-# Direct flag style (dynamic CLI args)
+# Direct flag style
 python reward_space_analysis.py --win_reward_factor 3.0 --idle_penalty_scale 2.0 --num_samples 15000
 
 # Equivalent using --params
@@ -387,7 +387,7 @@ python reward_space_analysis.py \
 # Test aggressive holding penalties
 python reward_space_analysis.py \
     --num_samples 25000 \
-    --params holding_penalty_scale=0.5 holding_duration_ratio_grace=0.8 \
+    --params holding_penalty_scale=0.5 \
     --output aggressive_holding
 ```
 
@@ -430,7 +430,7 @@ done
 python test_reward_space_analysis.py
 ```
 
-The suite currently contains 32 focused tests (coverage ~84%). Example (abridged) successful run shows all test_* cases passing (see file for full list). Number may increase as validations expand.
+The suite currently contains 34 focused tests (coverage ~84%). Example (abridged) successful run shows all test_* cases passing (see file for full list). Number may increase as validations expand.
 
 ### Test Categories
 
@@ -439,17 +439,18 @@ The suite currently contains 32 focused tests (coverage ~84%). Example (abridged
 | Integration | TestIntegration | CLI, artifacts, manifest reproducibility |
 | Statistical Coherence | TestStatisticalCoherence | Distribution shift, diagnostics, hypothesis basics |
 | Reward Alignment | TestRewardAlignment | Component correctness & exit factors |
-| Public API | TestPublicFunctions | Parsing, bootstrap, reproducibility seeds |
-| Edge Cases | TestEdgeCases | Extreme params & exit modes diversity |
-| Utility | TestUtilityFunctions | I/O writers, model analysis, helper conversions |
-| Private via Public | TestPrivateFunctionsViaPublicAPI | Penalties & exit reward paths |
+| Public API | TestPublicAPI | Core API functions and interfaces |
+| Statistical Validation | TestStatisticalValidation | Mathematical bounds and validation |
+| Boundary Conditions | TestBoundaryConditions | Extreme params & edge cases |
+| Helper Functions | TestHelperFunctions | I/O writers, model analysis, utility conversions |
+| Private Functions | TestPrivateFunctions | Penalty logic & internal reward calculations |
 
 ### Test Architecture
 
 - **Single test file**: `test_reward_space_analysis.py` (consolidates all testing)
 - **Base class**: `RewardSpaceTestBase` with shared configuration and utilities
 - **Unified framework**: `unittest` with optional `pytest` configuration
-- **Reproducible**: Fixed seed (`SEED = 42`) for consistent results
+- **Reproducible**: Fixed seed (`seed = 42`) for consistent results
 
 ### Code Coverage Analysis
 
@@ -575,7 +576,7 @@ source .venv/bin/activate
 pip install pandas numpy scipy scikit-learn
 
 # Basic analysis
-python reward_space_analysis.py --num_samples 20000 --output my_analysis
+python reward_space_analysis.py --num_samples 20000 --output reward_space_outputs
 
 # Run validation tests
 python test_reward_space_analysis.py
@@ -657,7 +658,6 @@ Design intent: maintain a single canonical defaults map + explicit bounds; no si
 | `base_factor` | 0.0 | — | Global scaling factor |
 | `idle_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
 | `idle_penalty_scale` | 0.0 | — | Scale ≥ 0 |
-| `holding_duration_ratio_grace` | 0.0 | - | Fraction of max duration |
 | `holding_penalty_scale` | 0.0 | — | Scale ≥ 0 |
 | `holding_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
 | `exit_linear_slope` | 0.0 | — | Slope ≥ 0 |

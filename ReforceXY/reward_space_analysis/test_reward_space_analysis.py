@@ -7,14 +7,15 @@ Covers:
 - Reward alignment with environment
 """
 
-import unittest
-import tempfile
-import shutil
-from pathlib import Path
-import subprocess
-import sys
 import json
 import pickle
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -27,12 +28,12 @@ try:
         ForceActions,
         Positions,
         RewardContext,
+        bootstrap_confidence_intervals,
         calculate_reward,
         compute_distribution_shift_metrics,
         distribution_diagnostics,
-        simulate_samples,
-        bootstrap_confidence_intervals,
         parse_overrides,
+        simulate_samples,
     )
 except ImportError as e:
     print(f"Import error: {e}")
@@ -394,8 +395,8 @@ class TestRewardAlignment(RewardSpaceTestBase):
             self.assertGreater(factor, 0, f"Exit factor for {mode} should be positive")
 
 
-class TestPublicFunctions(RewardSpaceTestBase):
-    """Test public functions and API."""
+class TestPublicAPI(RewardSpaceTestBase):
+    """Test public API functions and interfaces."""
 
     def test_parse_overrides(self):
         """Test parse_overrides function."""
@@ -446,8 +447,8 @@ class TestPublicFunctions(RewardSpaceTestBase):
     def test_statistical_hypothesis_tests_seed_reproducibility(self):
         """Ensure statistical_hypothesis_tests + bootstrap CIs are reproducible with stats_seed."""
         from reward_space_analysis import (
-            statistical_hypothesis_tests,
             bootstrap_confidence_intervals,
+            statistical_hypothesis_tests,
         )
 
         np.random.seed(123)
@@ -503,6 +504,10 @@ class TestPublicFunctions(RewardSpaceTestBase):
         ci_a = bootstrap_confidence_intervals(df, metrics, n_bootstrap=250, seed=2024)
         ci_b = bootstrap_confidence_intervals(df, metrics, n_bootstrap=250, seed=2024)
         self.assertEqual(ci_a, ci_b)
+
+
+class TestStatisticalValidation(RewardSpaceTestBase):
+    """Test statistical validation and mathematical bounds."""
 
     def test_pnl_invariant_validation(self):
         """Test critical PnL invariant: only exit actions should have non-zero PnL."""
@@ -663,11 +668,12 @@ class TestPublicFunctions(RewardSpaceTestBase):
     def test_exit_factor_mathematical_formulas(self):
         """Test mathematical correctness of exit factor calculations."""
         import math
+
         from reward_space_analysis import (
-            calculate_reward,
-            RewardContext,
             Actions,
             Positions,
+            RewardContext,
+            calculate_reward,
         )
 
         # Test context with known values
@@ -948,8 +954,8 @@ class TestPublicFunctions(RewardSpaceTestBase):
                 )
 
 
-class TestEdgeCases(RewardSpaceTestBase):
-    """Test edge cases and error conditions."""
+class TestBoundaryConditions(RewardSpaceTestBase):
+    """Test boundary conditions and edge cases."""
 
     def test_extreme_parameter_values(self):
         """Test behavior with extreme parameter values."""
@@ -1026,7 +1032,7 @@ class TestEdgeCases(RewardSpaceTestBase):
                 )
 
 
-class TestUtilityFunctions(RewardSpaceTestBase):
+class TestHelperFunctions(RewardSpaceTestBase):
     """Test utility and helper functions."""
 
     def test_to_bool(self):
@@ -1118,9 +1124,9 @@ class TestUtilityFunctions(RewardSpaceTestBase):
     def test_write_functions(self):
         """Test various write functions."""
         from reward_space_analysis import (
-            write_summary,
             write_relationship_reports,
             write_representativity_report,
+            write_summary,
         )
 
         # Create test data
@@ -1288,7 +1294,7 @@ class TestUtilityFunctions(RewardSpaceTestBase):
             )
 
 
-class TestPrivateFunctionsViaPublicAPI(RewardSpaceTestBase):
+class TestPrivateFunctions(RewardSpaceTestBase):
     """Test private functions through public API calls."""
 
     def test_idle_penalty_via_rewards(self):
@@ -1431,6 +1437,113 @@ class TestPrivateFunctionsViaPublicAPI(RewardSpaceTestBase):
             breakdown.invalid_penalty,
             "Total should equal invalid penalty",
         )
+
+    def test_holding_penalty_zero_before_max_duration(self):
+        """Test holding penalty logic: zero penalty before max_trade_duration."""
+        max_duration = 128
+
+        # Test cases: before, at, and after max_duration
+        test_cases = [
+            (64, "before max_duration"),
+            (127, "just before max_duration"),
+            (128, "exactly at max_duration"),
+            (129, "just after max_duration"),
+            (192, "well after max_duration"),
+        ]
+
+        for trade_duration, description in test_cases:
+            with self.subTest(duration=trade_duration, desc=description):
+                context = RewardContext(
+                    pnl=0.0,  # Neutral PnL to isolate holding penalty
+                    trade_duration=trade_duration,
+                    idle_duration=0,
+                    max_trade_duration=max_duration,
+                    max_unrealized_profit=0.0,
+                    min_unrealized_profit=0.0,
+                    position=Positions.Long,
+                    action=Actions.Neutral,
+                    force_action=None,
+                )
+
+                breakdown = calculate_reward(
+                    context,
+                    self.DEFAULT_PARAMS,
+                    base_factor=100.0,
+                    profit_target=0.03,
+                    risk_reward_ratio=1.0,
+                    short_allowed=True,
+                    action_masking=True,
+                )
+
+                duration_ratio = trade_duration / max_duration
+
+                if duration_ratio < 1.0:
+                    # Before max_duration: should be exactly 0.0
+                    self.assertEqual(
+                        breakdown.holding_penalty,
+                        0.0,
+                        f"Holding penalty should be 0.0 {description} (ratio={duration_ratio:.2f})",
+                    )
+                elif duration_ratio == 1.0:
+                    # At max_duration: (1.0-1.0)^power = 0, so should be 0.0
+                    self.assertEqual(
+                        breakdown.holding_penalty,
+                        0.0,
+                        f"Holding penalty should be 0.0 {description} (ratio={duration_ratio:.2f})",
+                    )
+                else:
+                    # After max_duration: should be negative
+                    self.assertLess(
+                        breakdown.holding_penalty,
+                        0.0,
+                        f"Holding penalty should be negative {description} (ratio={duration_ratio:.2f})",
+                    )
+
+                # Total should equal holding penalty (no other components active)
+                self.assertEqual(
+                    breakdown.total,
+                    breakdown.holding_penalty,
+                    f"Total should equal holding penalty {description}",
+                )
+
+    def test_holding_penalty_progressive_scaling(self):
+        """Test that holding penalty scales progressively after max_duration."""
+        max_duration = 100
+        durations = [150, 200, 300]  # All > max_duration
+        penalties = []
+
+        for duration in durations:
+            context = RewardContext(
+                pnl=0.0,
+                trade_duration=duration,
+                idle_duration=0,
+                max_trade_duration=max_duration,
+                max_unrealized_profit=0.0,
+                min_unrealized_profit=0.0,
+                position=Positions.Long,
+                action=Actions.Neutral,
+                force_action=None,
+            )
+
+            breakdown = calculate_reward(
+                context,
+                self.DEFAULT_PARAMS,
+                base_factor=100.0,
+                profit_target=0.03,
+                risk_reward_ratio=1.0,
+                short_allowed=True,
+                action_masking=True,
+            )
+
+            penalties.append(breakdown.holding_penalty)
+
+        # Penalties should be increasingly negative (monotonic decrease)
+        for i in range(1, len(penalties)):
+            self.assertLessEqual(
+                penalties[i],
+                penalties[i - 1],
+                f"Penalty should increase with duration: {penalties[i]} > {penalties[i-1]}",
+            )
 
 
 if __name__ == "__main__":

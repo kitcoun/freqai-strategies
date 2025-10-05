@@ -73,6 +73,24 @@ def _to_bool(value: Any) -> bool:
     return bool(text)
 
 
+def _get_param_float(params: Dict[str, float | str], key: str, default: float) -> float:
+    """Extract float parameter with type safety and default fallback."""
+    value = params.get(key, default)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    return default
+
+
+def _compute_duration_ratio(trade_duration: int, max_trade_duration: int) -> float:
+    """Compute duration ratio with safe division."""
+    return trade_duration / max(1, max_trade_duration)
+
+
 def _is_short_allowed(trading_mode: str) -> bool:
     mode = trading_mode.lower()
     if mode in {"margin", "futures"}:
@@ -82,6 +100,9 @@ def _is_short_allowed(trading_mode: str) -> bool:
     raise ValueError("Unsupported trading mode. Expected one of: spot, margin, futures")
 
 
+# Mathematical constants pre-computed for performance
+_LOG_2 = math.log(2.0)
+
 DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     "invalid_action": -2.0,
     "base_factor": 100.0,
@@ -89,8 +110,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     "idle_penalty_power": 1.0,
     "idle_penalty_scale": 1.0,
     # Holding keys (env defaults)
-    "holding_duration_ratio_grace": 1.0,
-    "holding_penalty_scale": 0.3,
+    "holding_penalty_scale": 0.5,
     "holding_penalty_power": 1.0,
     # Exit factor configuration (env defaults)
     "exit_factor_mode": "piecewise",
@@ -112,7 +132,6 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "base_factor": "Base reward factor used inside the environment.",
     "idle_penalty_power": "Power applied to idle penalty scaling.",
     "idle_penalty_scale": "Scale of idle penalty.",
-    "holding_duration_ratio_grace": "Grace ratio (<=1) before holding penalty increases with duration ratio.",
     "holding_penalty_scale": "Scale of holding penalty.",
     "holding_penalty_power": "Power applied to holding penalty scaling.",
     "exit_factor_mode": "Time attenuation mode for exit factor.",
@@ -138,7 +157,6 @@ _PARAMETER_BOUNDS: Dict[str, Dict[str, float]] = {
     "base_factor": {"min": 0.0},
     "idle_penalty_power": {"min": 0.0},
     "idle_penalty_scale": {"min": 0.0},
-    "holding_duration_ratio_grace": {"min": 0.0},
     "holding_penalty_scale": {"min": 0.0},
     "holding_penalty_power": {"min": 0.0},
     "exit_linear_slope": {"min": 0.0},
@@ -291,7 +309,7 @@ def _get_exit_factor(
     elif exit_factor_mode == "sqrt":
         factor /= math.sqrt(1.0 + duration_ratio)
     elif exit_factor_mode == "linear":
-        slope = float(params.get("exit_linear_slope", 1.0))
+        slope = _get_param_float(params, "exit_linear_slope", 1.0)
         if slope < 0.0:
             slope = 1.0
         factor /= 1.0 + slope * duration_ratio
@@ -304,17 +322,17 @@ def _get_exit_factor(
             if isinstance(exit_power_tau, (int, float)):
                 exit_power_tau = float(exit_power_tau)
                 if 0.0 < exit_power_tau <= 1.0:
-                    exit_power_alpha = -math.log(exit_power_tau) / math.log(2.0)
+                    exit_power_alpha = -math.log(exit_power_tau) / _LOG_2
         if not isinstance(exit_power_alpha, (int, float)):
             exit_power_alpha = 1.0
         else:
             exit_power_alpha = float(exit_power_alpha)
         factor /= math.pow(1.0 + duration_ratio, exit_power_alpha)
     elif exit_factor_mode == "piecewise":
-        exit_piecewise_grace = float(params.get("exit_piecewise_grace", 1.0))
+        exit_piecewise_grace = _get_param_float(params, "exit_piecewise_grace", 1.0)
         if not (0.0 <= exit_piecewise_grace <= 1.0):
             exit_piecewise_grace = 1.0
-        exit_piecewise_slope = float(params.get("exit_piecewise_slope", 1.0))
+        exit_piecewise_slope = _get_param_float(params, "exit_piecewise_slope", 1.0)
         if exit_piecewise_slope < 0.0:
             exit_piecewise_slope = 1.0
         if duration_ratio <= exit_piecewise_grace:
@@ -325,7 +343,7 @@ def _get_exit_factor(
             )
         factor /= duration_divisor
     elif exit_factor_mode == "half_life":
-        exit_half_life = float(params.get("exit_half_life", 0.5))
+        exit_half_life = _get_param_float(params, "exit_half_life", 0.5)
         if exit_half_life <= 0.0:
             exit_half_life = 0.5
         factor *= math.pow(2.0, -duration_ratio / exit_half_life)
@@ -398,8 +416,8 @@ def _idle_penalty(
     context: RewardContext, idle_factor: float, params: Dict[str, float | str]
 ) -> float:
     """Mirror the environment's idle penalty behaviour."""
-    idle_penalty_scale = float(params.get("idle_penalty_scale", 1.0))
-    idle_penalty_power = float(params.get("idle_penalty_power", 1.0))
+    idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 1.0)
+    idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.0)
     max_idle_duration = int(
         params.get(
             "max_idle_duration_candles",
@@ -411,44 +429,23 @@ def _idle_penalty(
 
 
 def _holding_penalty(
-    context: RewardContext,
-    holding_factor: float,
-    params: Dict[str, float | str],
-    profit_target: float,
+    context: RewardContext, holding_factor: float, params: Dict[str, float | str]
 ) -> float:
     """Mirror the environment's holding penalty behaviour."""
-    holding_duration_ratio_grace = float(
-        params.get("holding_duration_ratio_grace", 1.0)
+    holding_penalty_scale = _get_param_float(params, "holding_penalty_scale", 0.5)
+    holding_penalty_power = _get_param_float(params, "holding_penalty_power", 1.0)
+    duration_ratio = _compute_duration_ratio(
+        context.trade_duration, context.max_trade_duration
     )
-    if holding_duration_ratio_grace <= 0.0:
-        holding_duration_ratio_grace = 1.0
-    holding_penalty_scale = float(params.get("holding_penalty_scale", 0.3))
-    holding_penalty_power = float(params.get("holding_penalty_power", 1.0))
-    duration_ratio = context.trade_duration / max(1, context.max_trade_duration)
-    pnl = context.pnl
 
-    if pnl >= profit_target:
-        if duration_ratio <= holding_duration_ratio_grace:
-            effective_duration_ratio = duration_ratio / holding_duration_ratio_grace
-        else:
-            effective_duration_ratio = 1.0 + (
-                duration_ratio - holding_duration_ratio_grace
-            )
-        return (
-            -holding_factor
-            * holding_penalty_scale
-            * effective_duration_ratio**holding_penalty_power
-        )
+    if duration_ratio < 1.0:
+        return 0.0
 
-    if duration_ratio > holding_duration_ratio_grace:
-        return (
-            -holding_factor
-            * holding_penalty_scale
-            * (1.0 + (duration_ratio - holding_duration_ratio_grace))
-            ** holding_penalty_power
-        )
-
-    return 0.0
+    return (
+        -holding_factor
+        * holding_penalty_scale
+        * (duration_ratio - 1.0) ** holding_penalty_power
+    )
 
 
 def _compute_exit_reward(
@@ -458,7 +455,9 @@ def _compute_exit_reward(
     params: Dict[str, float | str],
 ) -> float:
     """Compose the exit reward: pnl * exit_factor."""
-    duration_ratio = context.trade_duration / max(1, context.max_trade_duration)
+    duration_ratio = _compute_duration_ratio(
+        context.trade_duration, context.max_trade_duration
+    )
     exit_factor = _get_exit_factor(
         base_factor,
         context.pnl,
@@ -488,11 +487,11 @@ def calculate_reward(
         force_action=context.force_action,
     )
     if not is_valid and not action_masking:
-        breakdown.invalid_penalty = float(params.get("invalid_action", -2.0))
+        breakdown.invalid_penalty = _get_param_float(params, "invalid_action", -2.0)
         breakdown.total = breakdown.invalid_penalty
         return breakdown
 
-    factor = float(params.get("base_factor", base_factor))
+    factor = _get_param_float(params, "base_factor", base_factor)
 
     profit_target_override = params.get("profit_target")
     if isinstance(profit_target_override, (int, float)):
@@ -509,8 +508,7 @@ def calculate_reward(
     profit_target_final = profit_target * risk_reward_ratio
     idle_factor = factor * profit_target_final / 3.0
     pnl_factor = _get_pnl_factor(params, context, profit_target_final)
-    holding_factor = idle_factor * pnl_factor
-    duration_ratio = context.trade_duration / max(1, context.max_trade_duration)
+    holding_factor = idle_factor
 
     if context.force_action in (
         ForceActions.Take_profit,
@@ -536,21 +534,8 @@ def calculate_reward(
         context.position in (Positions.Long, Positions.Short)
         and context.action == Actions.Neutral
     ):
-        holding_duration_ratio_grace = float(
-            params.get("holding_duration_ratio_grace", 1.0)
-        )
-        if holding_duration_ratio_grace <= 0.0:
-            holding_duration_ratio_grace = 1.0
-        if (
-            context.pnl >= profit_target_final
-            or duration_ratio > holding_duration_ratio_grace
-        ):
-            breakdown.holding_penalty = _holding_penalty(
-                context, holding_factor, params, profit_target_final
-            )
-            breakdown.total = breakdown.holding_penalty
-            return breakdown
-        breakdown.total = 0.0
+        breakdown.holding_penalty = _holding_penalty(context, holding_factor, params)
+        breakdown.total = breakdown.holding_penalty
         return breakdown
 
     if context.action == Actions.Long_exit and context.position == Positions.Long:
@@ -1947,7 +1932,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         nargs="*",
         default=[],
         metavar="KEY=VALUE",
-        help="Override reward parameters, e.g. holding_duration_ratio_grace=1.2",
+        help="Override reward parameters, e.g. holding_penalty_scale=0.5",
     )
     # Dynamically add CLI options for all tunables
     add_tunable_cli_args(parser)

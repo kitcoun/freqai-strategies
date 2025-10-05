@@ -1520,7 +1520,7 @@ class MyRLEnv(Base5ActionRLEnv):
         base_factor = float(model_reward_parameters.get("base_factor", 100.0))
         pnl_target = self.profit_aim * self.rr
         idle_factor = base_factor * pnl_target / 3.0
-        holding_factor = idle_factor * self._get_pnl_factor(pnl, pnl_target)
+        holding_factor = idle_factor
 
         # Force exits
         if self._force_action in (
@@ -1576,39 +1576,21 @@ class MyRLEnv(Base5ActionRLEnv):
             self._position in (Positions.Short, Positions.Long)
             and action == Actions.Neutral.value
         ):
-            holding_duration_ratio_grace = float(
-                model_reward_parameters.get("holding_duration_ratio_grace", 1.0)
-            )
-            if holding_duration_ratio_grace <= 0.0:
-                holding_duration_ratio_grace = 1.0
             holding_penalty_scale = float(
-                model_reward_parameters.get("holding_penalty_scale", 0.3)
+                model_reward_parameters.get("holding_penalty_scale", 0.5)
             )
             holding_penalty_power = float(
                 model_reward_parameters.get("holding_penalty_power", 1.0)
             )
-            if pnl >= pnl_target:
-                if duration_ratio <= holding_duration_ratio_grace:
-                    effective_duration_ratio = (
-                        duration_ratio / holding_duration_ratio_grace
-                    )
-                else:
-                    effective_duration_ratio = 1.0 + (
-                        duration_ratio - holding_duration_ratio_grace
-                    )
-                return (
-                    -holding_factor
-                    * holding_penalty_scale
-                    * effective_duration_ratio**holding_penalty_power
-                )
-            if duration_ratio > holding_duration_ratio_grace:
-                return (
-                    -holding_factor
-                    * holding_penalty_scale
-                    * (1.0 + (duration_ratio - holding_duration_ratio_grace))
-                    ** holding_penalty_power
-                )
-            return 0.0
+
+            if duration_ratio < 1.0:
+                return 0.0
+
+            return (
+                -holding_factor
+                * holding_penalty_scale
+                * (duration_ratio - 1.0) ** holding_penalty_power
+            )
 
         # close long
         if action == Actions.Long_exit.value and self._position == Positions.Long:
