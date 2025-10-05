@@ -879,8 +879,8 @@ class TestPublicFunctions(RewardSpaceTestBase):
         for col in required_columns:
             self.assertIn(col, df_margin.columns, f"Column {col} should be present")
 
-    def test_reward_calculation_comprehensive(self):
-        """Test comprehensive reward calculation scenarios."""
+    def test_reward_calculation(self):
+        """Test reward calculation scenarios."""
         # Test different reward scenarios
         test_cases = [
             # (position, action, force_action, expected_reward_type)
@@ -1029,8 +1029,8 @@ class TestEdgeCases(RewardSpaceTestBase):
 class TestUtilityFunctions(RewardSpaceTestBase):
     """Test utility and helper functions."""
 
-    def test_to_bool_comprehensive(self):
-        """Test _to_bool with comprehensive inputs."""
+    def test_to_bool(self):
+        """Test _to_bool with various inputs."""
         # Test via simulate_samples which uses action_masking parameter
         df1 = simulate_samples(
             num_samples=10,
@@ -1188,8 +1188,8 @@ class TestUtilityFunctions(RewardSpaceTestBase):
             self.assertEqual(len(loaded_data), 3)
             self.assertIn("pnl", loaded_data.columns)
 
-    def test_statistical_functions_comprehensive(self):
-        """Test comprehensive statistical functions."""
+    def test_statistical_functions(self):
+        """Test statistical functions."""
         from reward_space_analysis import (
             statistical_hypothesis_tests,
             write_enhanced_statistical_report,
@@ -1355,7 +1355,7 @@ class TestPrivateFunctionsViaPublicAPI(RewardSpaceTestBase):
             "Total should equal holding penalty",
         )
 
-    def test_exit_reward_calculation_comprehensive(self):
+    def test_exit_reward_calculation(self):
         """Test exit reward calculation with various scenarios."""
         scenarios = [
             (Positions.Long, Actions.Long_exit, 0.05, "Profitable long exit"),
