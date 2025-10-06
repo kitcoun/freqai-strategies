@@ -1516,11 +1516,9 @@ class MyRLEnv(Base5ActionRLEnv):
             )
 
         efficiency_factor = 1.0
-        efficiency_weight = float(
-            model_reward_parameters.get("efficiency_weight", 0.75)
-        )
+        efficiency_weight = float(model_reward_parameters.get("efficiency_weight", 1.0))
         efficiency_center = float(
-            model_reward_parameters.get("efficiency_center", 0.75)
+            model_reward_parameters.get("efficiency_center", 0.35)
         )
         if efficiency_weight != 0.0 and pnl >= 0.0:
             max_pnl = max(self.get_max_unrealized_profit(), pnl)
@@ -1607,7 +1605,7 @@ class MyRLEnv(Base5ActionRLEnv):
             if max_idle_duration <= 0:
                 max_idle_duration = max_trade_duration
             idle_penalty_scale = float(
-                model_reward_parameters.get("idle_penalty_scale", 1.0)
+                model_reward_parameters.get("idle_penalty_scale", 0.75)
             )
             idle_penalty_power = float(
                 model_reward_parameters.get("idle_penalty_power", 1.0)

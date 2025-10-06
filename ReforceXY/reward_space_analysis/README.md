@@ -218,7 +218,7 @@ _Invalid action penalty:_
 
 _Idle penalty configuration:_
 
-- `idle_penalty_scale` (default: 1.0) - Scale of idle penalty
+- `idle_penalty_scale` (default: 0.75) - Scale of idle penalty
 - `idle_penalty_power` (default: 1.0) - Power applied to idle penalty scaling
 
 _Holding penalty configuration:_
@@ -238,8 +238,8 @@ _Exit factor configuration:_
 
 _Efficiency configuration:_
 
-- `efficiency_weight` (default: 0.75) - Weight for efficiency factor in exit reward
-- `efficiency_center` (default: 0.75) - Center for efficiency factor sigmoid
+- `efficiency_weight` (default: 1.0) - Weight for efficiency factor in exit reward
+- `efficiency_center` (default: 0.35) - Linear pivot in [0,1] for efficiency ratio. If efficiency_ratio > center ⇒ amplification (>1); if < center ⇒ attenuation (<1, floored at 0).
 
 _Profit factor configuration:_
 
@@ -368,7 +368,7 @@ Key fields:
 | `seed` | Random seed used (deterministic cascade) |
 | `profit_target_effective` | Profit target after risk/reward scaling |
 | `top_features` | Top 5 features by permutation importance |
-| `reward_param_overrides` | Subset of reward tunables whose values differ from defaults |
+| `reward_param_overrides` | Subset of reward tunables explicitly supplied via CLI |
 | `params_hash` | SHA-256 hash combining simulation params + overrides (reproducibility) |
 | `params` | Echo of core simulation parameters (subset, for quick audit) |
 | `parameter_adjustments` | Any automatic bound clamps applied by `validate_reward_parameters` |
@@ -678,8 +678,8 @@ Before simulation (early in `main()`), `validate_reward_parameters` enforces num
 | `exit_power_tau` | 1e-6 | 1.0 | Mapped to alpha = -ln(tau) |
 | `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
 | `efficiency_weight` | 0.0 | 2.0 | Blend weight |
-| `efficiency_center` | 0.0 | 1.0 | Sigmoid center |
-| `win_reward_factor` | 0.0 | — | Amplification ≥ 0 |
+| `efficiency_center` | 0.0 | 1.0 | Linear pivot (efficiency ratio center) |
+| `win_reward_factor` | 0.0 | — | Amplification for pnl above target |
 | `pnl_factor_beta` | 1e-6 | — | Sensitivity ≥ tiny positive |
 
 Non-finite inputs are reset to the applicable minimum (or 0.0 if only a maximum is declared) and logged as adjustments.

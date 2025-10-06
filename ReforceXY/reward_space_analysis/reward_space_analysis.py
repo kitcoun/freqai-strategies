@@ -129,7 +129,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     "base_factor": 100.0,
     # Idle penalty (env defaults)
     "idle_penalty_power": 1.0,
-    "idle_penalty_scale": 1.0,
+    "idle_penalty_scale": 0.75,
     # If <=0 or unset, falls back to max_trade_duration_candles at runtime
     "max_idle_duration_candles": 0,
     # Holding keys (env defaults)
@@ -143,8 +143,8 @@ DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     "exit_power_tau": 0.5,
     "exit_half_life": 0.5,
     # Efficiency keys (env defaults)
-    "efficiency_weight": 0.75,
-    "efficiency_center": 0.75,
+    "efficiency_weight": 1.0,
+    "efficiency_center": 0.35,
     # Profit factor params (env defaults)
     "win_reward_factor": 2.0,
     "pnl_factor_beta": 0.5,
@@ -169,7 +169,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "exit_power_tau": "Tau in (0,1] to derive alpha for power mode.",
     "exit_half_life": "Half-life for exponential decay exit mode.",
     "efficiency_weight": "Weight for efficiency factor in exit reward.",
-    "efficiency_center": "Center for efficiency factor sigmoid.",
+    "efficiency_center": "Pivot (in [0,1]) for linear efficiency factor; efficiency_ratio above this increases factor, below decreases.",
     "win_reward_factor": "Amplification for pnl above target (no hard cap; asymptotic).",
     "pnl_factor_beta": "Sensitivity of amplification around target.",
     "check_invariants": "Boolean flag (true/false) to enable runtime invariant & safety checks.",
@@ -443,8 +443,8 @@ def _get_pnl_factor(
         )
 
     efficiency_factor = 1.0
-    efficiency_weight = float(params.get("efficiency_weight", 0.75))
-    efficiency_center = float(params.get("efficiency_center", 0.75))
+    efficiency_weight = float(params.get("efficiency_weight", 1.0))
+    efficiency_center = float(params.get("efficiency_center", 0.35))
     if efficiency_weight != 0.0 and pnl >= 0.0:
         max_pnl = max(context.max_unrealized_profit, pnl)
         min_pnl = min(context.min_unrealized_profit, pnl)
@@ -487,7 +487,7 @@ def _idle_penalty(
     context: RewardContext, idle_factor: float, params: Dict[str, float | str]
 ) -> float:
     """Mirror the environment's idle penalty behaviour."""
-    idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 1.0)
+    idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 0.75)
     idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.0)
     max_trade_duration = int(params.get("max_trade_duration_candles", 128))
     max_idle_duration_candles = params.get("max_idle_duration_candles")
@@ -834,8 +834,8 @@ def _validate_simulation_invariants(df: pd.DataFrame) -> None:
     """
     # INVARIANT 1: PnL Conservation - Total PnL must equal sum of exit PnL
     total_pnl = df["pnl"].sum()
-    exit_mask = df["reward_exit"] != 0
-    exit_pnl_sum = df.loc[exit_mask, "pnl"].sum()
+    exit_action_mask = df["action"].isin([2.0, 4.0])
+    exit_pnl_sum = df.loc[exit_action_mask, "pnl"].sum()
 
     pnl_diff = abs(total_pnl - exit_pnl_sum)
     if pnl_diff > 1e-10:
@@ -846,8 +846,7 @@ def _validate_simulation_invariants(df: pd.DataFrame) -> None:
 
     # INVARIANT 2: PnL Exclusivity - Only exit actions should have non-zero PnL
     non_zero_pnl_actions = set(df[df["pnl"] != 0]["action"].unique())
-    valid_exit_actions = {2.0, 4.0}  # Long_exit, Short_exit
-
+    valid_exit_actions = {2.0, 4.0}
     invalid_actions = non_zero_pnl_actions - valid_exit_actions
     if invalid_actions:
         raise AssertionError(
@@ -2587,12 +2586,19 @@ def main() -> None:
             top_features = fi_df.head(5)["feature"].tolist()
         else:
             top_features = []
-        # Detect reward parameter overrides vs defaults for traceability
-        reward_param_overrides = {
-            k: params[k]
-            for k in DEFAULT_MODEL_REWARD_PARAMETERS
-            if k in params and params[k] != DEFAULT_MODEL_REWARD_PARAMETERS[k]
-        }
+        # Detect reward parameter overrides for traceability.
+        reward_param_overrides = {}
+        # Step 1: differences
+        for k in DEFAULT_MODEL_REWARD_PARAMETERS:
+            if k in params and params[k] != DEFAULT_MODEL_REWARD_PARAMETERS[k]:
+                reward_param_overrides[k] = params[k]
+        # Step 2: explicit flags
+        for k in DEFAULT_MODEL_REWARD_PARAMETERS:
+            if hasattr(args, k):
+                v = getattr(args, k)
+                if v is not None:
+                    # Use the resolved param value for consistency
+                    reward_param_overrides[k] = params.get(k, v)
 
         manifest = {
             "generated_at": pd.Timestamp.now().isoformat(),
