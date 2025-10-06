@@ -19,7 +19,7 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 
 ---
 
-**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#️-cli-parameters-reference). For runtime guardrails see [Validation Layers](#-validation-layers-runtime).
+**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#️-cli-parameters-reference). For runtime guardrails see [Validation Layers](#-validation-layers-runtime). The exit factor attenuation logic is now centralized through a single internal helper ensuring analytical parity with the live environment (parity date: 2025‑10‑06).
 
 ---
 
@@ -149,6 +149,7 @@ None - all parameters have sensible defaults.
 
 - Maximum trade duration in candles (from environment config)
 - Should match your actual trading environment setting
+- Also used as fallback for `max_idle_duration_candles` when that tunable is ≤ 0 (idle penalty grace behaviour)
 
 ### Reward Configuration
 
@@ -229,10 +230,11 @@ _Exit factor configuration:_
 
 - `exit_factor_mode` (default: piecewise) - Time attenuation mode for exit factor (legacy|sqrt|linear|power|piecewise|half_life)
 - `exit_linear_slope` (default: 1.0) - Slope for linear exit attenuation
-- `exit_piecewise_grace` (default: 1.0) - Grace region for piecewise exit attenuation
-- `exit_piecewise_slope` (default: 1.0) - Slope after grace for piecewise mode
-- `exit_power_tau` (default: 0.5) - Tau in (0,1] to derive alpha for power mode
-- `exit_half_life` (default: 0.5) - Half-life for exponential decay exit mode
+- `exit_piecewise_grace` (default: 1.0) - Grace region fraction [0,1]; divisor=1 within grace
+- `exit_piecewise_slope` (default: 1.0) - Slope after grace for piecewise mode (0 ⇒ flat beyond grace)
+- `exit_power_tau` (default: 0.5) - Tau in (0,1] mapped to alpha = -ln(tau)/ln(2)
+- `exit_half_life` (default: 0.5) - Half-life for exponential decay exit mode (factor *= 2^(-r/half_life))
+- `exit_factor_threshold` (default: 10000.0) - Warning-only threshold; no capping occurs (emits RuntimeWarning if |factor| exceeds)
 
 _Efficiency configuration:_
 
@@ -430,7 +432,7 @@ done
 python test_reward_space_analysis.py
 ```
 
-The suite currently contains 34 focused tests (coverage ~84%). Example (abridged) successful run shows all test_* cases passing (see file for full list). Number may increase as validations expand.
+The suite currently contains 49 focused tests (coverage ~84% — dynamic; see manifest + future reports). The number evolves as new invariants and edge cases are added. Always prefer running the full suite after modifying reward logic or attenuation parameters.
 
 ### Test Categories
 
@@ -454,7 +456,7 @@ The suite currently contains 34 focused tests (coverage ~84%). Example (abridged
 
 ### Code Coverage Analysis
 
-**Current Coverage: ~84%**
+**Current Coverage: ~84% (approximate; re-run coverage locally for exact figures)**
 
 To analyze code coverage in detail:
 
@@ -630,6 +632,7 @@ All runs execute a sequence of fail‑fast validations; a failure aborts with a 
 | Distribution Metrics | Real vs synthetic shifts | Metrics within mathematical bounds (KL ≥0, JS ∈[0,1], Wasserstein ≥0, KS stats/p ≤[0,1]). Degenerate distributions handled safely (zeroed metrics). |
 | Distribution Diagnostics | Normality & moments | Finite mean/std/skew/kurtosis; Shapiro p-value ∈[0,1]; variance non-negative. |
 | Hypothesis Tests | Test result dicts | p-values & effect sizes within valid ranges; optional multiple-testing adjustment (Benjamini–Hochberg). |
+| Exit Factor Attenuation | Time-based scaling | Centralized piecewise divisor helper ensures single source of truth; threshold is warning-only (no hard cap). |
 
 ### Statistical Method Notes
 
@@ -646,9 +649,9 @@ Before simulation (early in `main()`), `validate_reward_parameters` enforces num
 
 1. Clamped to min/max if out of range.
 2. Reset to min if non-finite.
-3. Recorded in `manifest.json` under `parameter_adjustments` with original and adjusted values. Each entry also contains `_reason_text` (comma‑separated clamp reasons: e.g. `min=0.0`, `max=1.0`, `non_finite_reset`).
+3. Recorded in `manifest.json` under `parameter_adjustments` with fields: `original`, `adjusted`, `reason` (a comma‑separated list of clamp reasons like `min=0.0`, `max=1.0`, `non_finite_reset`).
 
-Design intent: maintain a single canonical defaults map + explicit bounds; no silent acceptance of pathological inputs.
+Design intent: maintain a single canonical defaults map + explicit bounds; no silent acceptance of pathological inputs. (The earlier `_reason_text` placeholder has been removed; use `reason`.)
 
 #### Parameter Bounds Summary
 
@@ -661,7 +664,7 @@ Design intent: maintain a single canonical defaults map + explicit bounds; no si
 | `holding_penalty_scale` | 0.0 | — | Scale ≥ 0 |
 | `holding_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
 | `exit_linear_slope` | 0.0 | — | Slope ≥ 0 |
-| `exit_piecewise_grace` | 0.0 | - | Fraction of max duration |
+| `exit_piecewise_grace` | 0.0 | 1.0 | Fraction of max duration (grace region) |
 | `exit_piecewise_slope` | 0.0 | — | Slope ≥ 0 |
 | `exit_power_tau` | 1e-6 | 1.0 | Mapped to alpha = -ln(tau) |
 | `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
