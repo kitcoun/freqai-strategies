@@ -243,7 +243,7 @@ _Efficiency configuration:_
 
 _Profit factor configuration:_
 
-- `win_reward_factor` (default: 2.0) - Amplification for PnL above target
+- `win_reward_factor` (default: 2.0) - Amplification for PnL above target (no upper bound; effective profit_target_factor ∈ [1, 1 + win_reward_factor] because tanh ≤ 1)
 - `pnl_factor_beta` (default: 0.5) - Sensitivity of amplification around target
 
 **`--real_episodes`** (path, optional)
@@ -340,7 +340,7 @@ The analysis generates the following output files:
 - **Feature Importance** - Machine learning analysis of key drivers
 - **Statistical Validation** - Hypothesis tests, confidence intervals, normality + effect sizes
 - **Distribution Shift** - Real vs synthetic divergence (KL, JS, Wasserstein, KS)
-- **Diagnostics Validation Summary**   
+- **Diagnostics Validation Summary**
   - Pass/fail snapshot of all runtime checks
   - Consolidated pass/fail state of every validation layer (invariants, parameter bounds, bootstrap CIs, distribution metrics, diagnostics, hypothesis tests)
 
@@ -670,7 +670,7 @@ Design intent: maintain a single canonical defaults map + explicit bounds; no si
 | `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
 | `efficiency_weight` | 0.0 | 2.0 | Blend weight |
 | `efficiency_center` | 0.0 | 1.0 | Sigmoid center |
-| `win_reward_factor` | 0.0 | — | Amplification ≥ 0 |
+| `win_reward_factor` | 0.0 | — | Amplification ≥ 0 (no upper cap; asymptotic multiplier 1+win_reward_factor) |
 | `pnl_factor_beta` | 1e-6 | — | Sensitivity ≥ tiny positive |
 
 Non-finite inputs are reset to the applicable minimum (or 0.0 if only a maximum is declared) and logged as adjustments.
