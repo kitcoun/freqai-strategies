@@ -2119,6 +2119,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
     def test_piecewise_slope_zero_constant_after_grace(self):
         """Piecewise slope=0 should yield flat factor after grace boundary."""
         from reward_space_analysis import compute_exit_factor
+
         params = self.DEFAULT_PARAMS.copy()
         params.update(
             {
@@ -2144,9 +2145,37 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 msg=f"Piecewise slope=0 factor drift at ratio set {ratios} => {values}",
             )
 
+    def test_piecewise_grace_extends_beyond_one(self):
+        """Grace >1.0 should keep divisor=1 (no attenuation) past duration_ratio=1."""
+        from reward_space_analysis import compute_exit_factor
+
+        params = self.DEFAULT_PARAMS.copy()
+        params.update(
+            {
+                "exit_factor_mode": "piecewise",
+                "exit_piecewise_grace": 1.5,  # extend grace beyond max duration ratio 1.0
+                "exit_piecewise_slope": 2.0,
+            }
+        )
+        base_factor = 80.0
+        pnl = 0.03
+        pnl_factor = 1.1
+        # Ratios straddling 1.0 but below grace=1.5 plus one beyond grace
+        ratios = [0.8, 1.0, 1.2, 1.4, 1.6]
+        vals = [compute_exit_factor(base_factor, pnl, pnl_factor, r, params) for r in ratios]
+        # All ratios <=1.5 should yield identical factor
+        ref = vals[0]
+        for i, r in enumerate(ratios[:-1]):  # exclude last (1.6)
+            self.assertAlmostEqualFloat(
+                vals[i], ref, 1e-9, msg=f"Unexpected attenuation before grace end at ratio {r}"
+            )
+        # Last ratio (1.6) should be attenuated (strictly less than ref)
+        self.assertLess(vals[-1], ref, "Attenuation should begin after grace boundary")
+
     def test_legacy_step_non_monotonic(self):
         """Legacy mode applies step change at duration_ratio=1 (should not be monotonic)."""
         from reward_space_analysis import compute_exit_factor
+
         params = self.DEFAULT_PARAMS.copy()
         params["exit_factor_mode"] = "legacy"
         base_factor = 100.0
@@ -2169,6 +2198,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
     def test_exit_factor_non_negative_with_positive_pnl(self):
         """Exit factor must not be negative when pnl >= 0 (invariant clamp)."""
         from reward_space_analysis import compute_exit_factor
+
         params = self.DEFAULT_PARAMS.copy()
         # Try multiple modes / extreme params
         modes = ["linear", "power", "piecewise", "half_life", "sqrt", "legacy"]
@@ -2180,7 +2210,9 @@ class TestRewardRobustness(RewardSpaceTestBase):
             params_mode["exit_factor_mode"] = mode
             val = compute_exit_factor(base_factor, pnl, pnl_factor, 2.0, params_mode)
             self.assertGreaterEqual(
-                val, 0.0, f"Exit factor should be >=0 for non-negative pnl in mode {mode}"
+                val,
+                0.0,
+                f"Exit factor should be >=0 for non-negative pnl in mode {mode}",
             )
 
 
@@ -2309,7 +2341,18 @@ class TestParameterValidation(RewardSpaceTestBase):
         params["exit_factor_threshold"] = 10.0  # low threshold to trigger easily
         # Remove base_factor to allow argument override
         params.pop("base_factor", None)
-        context = self._mk_context(pnl=0.06, trade_duration=10)
+        from reward_space_analysis import RewardContext, Actions, Positions
+        context = RewardContext(
+            pnl=0.06,
+            trade_duration=10,
+            idle_duration=0,
+            max_trade_duration=128,
+            max_unrealized_profit=0.08,
+            min_unrealized_profit=0.0,
+            position=Positions.Long,
+            action=Actions.Long_exit,
+            force_action=None,
+        )
         with _warnings.catch_warnings(record=True) as w:
             _warnings.simplefilter("always")
             br = calculate_reward(

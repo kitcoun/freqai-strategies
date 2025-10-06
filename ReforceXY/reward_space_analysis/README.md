@@ -230,7 +230,7 @@ _Exit factor configuration:_
 
 - `exit_factor_mode` (default: piecewise) - Time attenuation mode for exit factor (legacy|sqrt|linear|power|piecewise|half_life)
 - `exit_linear_slope` (default: 1.0) - Slope for linear exit attenuation
-- `exit_piecewise_grace` (default: 1.0) - Grace region fraction [0,1]; divisor=1 within grace
+- `exit_piecewise_grace` (default: 1.0) - Grace region boundary (duration ratio); values >1.0 extend no-attenuation period
 - `exit_piecewise_slope` (default: 1.0) - Slope after grace for piecewise mode (0 ⇒ flat beyond grace)
 - `exit_power_tau` (default: 0.5) - Tau in (0,1] mapped to alpha = -ln(tau)/ln(2)
 - `exit_half_life` (default: 0.5) - Half-life for exponential decay exit mode (factor *= 2^(-r/half_life))
@@ -664,7 +664,7 @@ Design intent: maintain a single canonical defaults map + explicit bounds; no si
 | `holding_penalty_scale` | 0.0 | — | Scale ≥ 0 |
 | `holding_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
 | `exit_linear_slope` | 0.0 | — | Slope ≥ 0 |
-| `exit_piecewise_grace` | 0.0 | 1.0 | Fraction of max duration (grace region) |
+| `exit_piecewise_grace` | 0.0 | — | Grace boundary expressed in duration ratio units (can exceed 1.0 to extend full-strength region) |
 | `exit_piecewise_slope` | 0.0 | — | Slope ≥ 0 |
 | `exit_power_tau` | 1e-6 | 1.0 | Mapped to alpha = -ln(tau) |
 | `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |

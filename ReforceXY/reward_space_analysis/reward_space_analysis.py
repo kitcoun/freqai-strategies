@@ -96,8 +96,9 @@ def _piecewise_duration_divisor(
     exception fallback in ``_get_exit_factor`` without duplicating logic.
     """
     exit_piecewise_grace = _get_param_float(params, "exit_piecewise_grace", 1.0)
-    if not (0.0 <= exit_piecewise_grace <= 1.0):  # sanitize grace range
-        exit_piecewise_grace = 1.0
+    # Only enforce a lower bound; values >1.0 extend the grace region beyond max duration ratio.
+    if exit_piecewise_grace < 0.0:
+        exit_piecewise_grace = 0.0
     exit_piecewise_slope = _get_param_float(params, "exit_piecewise_slope", 1.0)
     if exit_piecewise_slope < 0.0:  # sanitize slope sign
         exit_piecewise_slope = 1.0
@@ -387,7 +388,7 @@ def _get_exit_factor(
             "power",
             "half_life",
         }:
-            # Default & fallback behaviour consolidated
+            # Default behaviour
             factor /= _piecewise_duration_divisor(duration_ratio, params)
         elif exit_factor_mode == "half_life":
             exit_half_life = _get_param_float(params, "exit_half_life", 0.5)
@@ -487,16 +488,11 @@ def _idle_penalty(
     """Mirror the environment's idle penalty behaviour."""
     idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 1.0)
     idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.0)
-    max_idle_duration_cfg = int(
+    max_idle_duration = int(
         params.get(
-            "max_idle_duration_candles", params.get("max_trade_duration_candles", 0)
+            "max_idle_duration_candles", params.get("max_trade_duration_candles", 128)
         )
     )
-    # Fallback: align with documented intent -> use context.max_trade_duration when cfg <= 0
-    if max_idle_duration_cfg <= 0:
-        max_idle_duration = context.max_trade_duration
-    else:
-        max_idle_duration = max_idle_duration_cfg
     idle_duration_ratio = context.idle_duration / max(1, max_idle_duration)
     return -idle_factor * idle_penalty_scale * idle_duration_ratio**idle_penalty_power
 
