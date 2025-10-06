@@ -15,13 +15,9 @@ services:
     # Build step - only needed when additional dependencies are needed
     build:
       context: .
-      dockerfile_inline: |
-        FROM freqtradeorg/freqtrade:stable_freqairl
-
-        ARG optuna_version
-        RUN pip install --user --no-cache-dir optuna==$${optuna_version} optuna-dashboard
+      dockerfile: Dockerfile.reforcexy
       args:
-        - optuna_version=4.5.0
+        optuna_version: 4.5.0
     restart: unless-stopped
     container_name: freqtrade-ReforceXY
     environment:
