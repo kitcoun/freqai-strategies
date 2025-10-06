@@ -166,7 +166,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "exit_half_life": "Half-life for exponential decay exit mode.",
     "efficiency_weight": "Weight for efficiency factor in exit reward.",
     "efficiency_center": "Pivot (in [0,1]) for linear efficiency factor; efficiency_ratio above this increases factor, below decreases.",
-    "win_reward_factor": "Amplification for pnl above target (no hard cap; asymptotic).",
+    "win_reward_factor": "Asymptotic bonus multiplier for pnl above target: approaches (1 + win_reward_factor); combined with efficiency_factor the final product can exceed this bound.",
     "pnl_factor_beta": "Sensitivity of amplification around target.",
     "check_invariants": "Boolean flag (true/false) to enable runtime invariant & safety checks.",
     "exit_factor_threshold": "If |exit factor| exceeds this threshold, emit warning.",

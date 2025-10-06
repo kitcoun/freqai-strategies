@@ -268,7 +268,7 @@ _Efficiency configuration:_
 
 _Profit factor configuration:_
 
-- `win_reward_factor` (default: 2.0) - Amplification for PnL above target (no upper bound; effective profit_target_factor ∈ [1, 1 + win_reward_factor] because tanh ≤ 1)
+- `win_reward_factor` (default: 2.0) - Asymptotic bonus multiplier for PnL above target. Raw `profit_target_factor` ∈ [1, 1 + win_reward_factor] (tanh bounds it); overall amplification may exceed this once multiplied by `efficiency_factor`.
 - `pnl_factor_beta` (default: 0.5) - Sensitivity of amplification around target
 
 _Invariant / safety controls:_
@@ -704,7 +704,7 @@ Before simulation (early in `main()`), `validate_reward_parameters` enforces num
 | `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
 | `efficiency_weight` | 0.0 | 2.0 | Blend weight |
 | `efficiency_center` | 0.0 | 1.0 | Linear pivot (efficiency ratio center) |
-| `win_reward_factor` | 0.0 | — | Amplification for pnl above target |
+| `win_reward_factor` | 0.0 | — | Asymptotic bonus multiplier for pnl above target |
 | `pnl_factor_beta` | 1e-6 | — | Sensitivity ≥ tiny positive |
 
 Non-finite inputs are reset to the applicable minimum (or 0.0 if only a maximum is declared) and logged as adjustments.
