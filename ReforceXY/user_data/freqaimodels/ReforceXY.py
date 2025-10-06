@@ -121,6 +121,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         - pip install optuna-dashboard
     """
 
+    _LOG_2 = math.log(2.0)
     _action_masks_cache: Dict[Tuple[str, int, Optional[int]], NDArray[np.bool_]] = {}
 
     def __init__(self, *args, **kwargs):
@@ -1392,7 +1393,18 @@ class MyRLEnv(Base5ActionRLEnv):
             duration_ratio = 0.0
 
         model_reward_parameters = self.rl_config.get("model_reward_parameters", {})
-        exit_factor_mode = model_reward_parameters.get("exit_factor_mode", "piecewise")
+        exit_attenuation_mode = str(
+            model_reward_parameters.get("exit_attenuation_mode", "linear")
+        )
+        exit_plateau = bool(model_reward_parameters.get("exit_plateau", True))
+        exit_plateau_grace = float(
+            model_reward_parameters.get("exit_plateau_grace", 1.0)
+        )
+        if exit_plateau_grace < 0.0:
+            exit_plateau_grace = 1.0
+        exit_linear_slope = float(model_reward_parameters.get("exit_linear_slope", 1.0))
+        if exit_linear_slope < 0.0:
+            exit_linear_slope = 1.0
 
         def _legacy(f: float, dr: float, p: Mapping) -> float:
             return f * (1.5 if dr <= 1.0 else 0.5)
@@ -1415,25 +1427,12 @@ class MyRLEnv(Base5ActionRLEnv):
                 if isinstance(tau, (int, float)):
                     tau = float(tau)
                     if 0.0 < tau <= 1.0:
-                        alpha = -math.log(tau) / math.log(2.0)
+                        alpha = -math.log(tau) / ReforceXY._LOG_2
             if not isinstance(alpha, (int, float)):
                 alpha = 1.0
             else:
                 alpha = float(alpha)
             return f / math.pow(1.0 + dr, alpha)
-
-        def _piecewise(f: float, dr: float, p: Mapping) -> float:
-            grace = float(p.get("exit_piecewise_grace", 1.0))
-            if grace < 0.0:
-                grace = 1.0
-            slope = float(p.get("exit_piecewise_slope", 1.0))
-            if slope < 0.0:
-                slope = 1.0
-            if dr <= grace:
-                divisor = 1.0
-            else:
-                divisor = 1.0 + slope * (dr - grace)
-            return f / divisor
 
         def _half_life(f: float, dr: float, p: Mapping) -> float:
             hl = float(p.get("exit_half_life", 0.5))
@@ -1446,30 +1445,41 @@ class MyRLEnv(Base5ActionRLEnv):
             "sqrt": _sqrt,
             "linear": _linear,
             "power": _power,
-            "piecewise": _piecewise,
             "half_life": _half_life,
         }
 
-        strategy_fn = strategies.get(exit_factor_mode, _piecewise)
+        if exit_plateau:
+            if duration_ratio <= exit_plateau_grace:
+                effective_dr = 0.0
+            else:
+                effective_dr = duration_ratio - exit_plateau_grace
+        else:
+            effective_dr = duration_ratio
+
+        strategy_fn = strategies.get(exit_attenuation_mode, None)
+        if strategy_fn is None:
+            logger.debug(
+                "Unknown exit_attenuation_mode '%s'; defaulting to linear",
+                exit_attenuation_mode,
+            )
+            strategy_fn = _linear
+
         try:
-            factor = strategy_fn(factor, duration_ratio, model_reward_parameters)
+            factor = strategy_fn(factor, effective_dr, model_reward_parameters)
         except Exception as e:
             logger.warning(
-                "exit_factor_mode '%s' failed (%r), falling back to piecewise",
-                exit_factor_mode,
+                "exit_attenuation_mode '%s' failed (%r); fallback linear (effective_dr=%.5f)",
+                exit_attenuation_mode,
                 e,
+                effective_dr,
             )
-            factor = _piecewise(factor, duration_ratio, model_reward_parameters)
+            factor = _linear(factor, effective_dr, model_reward_parameters)
 
         factor *= self._get_pnl_factor(pnl, self.profit_aim * self.rr)
 
         check_invariants = model_reward_parameters.get("check_invariants", True)
         check_invariants = (
-            check_invariants
-            if isinstance(check_invariants, bool)
-            else bool(int(check_invariants))
-            if isinstance(check_invariants, (int, float))
-            else True
+            check_invariants if isinstance(check_invariants, bool) else True
         )
         if check_invariants:
             if not np.isfinite(factor):

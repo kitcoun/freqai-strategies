@@ -669,7 +669,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
 
         for mode in modes_to_test:
             test_params = self.DEFAULT_PARAMS.copy()
-            test_params["exit_factor_mode"] = mode
+            test_params["exit_attenuation_mode"] = mode
             factor = rsa.compute_exit_factor(
                 base_factor=1.0,
                 pnl=0.02,
@@ -684,7 +684,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             self.assertGreater(factor, 0, f"Exit factor for {mode} should be positive")
 
     def test_negative_slope_sanitization(self):
-        """Negative slopes for linear/piecewise must be sanitized to positive default (1.0)."""
+        """Negative slopes for linear must be sanitized to positive default (1.0)."""
         from reward_space_analysis import compute_exit_factor
 
         base_factor = 100.0
@@ -695,9 +695,13 @@ class TestRewardAlignment(RewardSpaceTestBase):
 
         # Linear mode: slope -5.0 should behave like slope=1.0 (sanitized)
         params_lin_neg = self.DEFAULT_PARAMS.copy()
-        params_lin_neg.update({"exit_factor_mode": "linear", "exit_linear_slope": -5.0})
+        params_lin_neg.update(
+            {"exit_attenuation_mode": "linear", "exit_linear_slope": -5.0}
+        )
         params_lin_pos = self.DEFAULT_PARAMS.copy()
-        params_lin_pos.update({"exit_factor_mode": "linear", "exit_linear_slope": 1.0})
+        params_lin_pos.update(
+            {"exit_attenuation_mode": "linear", "exit_linear_slope": 1.0}
+        )
         val_lin_neg = compute_exit_factor(
             base_factor, pnl, pnl_factor, duration_ratio_linear, params_lin_neg
         )
@@ -711,34 +715,36 @@ class TestRewardAlignment(RewardSpaceTestBase):
             msg="Negative linear slope not sanitized to default behavior",
         )
 
-        # Piecewise mode: negative slope sanitized to 1.0
-        params_pw_neg = self.DEFAULT_PARAMS.copy()
-        params_pw_neg.update(
+        # Plateau+linear: negative slope sanitized similarly
+        params_pl_neg = self.DEFAULT_PARAMS.copy()
+        params_pl_neg.update(
             {
-                "exit_factor_mode": "piecewise",
-                "exit_piecewise_grace": 1.0,
-                "exit_piecewise_slope": -3.0,
+                "exit_attenuation_mode": "linear",
+                "exit_plateau": True,
+                "exit_plateau_grace": 1.0,
+                "exit_linear_slope": -3.0,
             }
         )
-        params_pw_pos = self.DEFAULT_PARAMS.copy()
-        params_pw_pos.update(
+        params_pl_pos = self.DEFAULT_PARAMS.copy()
+        params_pl_pos.update(
             {
-                "exit_factor_mode": "piecewise",
-                "exit_piecewise_grace": 1.0,
-                "exit_piecewise_slope": 1.0,
+                "exit_attenuation_mode": "linear",
+                "exit_plateau": True,
+                "exit_plateau_grace": 1.0,
+                "exit_linear_slope": 1.0,
             }
         )
-        val_pw_neg = compute_exit_factor(
-            base_factor, pnl, pnl_factor, duration_ratio_piecewise, params_pw_neg
+        val_pl_neg = compute_exit_factor(
+            base_factor, pnl, pnl_factor, duration_ratio_piecewise, params_pl_neg
         )
-        val_pw_pos = compute_exit_factor(
-            base_factor, pnl, pnl_factor, duration_ratio_piecewise, params_pw_pos
+        val_pl_pos = compute_exit_factor(
+            base_factor, pnl, pnl_factor, duration_ratio_piecewise, params_pl_pos
         )
         self.assertAlmostEqualFloat(
-            val_pw_neg,
-            val_pw_pos,
+            val_pl_neg,
+            val_pl_pos,
             tolerance=1e-9,
-            msg="Negative piecewise slope not sanitized to default behavior",
+            msg="Negative plateau+linear slope not sanitized to default behavior",
         )
 
     def test_idle_penalty_zero_when_profit_target_zero(self):
@@ -781,7 +787,13 @@ class TestRewardAlignment(RewardSpaceTestBase):
         pnl = 0.03
         pnl_factor = 1.0  # isolate attenuation
         params = self.DEFAULT_PARAMS.copy()
-        params.update({"exit_factor_mode": "power", "exit_power_tau": tau})
+        params.update(
+            {
+                "exit_attenuation_mode": "power",
+                "exit_power_tau": tau,
+                "exit_plateau": False,
+            }
+        )
         observed = compute_exit_factor(base_factor, pnl, pnl_factor, r, params)
         expected = base_factor / (1.0 + r) ** alpha
         self.assertAlmostEqualFloat(
@@ -1089,8 +1101,9 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         duration_ratio = 50 / 100  # 0.5
 
         # Test power mode with known tau
-        params["exit_factor_mode"] = "power"
+        params["exit_attenuation_mode"] = "power"
         params["exit_power_tau"] = 0.5
+        params["exit_plateau"] = False
 
         reward_power = calculate_reward(
             context, params, 100.0, 0.03, 1.0, short_allowed=True, action_masking=True
@@ -1105,7 +1118,7 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         )
 
         # Test half_life mode
-        params["exit_factor_mode"] = "half_life"
+        params["exit_attenuation_mode"] = "half_life"
         params["exit_half_life"] = 0.5
 
         reward_half_life = calculate_reward(
@@ -1117,7 +1130,7 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         self.assertAlmostEqual(expected_half_life_factor, 0.5, places=6)
 
         # Test that different modes produce different results (mathematical diversity)
-        params["exit_factor_mode"] = "linear"
+        params["exit_attenuation_mode"] = "linear"
         params["exit_linear_slope"] = 1.0
 
         reward_linear = calculate_reward(
@@ -1388,12 +1401,12 @@ class TestBoundaryConditions(RewardSpaceTestBase):
 
     def test_different_exit_factor_modes(self):
         """Test different exit factor calculation modes."""
-        modes = ["legacy", "sqrt", "linear", "power", "piecewise", "half_life"]
+        modes = ["legacy", "sqrt", "linear", "power", "half_life"]
 
         for mode in modes:
             with self.subTest(mode=mode):
                 test_params = self.DEFAULT_PARAMS.copy()
-                test_params["exit_factor_mode"] = mode
+                test_params["exit_attenuation_mode"] = mode
 
                 context = RewardContext(
                     pnl=0.02,
@@ -1425,55 +1438,6 @@ class TestBoundaryConditions(RewardSpaceTestBase):
                     np.isfinite(breakdown.total),
                     f"Total reward should be finite for mode {mode}",
                 )
-
-    def test_unknown_exit_factor_mode_fallback_piecewise(self):
-        """Unknown exit_factor_mode must fallback to piecewise attenuation."""
-        base_factor = 150.0
-        context = RewardContext(
-            pnl=0.05,
-            trade_duration=160,
-            idle_duration=0,
-            max_trade_duration=100,
-            max_unrealized_profit=0.07,
-            min_unrealized_profit=0.0,
-            position=Positions.Long,
-            action=Actions.Long_exit,
-            force_action=None,
-        )
-        params_piecewise = self.DEFAULT_PARAMS.copy()
-        params_piecewise["exit_factor_mode"] = "piecewise"
-        params_unknown = self.DEFAULT_PARAMS.copy()
-        params_unknown["exit_factor_mode"] = "unrecognized_mode_xyz"
-
-        reward_piecewise = calculate_reward(
-            context,
-            params_piecewise,
-            base_factor=base_factor,
-            profit_target=0.03,
-            risk_reward_ratio=1.0,
-            short_allowed=True,
-            action_masking=True,
-        )
-        reward_unknown = calculate_reward(
-            context,
-            params_unknown,
-            base_factor=base_factor,
-            profit_target=0.03,
-            risk_reward_ratio=1.0,
-            short_allowed=True,
-            action_masking=True,
-        )
-        self.assertGreater(
-            reward_piecewise.exit_component,
-            0.0,
-            "Piecewise exit reward should be positive with positive pnl",
-        )
-        self.assertAlmostEqualFloat(
-            reward_piecewise.exit_component,
-            reward_unknown.exit_component,
-            tolerance=1e-9,
-            msg="Fallback for unknown mode should produce identical result to piecewise",
-        )
 
 
 class TestHelperFunctions(RewardSpaceTestBase):
@@ -2154,23 +2118,26 @@ class TestRewardRobustness(RewardSpaceTestBase):
     def test_exit_factor_monotonic_attenuation(self):
         """For attenuation modes: factor should be non-increasing w.r.t duration_ratio.
 
-        Modes covered: sqrt, linear, power, half_life, piecewise (after grace).
-        Legacy is excluded (non-monotonic by design: step change). Piecewise includes flat grace then monotonic.
+        Modes covered: sqrt, linear, power, half_life, plateau+linear (after grace).
+        Legacy is excluded (non-monotonic by design). Plateau+linear includes flat grace then monotonic.
         """
         from reward_space_analysis import compute_exit_factor
 
-        modes = ["sqrt", "linear", "power", "half_life", "piecewise"]
+        modes = ["sqrt", "linear", "power", "half_life", "plateau_linear"]
         base_factor = 100.0
         pnl = 0.05
         pnl_factor = 1.0
         for mode in modes:
             params = self.DEFAULT_PARAMS.copy()
-            params["exit_factor_mode"] = mode
+            if mode in ("sqrt", "linear", "power", "half_life"):
+                params["exit_attenuation_mode"] = mode
             if mode == "linear":
                 params["exit_linear_slope"] = 1.2
-            if mode == "piecewise":
-                params["exit_piecewise_grace"] = 0.2
-                params["exit_piecewise_slope"] = 1.0
+            if mode == "plateau_linear":
+                params["exit_attenuation_mode"] = "linear"
+                params["exit_plateau"] = True
+                params["exit_plateau_grace"] = 0.2
+                params["exit_linear_slope"] = 1.0
             if mode == "power":
                 params["exit_power_tau"] = 0.5
             if mode == "half_life":
@@ -2181,9 +2148,9 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 compute_exit_factor(base_factor, pnl, pnl_factor, r, params)
                 for r in ratios
             ]
-            # Piecewise: ignore initial flat region when checking monotonic decrease
-            if mode == "piecewise":
-                grace = float(params["exit_piecewise_grace"])  # type: ignore[index]
+            # Plateau+linear: ignore initial flat region when checking monotonic decrease
+            if mode == "plateau_linear":
+                grace = float(params["exit_plateau_grace"])  # type: ignore[index]
                 filtered = [(r, v) for r, v in zip(ratios, values) if r >= grace - 1e-9]
                 values_to_check = [v for _, v in filtered]
             else:
@@ -2196,7 +2163,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 )
 
     def test_exit_factor_boundary_parameters(self):
-        """Test parameter edge cases: tau extremes, grace edges, slope zero."""
+        """Test parameter edge cases: tau extremes, plateau grace edges, slope zero."""
         from reward_space_analysis import compute_exit_factor
 
         base_factor = 50.0
@@ -2204,9 +2171,9 @@ class TestRewardRobustness(RewardSpaceTestBase):
         pnl_factor = 1.0
         # Tau near 1 (minimal attenuation) vs tau near 0 (strong attenuation)
         params_hi = self.DEFAULT_PARAMS.copy()
-        params_hi.update({"exit_factor_mode": "power", "exit_power_tau": 0.999999})
+        params_hi.update({"exit_attenuation_mode": "power", "exit_power_tau": 0.999999})
         params_lo = self.DEFAULT_PARAMS.copy()
-        params_lo.update({"exit_factor_mode": "power", "exit_power_tau": 1e-6})
+        params_lo.update({"exit_attenuation_mode": "power", "exit_power_tau": 1e-6})
         r = 1.5
         hi_val = compute_exit_factor(base_factor, pnl, pnl_factor, r, params_hi)
         lo_val = compute_exit_factor(base_factor, pnl, pnl_factor, r, params_lo)
@@ -2215,21 +2182,23 @@ class TestRewardRobustness(RewardSpaceTestBase):
             lo_val,
             "Power mode: higher tau (≈1) should attenuate less than tiny tau",
         )
-        # Piecewise grace 0 vs 1
+        # Plateau grace 0 vs 1
         params_g0 = self.DEFAULT_PARAMS.copy()
         params_g0.update(
             {
-                "exit_factor_mode": "piecewise",
-                "exit_piecewise_grace": 0.0,
-                "exit_piecewise_slope": 1.0,
+                "exit_attenuation_mode": "linear",
+                "exit_plateau": True,
+                "exit_plateau_grace": 0.0,
+                "exit_linear_slope": 1.0,
             }
         )
         params_g1 = self.DEFAULT_PARAMS.copy()
         params_g1.update(
             {
-                "exit_factor_mode": "piecewise",
-                "exit_piecewise_grace": 1.0,
-                "exit_piecewise_slope": 1.0,
+                "exit_attenuation_mode": "linear",
+                "exit_plateau": True,
+                "exit_plateau_grace": 1.0,
+                "exit_linear_slope": 1.0,
             }
         )
         val_g0 = compute_exit_factor(base_factor, pnl, pnl_factor, 0.5, params_g0)
@@ -2242,9 +2211,21 @@ class TestRewardRobustness(RewardSpaceTestBase):
         )
         # Linear slope zero vs positive
         params_lin0 = self.DEFAULT_PARAMS.copy()
-        params_lin0.update({"exit_factor_mode": "linear", "exit_linear_slope": 0.0})
+        params_lin0.update(
+            {
+                "exit_attenuation_mode": "linear",
+                "exit_linear_slope": 0.0,
+                "exit_plateau": False,
+            }
+        )
         params_lin1 = self.DEFAULT_PARAMS.copy()
-        params_lin1.update({"exit_factor_mode": "linear", "exit_linear_slope": 2.0})
+        params_lin1.update(
+            {
+                "exit_attenuation_mode": "linear",
+                "exit_linear_slope": 2.0,
+                "exit_plateau": False,
+            }
+        )
         val_lin0 = compute_exit_factor(base_factor, pnl, pnl_factor, 1.0, params_lin0)
         val_lin1 = compute_exit_factor(base_factor, pnl, pnl_factor, 1.0, params_lin1)
         self.assertGreater(
@@ -2253,16 +2234,17 @@ class TestRewardRobustness(RewardSpaceTestBase):
             "Linear slope=0 should yield no attenuation vs slope>0",
         )
 
-    def test_piecewise_slope_zero_constant_after_grace(self):
-        """Piecewise slope=0 should yield flat factor after grace boundary."""
+    def test_plateau_linear_slope_zero_constant_after_grace(self):
+        """Plateau+linear slope=0 should yield flat factor after grace boundary (no attenuation)."""
         from reward_space_analysis import compute_exit_factor
 
         params = self.DEFAULT_PARAMS.copy()
         params.update(
             {
-                "exit_factor_mode": "piecewise",
-                "exit_piecewise_grace": 0.3,
-                "exit_piecewise_slope": 0.0,
+                "exit_attenuation_mode": "linear",
+                "exit_plateau": True,
+                "exit_plateau_grace": 0.3,
+                "exit_linear_slope": 0.0,
             }
         )
         base_factor = 100.0
@@ -2279,19 +2261,20 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 v,
                 first,
                 tolerance=1e-9,
-                msg=f"Piecewise slope=0 factor drift at ratio set {ratios} => {values}",
+                msg=f"Plateau+linear slope=0 factor drift at ratio set {ratios} => {values}",
             )
 
-    def test_piecewise_grace_extends_beyond_one(self):
-        """Grace >1.0 should keep divisor=1 (no attenuation) past duration_ratio=1."""
+    def test_plateau_grace_extends_beyond_one(self):
+        """Plateau grace >1.0 should keep full strength (no attenuation) past duration_ratio=1."""
         from reward_space_analysis import compute_exit_factor
 
         params = self.DEFAULT_PARAMS.copy()
         params.update(
             {
-                "exit_factor_mode": "piecewise",
-                "exit_piecewise_grace": 1.5,  # extend grace beyond max duration ratio 1.0
-                "exit_piecewise_slope": 2.0,
+                "exit_attenuation_mode": "linear",
+                "exit_plateau": True,
+                "exit_plateau_grace": 1.5,  # extend grace beyond max duration ratio 1.0
+                "exit_linear_slope": 2.0,
             }
         )
         base_factor = 80.0
@@ -2319,7 +2302,8 @@ class TestRewardRobustness(RewardSpaceTestBase):
         from reward_space_analysis import compute_exit_factor
 
         params = self.DEFAULT_PARAMS.copy()
-        params["exit_factor_mode"] = "legacy"
+        params["exit_attenuation_mode"] = "legacy"
+        params["exit_plateau"] = False
         base_factor = 100.0
         pnl = 0.02
         pnl_factor = 1.0
@@ -2530,12 +2514,116 @@ class TestParameterValidation(RewardSpaceTestBase):
         from reward_space_analysis import compute_exit_factor
 
         params = self.DEFAULT_PARAMS.copy()
-        params["exit_factor_mode"] = "sqrt"
+        params["exit_attenuation_mode"] = "sqrt"
+        params["exit_plateau"] = False
         f1 = compute_exit_factor(100.0, 0.02, 1.0, 0.0, params)
         f2 = compute_exit_factor(100.0, 0.02, 1.0, 1.0, params)
         self.assertGreater(
             f1, f2, "Attenuation should reduce factor at higher duration ratio"
         )
+
+
+class TestContinuityPlateau(RewardSpaceTestBase):
+    """Continuity tests for plateau-enabled exit attenuation (excluding legacy)."""
+
+    def test_plateau_continuity_at_grace_boundary(self):
+        import math
+
+        from reward_space_analysis import compute_exit_factor
+
+        modes = ["sqrt", "linear", "power", "half_life"]
+        grace = 0.8
+        eps = 1e-4
+        base_factor = 100.0
+        pnl = 0.01
+        pnl_factor = 1.0
+        tau = 0.5  # for power
+        half_life = 0.5
+        slope = 1.3
+
+        for mode in modes:
+            with self.subTest(mode=mode):
+                params = self.DEFAULT_PARAMS.copy()
+                params.update(
+                    {
+                        "exit_attenuation_mode": mode,
+                        "exit_plateau": True,
+                        "exit_plateau_grace": grace,
+                        "exit_linear_slope": slope,
+                        "exit_power_tau": tau,
+                        "exit_half_life": half_life,
+                    }
+                )
+
+                left = compute_exit_factor(
+                    base_factor, pnl, pnl_factor, grace - eps, params
+                )
+                boundary = compute_exit_factor(
+                    base_factor, pnl, pnl_factor, grace, params
+                )
+                right = compute_exit_factor(
+                    base_factor, pnl, pnl_factor, grace + eps, params
+                )
+
+                self.assertAlmostEqualFloat(
+                    left,
+                    boundary,
+                    tolerance=1e-9,
+                    msg=f"Left/boundary mismatch for mode {mode}",
+                )
+                self.assertLess(
+                    right,
+                    boundary,
+                    f"No attenuation detected just after grace for mode {mode}",
+                )
+
+                diff = boundary - right
+                if mode == "linear":
+                    bound = base_factor * slope * eps * 2.0
+                elif mode == "sqrt":
+                    bound = base_factor * 0.5 * eps * 2.0
+                elif mode == "power":
+                    alpha = -math.log(tau) / math.log(2.0)
+                    bound = base_factor * alpha * eps * 2.0
+                elif mode == "half_life":
+                    bound = base_factor * (math.log(2.0) / half_life) * eps * 2.5
+                else:
+                    bound = base_factor * eps * 5.0
+
+                self.assertLessEqual(
+                    diff,
+                    bound,
+                    f"Attenuation jump too large at boundary for mode {mode} (diff={diff:.6e} > bound={bound:.6e})",
+                )
+
+    def test_plateau_continuity_multiple_eps_scaling(self):
+        """Verify attenuation difference scales approximately linearly with epsilon (first-order continuity heuristic)."""
+        from reward_space_analysis import compute_exit_factor
+
+        mode = "linear"
+        grace = 0.6
+        eps1 = 1e-3
+        eps2 = 1e-4
+        base_factor = 80.0
+        pnl = 0.02
+        params = self.DEFAULT_PARAMS.copy()
+        params.update(
+            {
+                "exit_attenuation_mode": mode,
+                "exit_plateau": True,
+                "exit_plateau_grace": grace,
+                "exit_linear_slope": 1.1,
+            }
+        )
+        f_boundary = compute_exit_factor(base_factor, pnl, 1.0, grace, params)
+        f1 = compute_exit_factor(base_factor, pnl, 1.0, grace + eps1, params)
+        f2 = compute_exit_factor(base_factor, pnl, 1.0, grace + eps2, params)
+
+        diff1 = f_boundary - f1
+        diff2 = f_boundary - f2
+        ratio = diff1 / max(diff2, 1e-12)
+        self.assertGreater(ratio, 5.0, f"Scaling ratio too small (ratio={ratio:.2f})")
+        self.assertLess(ratio, 15.0, f"Scaling ratio too large (ratio={ratio:.2f})")
 
 
 if __name__ == "__main__":

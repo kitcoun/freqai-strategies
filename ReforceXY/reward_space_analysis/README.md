@@ -19,7 +19,7 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 
 ---
 
-**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#️-cli-parameters-reference). For runtime guardrails see [Validation Layers](#-validation-layers-runtime). The exit factor attenuation logic is now centralized through a single internal helper ensuring analytical parity with the live environment (parity date: 2025‑10‑06).
+**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#️-cli-parameters-reference). For runtime guardrails see [Validation Layers](#-validation-layers-runtime). The exit factor attenuation logic is now centralized through a single internal helper ensuring analytical parity with the live environment.
 
 ---
 
@@ -226,15 +226,40 @@ _Holding penalty configuration:_
 - `holding_penalty_scale` (default: 0.5) - Scale of holding penalty
 - `holding_penalty_power` (default: 1.0) - Power applied to holding penalty scaling
 
-_Exit factor configuration:_
+_Exit attenuation configuration:_
 
-- `exit_factor_mode` (default: piecewise) - Time attenuation mode for exit factor (legacy|sqrt|linear|power|piecewise|half_life)
-- `exit_linear_slope` (default: 1.0) - Slope for linear exit attenuation
-- `exit_piecewise_grace` (default: 1.0) - Grace region boundary (duration ratio); values >1.0 extend no-attenuation period
-- `exit_piecewise_slope` (default: 1.0) - Slope after grace for piecewise mode (0 ⇒ flat beyond grace)
-- `exit_power_tau` (default: 0.5) - Tau in (0,1] mapped to alpha = -ln(tau)/ln(2)
-- `exit_half_life` (default: 0.5) - Half-life for exponential decay exit mode (factor *= 2^(-r/half_life))
-- `exit_factor_threshold` (default: 10000.0) - Warning-only threshold; no capping occurs (emits RuntimeWarning if |factor| exceeds)
+- `exit_attenuation_mode` (default: linear) - Selects attenuation kernel (see table below: legacy|sqrt|linear|power|half_life).
+- `exit_plateau` (default: true) - Enables plateau (no attenuation until `exit_plateau_grace`).
+- `exit_plateau_grace` (default: 1.0) - Duration ratio boundary of full‑strength region (may exceed 1.0).
+- `exit_linear_slope` (default: 1.0) - Slope parameter used only when mode = linear.
+- `exit_power_tau` (default: 0.5) - Tau ∈ (0,1]; internally mapped to alpha (see kernel table).
+- `exit_half_life` (default: 0.5) - Half‑life parameter for the half_life kernel.
+- `exit_factor_threshold` (default: 10000.0) - Warning-only soft threshold (emits RuntimeWarning; no capping).
+
+Attenuation kernels:
+
+Let r be the raw duration ratio and grace = `exit_plateau_grace`.
+
+```
+effective_r = 0            if exit_plateau and r <= grace
+effective_r = r - grace    if exit_plateau and r >  grace
+effective_r = r            if not exit_plateau
+```
+
+| Mode | Multiplier (applied to base_factor * pnl * pnl_factor * efficiency) | Monotonic ↓ | Notes |
+|------|---------------------------------------------------------------------|-------------|-------|
+| legacy | step: ×1.5 if r* ≤ 1 else ×0.5 | No | Historical discontinuity retained (not smoothed) |
+| sqrt | 1 / sqrt(1 + r*) | Yes | Sub-linear decay |
+| linear | 1 / (1 + slope * r*) | Yes | slope = `exit_linear_slope` (≥0) |
+| power | (1 + r*)^(-alpha) | Yes | alpha = -ln(tau)/ln(2), tau = `exit_power_tau` ∈ (0,1]; tau=1 ⇒ alpha=0 (flat) |
+| half_life | 2^(- r* / hl) | Yes | hl = `exit_half_life`; r* = hl ⇒ factor × 0.5 |
+
+Where r* = `effective_r` above.
+
+Notes:
+- Plateau guarantees continuity at the boundary r = grace for all monotonic kernels; only `legacy` may jump.
+- A single implementation in code (`_get_exit_factor`) mirrors this table; this README is the canonical human-readable mapping.
+- Continuity tests assert small‑epsilon bounded attenuation onset (excluding `legacy`).
 
 _Efficiency configuration:_
 
@@ -400,10 +425,10 @@ Implementation details:
 Test different reward parameter configurations to understand their impact:
 
 ```shell
-# Test power-based exit factor with custom tau
+# Test power-based exit attenuation with custom tau
 python reward_space_analysis.py \
     --num_samples 25000 \
-    --params exit_factor_mode=power exit_power_tau=0.5 efficiency_weight=0.8 \
+    --params exit_attenuation_mode=power exit_power_tau=0.5 efficiency_weight=0.8 \
     --output custom_test
 
 # Test aggressive holding penalties
@@ -452,7 +477,7 @@ done
 python test_reward_space_analysis.py
 ```
 
-The suite currently contains 53 tests (current state; this number evolves as new invariants and attenuation modes are added). Always run the full suite after modifying reward logic or attenuation parameters.
+The suite currently contains 54 tests (current state; this number evolves as new invariants and attenuation modes are added). Always run the full suite after modifying reward logic or attenuation parameters.
 
 ### Test Categories
 
@@ -468,6 +493,7 @@ The suite currently contains 53 tests (current state; this number evolves as new
 | Private Functions (via public API) | TestPrivateFunctions | Idle / holding / invalid penalties, exit scenarios |
 | Robustness | TestRewardRobustness | Monotonic attenuation (where applicable), decomposition integrity, boundary regimes |
 | Parameter Validation | TestParameterValidation | Bounds clamping, warning threshold, penalty power scaling |
+| Continuity | TestContinuityPlateau | Plateau boundary continuity & small‑epsilon attenuation scaling |
 
 ### Test Architecture
 
@@ -673,8 +699,7 @@ Before simulation (early in `main()`), `validate_reward_parameters` enforces num
 | `holding_penalty_scale` | 0.0 | — | Scale ≥ 0 |
 | `holding_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
 | `exit_linear_slope` | 0.0 | — | Slope ≥ 0 |
-| `exit_piecewise_grace` | 0.0 | — | Grace boundary expressed in duration ratio units (can exceed 1.0 to extend full-strength region) |
-| `exit_piecewise_slope` | 0.0 | — | Slope ≥ 0 |
+| `exit_plateau_grace` | 0.0 | — | Plateau grace boundary (full strength until this duration ratio) |
 | `exit_power_tau` | 1e-6 | 1.0 | Mapped to alpha = -ln(tau) |
 | `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
 | `efficiency_weight` | 0.0 | 2.0 | Blend weight |

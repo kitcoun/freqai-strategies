@@ -77,34 +77,31 @@ def _to_bool(value: Any) -> bool:
 def _get_param_float(params: Dict[str, float | str], key: str, default: float) -> float:
     """Extract float parameter with type safety and default fallback."""
     value = params.get(key, default)
+    # None -> default
+    if value is None:
+        return default
+    # Bool: treat explicitly (avoid surprising True->1.0 unless intentional)
+    if isinstance(value, bool):
+        return float(int(value))
+    # Numeric
     if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
         try:
-            return float(value)
+            fval = float(value)
         except (ValueError, TypeError):
             return default
+        return fval if math.isfinite(fval) else default
+    # String parsing
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped == "":
+            return default
+        try:
+            fval = float(stripped)
+        except ValueError:
+            return default
+        return fval if math.isfinite(fval) else default
+    # Unsupported type
     return default
-
-
-def _piecewise_duration_divisor(
-    duration_ratio: float, params: Dict[str, float | str]
-) -> float:
-    """Compute divisor for piecewise attenuation (single source of truth).
-
-    Ensures consistent fallback behaviour across the primary code path and
-    exception fallback in ``_get_exit_factor`` without duplicating logic.
-    """
-    exit_piecewise_grace = _get_param_float(params, "exit_piecewise_grace", 1.0)
-    # Only enforce a lower bound; values >1.0 extend the grace region beyond max duration ratio.
-    if exit_piecewise_grace < 0.0:
-        exit_piecewise_grace = 0.0
-    exit_piecewise_slope = _get_param_float(params, "exit_piecewise_slope", 1.0)
-    if exit_piecewise_slope < 0.0:  # sanitize slope sign
-        exit_piecewise_slope = 1.0
-    if duration_ratio <= exit_piecewise_grace:
-        return 1.0
-    return 1.0 + exit_piecewise_slope * (duration_ratio - exit_piecewise_grace)
 
 
 def _compute_duration_ratio(trade_duration: int, max_trade_duration: int) -> float:
@@ -135,11 +132,11 @@ DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     # Holding keys (env defaults)
     "holding_penalty_scale": 0.5,
     "holding_penalty_power": 1.0,
-    # Exit factor configuration (env defaults)
-    "exit_factor_mode": "piecewise",
+    # Exit attenuation configuration (env default)
+    "exit_attenuation_mode": "linear",
+    "exit_plateau": True,
+    "exit_plateau_grace": 1.0,
     "exit_linear_slope": 1.0,
-    "exit_piecewise_grace": 1.0,
-    "exit_piecewise_slope": 1.0,
     "exit_power_tau": 0.5,
     "exit_half_life": 0.5,
     # Efficiency keys (env defaults)
@@ -161,11 +158,10 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "max_idle_duration_candles": "Maximum idle duration candles before full idle penalty scaling; 0 = use 2 * max_trade_duration_candles.",
     "holding_penalty_scale": "Scale of holding penalty.",
     "holding_penalty_power": "Power applied to holding penalty scaling.",
-    "exit_factor_mode": "Time attenuation mode for exit factor.",
+    "exit_attenuation_mode": "Attenuation kernel (legacy|sqrt|linear|power|half_life).",
+    "exit_plateau": "Enable plateau. If true, full strength until grace boundary then apply attenuation.",
+    "exit_plateau_grace": "Grace boundary duration ratio for plateau (full strength until this boundary).",
     "exit_linear_slope": "Slope for linear exit attenuation.",
-    # exit_piecewise_grace: duration ratio boundary; >1 extends full-strength region
-    "exit_piecewise_grace": "Grace boundary (duration ratio; >1 extends no-attenuation region).",
-    "exit_piecewise_slope": "Slope after grace for piecewise mode (0 = flat).",
     "exit_power_tau": "Tau in (0,1] to derive alpha for power mode.",
     "exit_half_life": "Half-life for exponential decay exit mode.",
     "efficiency_weight": "Weight for efficiency factor in exit reward.",
@@ -191,8 +187,7 @@ _PARAMETER_BOUNDS: Dict[str, Dict[str, float]] = {
     "holding_penalty_scale": {"min": 0.0},
     "holding_penalty_power": {"min": 0.0},
     "exit_linear_slope": {"min": 0.0},
-    "exit_piecewise_grace": {"min": 0.0},
-    "exit_piecewise_slope": {"min": 0.0},
+    "exit_plateau_grace": {"min": 0.0},
     "exit_power_tau": {"min": 1e-6, "max": 1.0},  # open (0,1] approximated
     "exit_half_life": {"min": 1e-6},
     "efficiency_weight": {"min": 0.0, "max": 2.0},
@@ -250,7 +245,7 @@ def add_tunable_cli_args(parser: argparse.ArgumentParser) -> None:
     Rules:
     - Use the same underscored names as option flags (e.g., --idle_penalty_scale).
     - Defaults are None so only user-provided values override params.
-    - For exit_factor_mode, enforce allowed choices and lowercase conversion.
+    - For exit_attenuation_mode, enforce allowed choices and lowercase conversion.
     - Skip keys already managed as top-level options (e.g., base_factor) to avoid duplicates.
     """
     skip_keys = {"base_factor"}  # already defined as top-level
@@ -260,11 +255,19 @@ def add_tunable_cli_args(parser: argparse.ArgumentParser) -> None:
         help_text = DEFAULT_MODEL_REWARD_PARAMETERS_HELP.get(
             key, f"Override tunable '{key}'."
         )
-        if key == "exit_factor_mode":
+        if key == "exit_attenuation_mode":
             parser.add_argument(
                 f"--{key}",
                 type=str.lower,
-                choices=["legacy", "sqrt", "linear", "power", "piecewise", "half_life"],
+                choices=["legacy", "sqrt", "linear", "power", "half_life"],
+                default=None,
+                help=help_text,
+            )
+        elif key == "exit_plateau":
+            parser.add_argument(
+                f"--{key}",
+                type=int,
+                choices=[0, 1],
                 default=None,
                 help=help_text,
             )
@@ -307,41 +310,16 @@ def _get_exit_factor(
     duration_ratio: float,
     params: Dict[str, float | str],
 ) -> float:
-    """Compute the complete exit factor (time attenuation + PnL scaling).
+    """Compute exit factor = time attenuation kernel (with optional plateau) * pnl_factor.
 
-    Synchronization
-    ---------------
-    Mirrors the environment implementation `ReforceXY._get_exit_factor` (parity date: 2025-10-06).
-    Any upstream change MUST be ported here to keep analytical results consistent with live behavior.
+    Parity: mirrors `ReforceXY._get_exit_factor`.
 
-    Processing steps
-    ----------------
-    1. Clamp negative ``duration_ratio`` to 0.
-    2. Apply time-based attenuation according to ``exit_factor_mode``.
-    3. Multiply by ``pnl_factor`` (already includes profit amplification & efficiency component).
-    4. Enforce invariants (finite; non-negative when pnl>=0) and optionally emit a warning if
-       ``|factor| > exit_factor_threshold`` (warning-only, no capping).
-
-    Modes (attenuation formulas)
-    ----------------------------
-    legacy    : factor *= 1.5 if r <= 1 else *= 0.5 (step change)
-    sqrt      : factor /= sqrt(1 + r)
-    linear    : factor /= (1 + slope * r)
-    power     : alpha = -log(tau)/log(2) with tau in (0,1]; factor /= (1 + r)^alpha (fallback alpha=1)
-    piecewise : grace g in [0,1]; if r <= g then divisor=1 else divisor = 1 + slope * (r - g)
-    half_life : factor *= 2^(-r / half_life)
-
-    Fallback: Unknown modes default to piecewise.
-
-    Invariants
-    ----------
-    - Factor set to 0 if non-finite.
-    - Factor clamped to >=0 when pnl >= 0.
-    - Threshold exceedance triggers RuntimeWarning only.
-
-    Returns
-    -------
-    float : attenuated & pnl-scaled factor (reward exit component = pnl * factor).
+    Steps:
+      1. Sanitize inputs (finite, non-negative duration_ratio).
+      2. Derive effective duration ratio: if plateau enabled and r <= grace ⇒ 0 else r' = r - grace.
+      3. Apply kernel (legacy|sqrt|linear|power|half_life). Unknown ⇒ linear.
+      4. Multiply by externally supplied pnl_factor (includes profit amplification & efficiency).
+      5. Enforce invariants (finite, non-negative when pnl ≥ 0, warn if |factor| exceeds threshold).
     """
     # Basic finiteness checks
     if (
@@ -355,50 +333,75 @@ def _get_exit_factor(
     if duration_ratio < 0.0:
         duration_ratio = 0.0
 
-    exit_factor_mode = str(params.get("exit_factor_mode", "piecewise")).lower()
+    exit_attenuation_mode = str(params.get("exit_attenuation_mode", "linear")).lower()
+    exit_plateau = _to_bool(params.get("exit_plateau", True))
+
+    exit_plateau_grace = _get_param_float(params, "exit_plateau_grace", 1.0)
+    if exit_plateau_grace < 0.0:
+        exit_plateau_grace = 1.0
+    exit_linear_slope = _get_param_float(params, "exit_linear_slope", 1.0)
+    if exit_linear_slope < 0.0:
+        exit_linear_slope = 1.0
+
+    def _legacy_kernel(f: float, dr: float) -> float:
+        return f * (1.5 if dr <= 1.0 else 0.5)
+
+    def _sqrt_kernel(f: float, dr: float) -> float:
+        return f / math.sqrt(1.0 + dr)
+
+    def _linear_kernel(f: float, dr: float) -> float:
+        return f / (1.0 + exit_linear_slope * dr)
+
+    def _power_kernel(f: float, dr: float) -> float:
+        alpha = params.get("exit_power_alpha")
+        if isinstance(alpha, (int, float)) and alpha < 0.0:
+            alpha = None
+        if alpha is None:
+            tau = params.get("exit_power_tau")
+            if isinstance(tau, (int, float)):
+                tau = float(tau)
+                if 0.0 < tau <= 1.0:
+                    alpha = -math.log(tau) / _LOG_2
+        if not isinstance(alpha, (int, float)):
+            alpha = 1.0
+        else:
+            alpha = float(alpha)
+        return f / math.pow(1.0 + dr, alpha)
+
+    def _half_life_kernel(f: float, dr: float) -> float:
+        hl = _get_param_float(params, "exit_half_life", 0.5)
+        if hl <= 0.0:
+            hl = 0.5
+        return f * math.pow(2.0, -dr / hl)
+
+    kernels = {
+        "legacy": _legacy_kernel,
+        "sqrt": _sqrt_kernel,
+        "linear": _linear_kernel,
+        "power": _power_kernel,
+        "half_life": _half_life_kernel,
+    }
+    if exit_plateau:
+        if duration_ratio <= exit_plateau_grace:
+            effective_dr = 0.0
+        else:
+            effective_dr = duration_ratio - exit_plateau_grace
+    else:
+        effective_dr = duration_ratio
+
+    kernel = kernels.get(exit_attenuation_mode, None)
+    if kernel is None:
+        kernel = _linear_kernel
 
     try:
-        if exit_factor_mode == "legacy":
-            factor *= 1.5 if duration_ratio <= 1.0 else 0.5
-        elif exit_factor_mode == "sqrt":
-            factor /= math.sqrt(1.0 + duration_ratio)
-        elif exit_factor_mode == "linear":
-            slope = _get_param_float(params, "exit_linear_slope", 1.0)
-            if slope < 0.0:
-                slope = 1.0
-            factor /= 1.0 + slope * duration_ratio
-        elif exit_factor_mode == "power":
-            exit_power_alpha = params.get("exit_power_alpha")
-            if isinstance(exit_power_alpha, (int, float)) and exit_power_alpha < 0.0:
-                exit_power_alpha = None
-            if exit_power_alpha is None:
-                exit_power_tau = params.get("exit_power_tau")
-                if isinstance(exit_power_tau, (int, float)):
-                    exit_power_tau = float(exit_power_tau)
-                    if 0.0 < exit_power_tau <= 1.0:
-                        exit_power_alpha = -math.log(exit_power_tau) / _LOG_2
-            if not isinstance(exit_power_alpha, (int, float)):
-                exit_power_alpha = 1.0
-            else:
-                exit_power_alpha = float(exit_power_alpha)
-            factor /= math.pow(1.0 + duration_ratio, exit_power_alpha)
-        elif exit_factor_mode == "piecewise" or exit_factor_mode not in {
-            "legacy",
-            "sqrt",
-            "linear",
-            "power",
-            "half_life",
-        }:
-            # Default behaviour
-            factor /= _piecewise_duration_divisor(duration_ratio, params)
-        elif exit_factor_mode == "half_life":
-            exit_half_life = _get_param_float(params, "exit_half_life", 0.5)
-            if exit_half_life <= 0.0:
-                exit_half_life = 0.5
-            factor *= math.pow(2.0, -duration_ratio / exit_half_life)
-    except Exception:
-        # Safe fallback to piecewise logic if any unexpected error arises (centralized)
-        factor /= _piecewise_duration_divisor(duration_ratio, params)
+        factor = kernel(factor, effective_dr)
+    except Exception as e:
+        warnings.warn(
+            f"exit_attenuation_mode '{exit_attenuation_mode}' failed ({e!r}); fallback linear (effective_dr={effective_dr:.5f})",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        factor = _linear_kernel(factor, effective_dr)
 
     # Apply pnl_factor after time attenuation
     factor *= pnl_factor
