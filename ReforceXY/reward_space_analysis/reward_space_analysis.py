@@ -130,7 +130,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     # Idle penalty (env defaults)
     "idle_penalty_power": 1.0,
     "idle_penalty_scale": 0.75,
-    # If <=0 or unset, falls back to max_trade_duration_candles at runtime
+    # Fallback semantics: if <=0 or unset → 2 * max_trade_duration_candles (grace window before full idle penalty)
     "max_idle_duration_candles": 0,
     # Holding keys (env defaults)
     "holding_penalty_scale": 0.5,
@@ -158,7 +158,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "base_factor": "Base reward factor used inside the environment.",
     "idle_penalty_power": "Power applied to idle penalty scaling.",
     "idle_penalty_scale": "Scale of idle penalty.",
-    "max_idle_duration_candles": "Maximum idle duration candles before full idle penalty scaling; 0 = use max_trade_duration_candles.",
+    "max_idle_duration_candles": "Maximum idle duration candles before full idle penalty scaling; 0 = use 2 * max_trade_duration_candles.",
     "holding_penalty_scale": "Scale of holding penalty.",
     "holding_penalty_power": "Power applied to holding penalty scaling.",
     "exit_factor_mode": "Time attenuation mode for exit factor.",
@@ -489,18 +489,18 @@ def _idle_penalty(
     """Mirror the environment's idle penalty behaviour."""
     idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 0.75)
     idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.0)
-    max_trade_duration = int(params.get("max_trade_duration_candles", 128))
+    max_trade_duration_candles = params.get("max_trade_duration_candles", 128)
     max_idle_duration_candles = params.get("max_idle_duration_candles")
     try:
         max_idle_duration = (
             int(max_idle_duration_candles)
             if max_idle_duration_candles is not None
-            else max_trade_duration
+            else 2 * max_trade_duration_candles
         )
     except (TypeError, ValueError):
-        max_idle_duration = max_trade_duration
+        max_idle_duration = max_trade_duration_candles
     if max_idle_duration <= 0:
-        max_idle_duration = max_trade_duration
+        max_idle_duration = 2 * max_trade_duration_candles
     idle_duration_ratio = context.idle_duration / max(1, max_idle_duration)
     return -idle_factor * idle_penalty_scale * idle_duration_ratio**idle_penalty_power
 

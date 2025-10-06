@@ -461,7 +461,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         )
 
     def test_max_idle_duration_candles_logic(self):
-        """Idle penalty scaling test with explicit max_idle_duration_candles (no force-action comparisons)."""
+        """Idle penalty scaling test with explicit max_idle_duration_candles."""
         params_small = self.DEFAULT_PARAMS.copy()
         params_large = self.DEFAULT_PARAMS.copy()
         # Activate explicit max idle durations
@@ -511,9 +511,13 @@ class TestRewardAlignment(RewardSpaceTestBase):
         )
 
     def test_idle_penalty_fallback_and_proportionality(self):
-        """When max_idle_duration_candles <= 0, fallback to max_trade_duration and ensure proportional scaling.
+        """Fallback & proportionality validation.
 
-        Also validates that penalty doubles (approximately) when idle_duration doubles (holding other params constant).
+        Semantics:
+        - When max_idle_duration_candles <= 0, fallback must be 2 * max_trade_duration (updated rule).
+        - Idle penalty scales ~ linearly with idle_duration (power=1), so doubling idle_duration doubles penalty magnitude.
+        - We also infer the implicit denominator from a mid-range idle duration (>1x and <2x trade duration) to ensure the
+          2x fallback.
         """
         params = self.DEFAULT_PARAMS.copy()
         params["max_idle_duration_candles"] = 0  # force fallback
@@ -569,6 +573,32 @@ class TestRewardAlignment(RewardSpaceTestBase):
             tolerance=0.2,
             msg=f"Idle penalty proportionality mismatch (ratio={ratio})",
         )
+        # Additional mid-range inference check (idle_duration between 1x and 2x trade duration)
+        ctx_mid = dataclasses.replace(ctx_a, idle_duration=120, max_trade_duration=100)
+        br_mid = calculate_reward(
+            ctx_mid,
+            params,
+            base_factor=base_factor,
+            profit_target=profit_target,
+            risk_reward_ratio=risk_reward_ratio,
+            short_allowed=True,
+            action_masking=True,
+        )
+        self.assertLess(br_mid.idle_penalty, 0.0)
+        idle_penalty_scale = float(params.get("idle_penalty_scale", 0.75))
+        idle_penalty_power = float(params.get("idle_penalty_power", 1.0))
+        # Internal factor may come from params (overrides provided base_factor argument)
+        factor_used = float(params.get("base_factor", base_factor))
+        idle_factor = factor_used * (profit_target * risk_reward_ratio) / 3.0
+        observed_ratio = abs(br_mid.idle_penalty) / (idle_factor * idle_penalty_scale)
+        if observed_ratio > 0:
+            implied_D = 120 / (observed_ratio ** (1 / idle_penalty_power))
+            self.assertAlmostEqualFloat(
+                implied_D,
+                200.0,
+                tolerance=12.0,  # modest tolerance for float ops / rounding
+                msg=f"Fallback denominator mismatch (implied={implied_D}, expected≈200, factor_used={factor_used})",
+            )
 
     def test_exit_factor_threshold_warning_non_capping(self):
         """Ensure exit_factor_threshold does not cap the exit factor (warning-only semantics).

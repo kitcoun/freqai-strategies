@@ -1392,9 +1392,7 @@ class MyRLEnv(Base5ActionRLEnv):
             duration_ratio = 0.0
 
         model_reward_parameters = self.rl_config.get("model_reward_parameters", {})
-        exit_factor_mode = str(
-            model_reward_parameters.get("exit_factor_mode", "piecewise")
-        ).lower()
+        exit_factor_mode = model_reward_parameters.get("exit_factor_mode", "piecewise")
 
         def _legacy(f: float, dr: float, p: Mapping) -> float:
             return f * (1.5 if dr <= 1.0 else 0.5)
@@ -1599,11 +1597,11 @@ class MyRLEnv(Base5ActionRLEnv):
         if action == Actions.Neutral.value and self._position == Positions.Neutral:
             max_idle_duration = int(
                 model_reward_parameters.get(
-                    "max_idle_duration_candles", max_trade_duration
+                    "max_idle_duration_candles", 2 * max_trade_duration
                 )
             )
             if max_idle_duration <= 0:
-                max_idle_duration = max_trade_duration
+                max_idle_duration = 2 * max_trade_duration
             idle_penalty_scale = float(
                 model_reward_parameters.get("idle_penalty_scale", 0.75)
             )
