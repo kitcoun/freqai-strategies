@@ -640,9 +640,8 @@ class TestRewardAlignment(RewardSpaceTestBase):
         for mode in modes_to_test:
             test_params = self.DEFAULT_PARAMS.copy()
             test_params["exit_factor_mode"] = mode
-
-            factor = rsa._get_exit_factor(
-                factor=1.0,
+            factor = rsa.compute_exit_factor(
+                base_factor=1.0,
                 pnl=0.02,
                 pnl_factor=1.5,
                 duration_ratio=0.3,
@@ -653,6 +652,114 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 np.isfinite(factor), f"Exit factor for {mode} should be finite"
             )
             self.assertGreater(factor, 0, f"Exit factor for {mode} should be positive")
+
+    def test_negative_slope_sanitization(self):
+        """Negative slopes for linear/piecewise must be sanitized to positive default (1.0)."""
+        from reward_space_analysis import compute_exit_factor
+
+        base_factor = 100.0
+        pnl = 0.04
+        pnl_factor = 1.0
+        duration_ratio_linear = 1.2  # any positive ratio
+        duration_ratio_piecewise = 1.3  # > grace so slope matters
+
+        # Linear mode: slope -5.0 should behave like slope=1.0 (sanitized)
+        params_lin_neg = self.DEFAULT_PARAMS.copy()
+        params_lin_neg.update({"exit_factor_mode": "linear", "exit_linear_slope": -5.0})
+        params_lin_pos = self.DEFAULT_PARAMS.copy()
+        params_lin_pos.update({"exit_factor_mode": "linear", "exit_linear_slope": 1.0})
+        val_lin_neg = compute_exit_factor(
+            base_factor, pnl, pnl_factor, duration_ratio_linear, params_lin_neg
+        )
+        val_lin_pos = compute_exit_factor(
+            base_factor, pnl, pnl_factor, duration_ratio_linear, params_lin_pos
+        )
+        self.assertAlmostEqualFloat(
+            val_lin_neg,
+            val_lin_pos,
+            tolerance=1e-9,
+            msg="Negative linear slope not sanitized to default behavior",
+        )
+
+        # Piecewise mode: negative slope sanitized to 1.0
+        params_pw_neg = self.DEFAULT_PARAMS.copy()
+        params_pw_neg.update(
+            {
+                "exit_factor_mode": "piecewise",
+                "exit_piecewise_grace": 1.0,
+                "exit_piecewise_slope": -3.0,
+            }
+        )
+        params_pw_pos = self.DEFAULT_PARAMS.copy()
+        params_pw_pos.update(
+            {
+                "exit_factor_mode": "piecewise",
+                "exit_piecewise_grace": 1.0,
+                "exit_piecewise_slope": 1.0,
+            }
+        )
+        val_pw_neg = compute_exit_factor(
+            base_factor, pnl, pnl_factor, duration_ratio_piecewise, params_pw_neg
+        )
+        val_pw_pos = compute_exit_factor(
+            base_factor, pnl, pnl_factor, duration_ratio_piecewise, params_pw_pos
+        )
+        self.assertAlmostEqualFloat(
+            val_pw_neg,
+            val_pw_pos,
+            tolerance=1e-9,
+            msg="Negative piecewise slope not sanitized to default behavior",
+        )
+
+    def test_idle_penalty_zero_when_profit_target_zero(self):
+        """If profit_target=0 → idle_factor=0 → idle penalty must be exactly 0 for neutral idle state."""
+        context = RewardContext(
+            pnl=0.0,
+            trade_duration=0,
+            idle_duration=30,
+            max_trade_duration=100,
+            max_unrealized_profit=0.0,
+            min_unrealized_profit=0.0,
+            position=Positions.Neutral,
+            action=Actions.Neutral,
+            force_action=None,
+        )
+        br = calculate_reward(
+            context,
+            self.DEFAULT_PARAMS,
+            base_factor=100.0,
+            profit_target=0.0,  # critical case
+            risk_reward_ratio=1.0,
+            short_allowed=True,
+            action_masking=True,
+        )
+        self.assertEqual(
+            br.idle_penalty, 0.0, "Idle penalty should be zero when profit_target=0"
+        )
+        self.assertEqual(
+            br.total, 0.0, "Total reward should be zero in this configuration"
+        )
+
+    def test_power_mode_alpha_formula(self):
+        """Validate power mode: factor ≈ base_factor / (1+r)^alpha where alpha=-log(tau)/log(2)."""
+        from reward_space_analysis import compute_exit_factor
+
+        tau = 0.5
+        r = 1.2
+        alpha = -math.log(tau) / math.log(2.0)
+        base_factor = 100.0
+        pnl = 0.03
+        pnl_factor = 1.0  # isolate attenuation
+        params = self.DEFAULT_PARAMS.copy()
+        params.update({"exit_factor_mode": "power", "exit_power_tau": tau})
+        observed = compute_exit_factor(base_factor, pnl, pnl_factor, r, params)
+        expected = base_factor / (1.0 + r) ** alpha
+        self.assertAlmostEqualFloat(
+            observed,
+            expected,
+            tolerance=1e-9,
+            msg=f"Power mode attenuation mismatch (obs={observed}, exp={expected}, alpha={alpha})",
+        )
 
 
 class TestPublicAPI(RewardSpaceTestBase):
@@ -2162,12 +2269,17 @@ class TestRewardRobustness(RewardSpaceTestBase):
         pnl_factor = 1.1
         # Ratios straddling 1.0 but below grace=1.5 plus one beyond grace
         ratios = [0.8, 1.0, 1.2, 1.4, 1.6]
-        vals = [compute_exit_factor(base_factor, pnl, pnl_factor, r, params) for r in ratios]
+        vals = [
+            compute_exit_factor(base_factor, pnl, pnl_factor, r, params) for r in ratios
+        ]
         # All ratios <=1.5 should yield identical factor
         ref = vals[0]
         for i, r in enumerate(ratios[:-1]):  # exclude last (1.6)
             self.assertAlmostEqualFloat(
-                vals[i], ref, 1e-9, msg=f"Unexpected attenuation before grace end at ratio {r}"
+                vals[i],
+                ref,
+                1e-9,
+                msg=f"Unexpected attenuation before grace end at ratio {r}",
             )
         # Last ratio (1.6) should be attenuated (strictly less than ref)
         self.assertLess(vals[-1], ref, "Attenuation should begin after grace boundary")
@@ -2341,7 +2453,8 @@ class TestParameterValidation(RewardSpaceTestBase):
         params["exit_factor_threshold"] = 10.0  # low threshold to trigger easily
         # Remove base_factor to allow argument override
         params.pop("base_factor", None)
-        from reward_space_analysis import RewardContext, Actions, Positions
+        from reward_space_analysis import Actions, Positions, RewardContext
+
         context = RewardContext(
             pnl=0.06,
             trade_duration=10,

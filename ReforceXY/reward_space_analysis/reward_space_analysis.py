@@ -204,7 +204,7 @@ _PARAMETER_BOUNDS: Dict[str, Dict[str, float]] = {
 
 def validate_reward_parameters(
     params: Dict[str, float | str],
-) -> Tuple[Dict[str, float | str], Dict[str, Dict[str, float]]]:
+) -> Tuple[Dict[str, float | str], Dict[str, Dict[str, Any]]]:
     """Validate and clamp reward parameter values.
 
     Returns
@@ -215,7 +215,7 @@ def validate_reward_parameters(
         Mapping param -> {original, adjusted, reason} for every modification.
     """
     sanitized = dict(params)
-    adjustments: Dict[str, Dict[str, float]] = {}
+    adjustments: Dict[str, Dict[str, Any]] = {}
     for key, bounds in _PARAMETER_BOUNDS.items():
         if key not in sanitized:
             continue
@@ -489,11 +489,18 @@ def _idle_penalty(
     """Mirror the environment's idle penalty behaviour."""
     idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 1.0)
     idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.0)
-    max_idle_duration = int(
-        params.get(
-            "max_idle_duration_candles", params.get("max_trade_duration_candles", 128)
+    max_trade_duration = int(params.get("max_trade_duration_candles", 128))
+    max_idle_duration_candles = params.get("max_idle_duration_candles")
+    try:
+        max_idle_duration = (
+            int(max_idle_duration_candles)
+            if max_idle_duration_candles is not None
+            else max_trade_duration
         )
-    )
+    except (TypeError, ValueError):
+        max_idle_duration = max_trade_duration
+    if max_idle_duration <= 0:
+        max_idle_duration = max_trade_duration
     idle_duration_ratio = context.idle_duration / max(1, max_idle_duration)
     return -idle_factor * idle_penalty_scale * idle_duration_ratio**idle_penalty_power
 

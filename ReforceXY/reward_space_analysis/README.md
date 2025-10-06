@@ -1,85 +1,3 @@
-# Reward Space Analysis (Specification)
-Concise operational guide. No marketing language. Single source of truth for tunables and validation guarantees. Exit factor parity date: 2025‑10‑06.
-## 1. Prérequis
-Python ≥3.8. Recommended: 8GB RAM. GPU non requis.
-Setup minimal:
-```shell
-cd ReforceXY/reward_space_analysis
-python -m venv .venv
-source .venv/bin/activate
-pip install pandas numpy scipy scikit-learn
-Run:
-```shell
-python reward_space_analysis.py --num_samples 20000 --output run1
-python test_reward_space_analysis.py
-## 2. Commandes Rapides
-Basique:
-```shell
-python reward_space_analysis.py --num_samples 10000
-```
-Sensibilité `win_reward_factor`:
-```shell
-python reward_space_analysis.py --num_samples 30000 --params win_reward_factor=2.0 --output wf2
-python reward_space_analysis.py --num_samples 30000 --params win_reward_factor=4.0 --output wf4
-```
-Comparaison réel vs synthétique:
-```shell
-python reward_space_analysis.py --num_samples 80000 --real_episodes ../user_data/models/ReforceXY-PPO/*/episode_rewards.pkl --output real_vs_syn
-```
-Batch simple:
-```shell
-for f in 1.5 2 3; do python reward_space_analysis.py --num_samples 20000 --params win_reward_factor=$f --output wf_$f; done
-```
-## 3. Paramètres (Tous optionnels)
-Paramètres CLI explicites + overrides `--params key=value`. Precedence: individual flag < `--params`.
-| Name | Default | Min | Max | Notes |
-|------|---------|-----|-----|-------|
-| num_samples | 20000 | 1 | — | Nombre d'échantillons synthétiques |
-| seed | 42 | 0 | — | Graine globale (simulation + RF) |
-| stats_seed | (seed) | 0 | — | Graine analytique (tests / bootstrap) |
-| max_trade_duration | 128 | 1 | — | Durée trade référence |
-| holding_max_ratio | 2.5 | >0 | — | Étendue d'échantillonnage durées |
-| pnl_base_std | 0.02 | 0 | — | Volatilité de base PnL |
-| pnl_duration_vol_scale | 0.5 | 0 | — | Amplification hétéroscédasticité |
-| trading_mode | spot | — | — | spot|margin|futures |
-| action_masking | true | — | — | Booléen |
-| base_factor | 100.0 | 0 | — | Facteur commun |
-| profit_target | 0.03 | 0 | — | Objectif profit |
-| risk_reward_ratio | 1.0 | 0 | — | Multiplicateur objectif |
-| invalid_action | -2.0 | — | 0 | Pénalité action invalide |
-| idle_penalty_scale | 1.0 | 0 | — | Échelle idle |
-| idle_penalty_power | 1.0 | 0 | — | Puissance idle |
-| max_idle_duration_candles | 0 | 0 | — | 0 ⇒ fallback max_trade_duration |
-| holding_penalty_scale | 0.5 | 0 | — | Échelle holding |
-| holding_penalty_power | 1.0 | 0 | — | Puissance holding |
-| exit_factor_mode | piecewise | — | — | legacy|sqrt|linear|power|piecewise|half_life |
-| exit_linear_slope | 1.0 | 0 | — | Pente linéaire |
-| exit_piecewise_grace | 1.0 | 0 | — | Frontière sans atténuation (>1 accepté) |
-| exit_piecewise_slope | 1.0 | 0 | — | Pente après grâce (0=plat) |
-| exit_power_tau | 0.5 | >0 | 1 | Tau ⇒ alpha = -ln(tau)/ln 2 |
-| exit_half_life | 0.5 | >0 | — | Demi‑vie exponentielle |
-| exit_factor_threshold | 10000 | >0 | — | Seuil warning-only |
-| efficiency_weight | 0.75 | 0 | 2 | Pondération efficacité |
-| efficiency_center | 0.75 | 0 | 1 | Centre sigmoïde |
-| win_reward_factor | 2.0 | 0 | — | Amplification asymptotique (1+val) |
-| pnl_factor_beta | 0.5 | >0 | — | Sensibilité tanh |
-| check_invariants | true | — | — | Active validations runtime |
-Notes:
-- `win_reward_factor` non plafonné mais borne effective via tanh.
-- `exit_piecewise_grace` >1 étend la zone plein facteur.
-- `exit_factor_threshold` génère un RuntimeWarning uniquement.
-## 4. Reproductibilité
-## 5. Overrides
-## 6. Exemples
-## 7. Résultats (Artifacts)
-## 8. Avancé
-## 9. Tests
-## 10. Dépannage (Condensé)
-## 11. Référence Rapide
-### Couches de Validation
-### Méthodes Statistiques
-### Validation Paramètres
-#### Bornes (rappel)
 # 📊 Reward Space Analysis - User Guide
 
 **Analyze and validate ReforceXY reward logic with synthetic data**
@@ -328,10 +246,14 @@ _Profit factor configuration:_
 - `win_reward_factor` (default: 2.0) - Amplification for PnL above target (no upper bound; effective profit_target_factor ∈ [1, 1 + win_reward_factor] because tanh ≤ 1)
 - `pnl_factor_beta` (default: 0.5) - Sensitivity of amplification around target
 
+_Invariant / safety controls:_
+
+- `check_invariants` (default: true) - Enable/disable runtime invariant & safety validations (simulation invariants, mathematical bounds, distribution checks). Set to `false` only for performance experiments; not recommended for production validation.
+
 **`--real_episodes`** (path, optional)
 
 - Path to real episode rewards pickle file for distribution comparison
-- Enables distribution shift analysis (KL divergence, JS distance, Wasserstein distance)
+- Enables distribution shift analysis (KL(synthetic‖real), JS distance, Wasserstein distance, KS test)
 - Example: `../user_data/models/ReforceXY-PPO/sub_train_SYMBOL_DATE/episode_rewards.pkl`
 
 **`--pvalue_adjust`** (choice: none|benjamini_hochberg, default: none)
@@ -453,6 +375,22 @@ Key fields:
 
 Use `params_hash` to verify reproducibility across runs; identical seeds + identical overrides ⇒ identical hash.
 
+#### Distribution Shift Metric Conventions
+
+| Metric | Definition | Notes |
+|--------|------------|-------|
+| `*_kl_divergence` | KL(synthetic‖real) = Σ p_synth log(p_synth / p_real) | Asymmetric; 0 iff identical histograms (after binning). |
+| `*_js_distance` | √(JS(p_synth, p_real)) | Symmetric, bounded [0,1]; distance form (sqrt of JS divergence). |
+| `*_wasserstein` | 1D Earth Mover's Distance | Non-negative; same units as feature. |
+| `*_ks_statistic` | KS two-sample statistic | ∈ [0,1]; higher = greater divergence. |
+| `*_ks_pvalue` | KS test p-value | ∈ [0,1]; small ⇒ reject equality (at α). |
+
+Implementation details:
+- Histograms: 50 uniform bins spanning min/max across both samples.
+- Probabilities: counts + ε (1e‑10) then normalized ⇒ avoids log(0) and division by zero.
+- Degenerate (constant) distributions short‑circuit to zeros (divergences) / p-value 1.0.
+- JS distance is reported (not raw divergence) for bounded interpretability.
+
 ---
 
 ## 🔬 Advanced Usage
@@ -514,7 +452,7 @@ done
 python test_reward_space_analysis.py
 ```
 
-The suite currently contains 49 focused tests (coverage ~84% — dynamic; see manifest + future reports). The number evolves as new invariants and edge cases are added. Always prefer running the full suite after modifying reward logic or attenuation parameters.
+The suite currently contains 53 tests (current state; this number evolves as new invariants and attenuation modes are added). Always run the full suite after modifying reward logic or attenuation parameters.
 
 ### Test Categories
 
@@ -524,10 +462,12 @@ The suite currently contains 49 focused tests (coverage ~84% — dynamic; see ma
 | Statistical Coherence | TestStatisticalCoherence | Distribution shift, diagnostics, hypothesis basics |
 | Reward Alignment | TestRewardAlignment | Component correctness & exit factors |
 | Public API | TestPublicAPI | Core API functions and interfaces |
-| Statistical Validation | TestStatisticalValidation | Mathematical bounds and validation |
-| Boundary Conditions | TestBoundaryConditions | Extreme params & edge cases |
-| Helper Functions | TestHelperFunctions | I/O writers, model analysis, utility conversions |
-| Private Functions | TestPrivateFunctions | Penalty logic & internal reward calculations |
+| Statistical Validation | TestStatisticalValidation | Mathematical bounds, heteroscedasticity, invariants |
+| Boundary Conditions | TestBoundaryConditions | Extreme params & unknown mode fallback |
+| Helper Functions | TestHelperFunctions | Report writers, model analysis, utility conversions |
+| Private Functions (via public API) | TestPrivateFunctions | Idle / holding / invalid penalties, exit scenarios |
+| Robustness | TestRewardRobustness | Monotonic attenuation (where applicable), decomposition integrity, boundary regimes |
+| Parameter Validation | TestParameterValidation | Bounds clamping, warning threshold, penalty power scaling |
 
 ### Test Architecture
 
@@ -538,23 +478,11 @@ The suite currently contains 49 focused tests (coverage ~84% — dynamic; see ma
 
 ### Code Coverage Analysis
 
-**Current Coverage: ~84% (approximate; re-run coverage locally for exact figures)**
-
-To analyze code coverage in detail:
-
 ```shell
-# Install coverage tool (if not already installed)
 pip install coverage
-
-# Run tests with coverage
 coverage run --source=. test_reward_space_analysis.py
-
-# Generate coverage report
 coverage report -m
-
-# Generate HTML report for detailed analysis
-coverage html
-# View htmlcov/index.html in browser
+coverage html  # open htmlcov/index.html
 ```
 
 **Coverage Focus Areas:**
@@ -733,7 +661,6 @@ Before simulation (early in `main()`), `validate_reward_parameters` enforces num
 2. Reset to min if non-finite.
 3. Recorded in `manifest.json` under `parameter_adjustments` with fields: `original`, `adjusted`, `reason` (a comma‑separated list of clamp reasons like `min=0.0`, `max=1.0`, `non_finite_reset`).
 
-Design intent: maintain a single canonical defaults map + explicit bounds; no silent acceptance of pathological inputs. (The earlier `_reason_text` placeholder has been removed; use `reason`.)
 
 #### Parameter Bounds Summary
 

@@ -1384,70 +1384,117 @@ class MyRLEnv(Base5ActionRLEnv):
         """
         Compute the reward factor at trade exit
         """
-        if (
-            not np.isfinite(factor)
-            or not np.isfinite(pnl)
-            or not np.isfinite(duration_ratio)
+        if not (
+            np.isfinite(factor) and np.isfinite(pnl) and np.isfinite(duration_ratio)
         ):
             return 0.0
+        if duration_ratio < 0.0:
+            duration_ratio = 0.0
 
         model_reward_parameters = self.rl_config.get("model_reward_parameters", {})
-        exit_factor_mode = model_reward_parameters.get("exit_factor_mode", "piecewise")
+        exit_factor_mode = str(
+            model_reward_parameters.get("exit_factor_mode", "piecewise")
+        ).lower()
 
-        if exit_factor_mode == "legacy":
-            if duration_ratio <= 1.0:
-                factor *= 1.5
+        def _legacy(f: float, dr: float, p: Mapping) -> float:
+            return f * (1.5 if dr <= 1.0 else 0.5)
+
+        def _sqrt(f: float, dr: float, p: Mapping) -> float:
+            return f / math.sqrt(1.0 + dr)
+
+        def _linear(f: float, dr: float, p: Mapping) -> float:
+            slope = float(p.get("exit_linear_slope", 1.0))
+            if slope < 0.0:
+                slope = 1.0
+            return f / (1.0 + slope * dr)
+
+        def _power(f: float, dr: float, p: Mapping) -> float:
+            alpha = p.get("exit_power_alpha")
+            if isinstance(alpha, (int, float)) and alpha < 0.0:
+                alpha = None
+            if alpha is None:
+                tau = p.get("exit_power_tau")
+                if isinstance(tau, (int, float)):
+                    tau = float(tau)
+                    if 0.0 < tau <= 1.0:
+                        alpha = -math.log(tau) / math.log(2.0)
+            if not isinstance(alpha, (int, float)):
+                alpha = 1.0
             else:
-                factor *= 0.5
-        elif exit_factor_mode == "sqrt":
-            factor /= math.sqrt(1.0 + duration_ratio)
-        elif exit_factor_mode == "linear":
-            exit_linear_slope = float(
-                model_reward_parameters.get("exit_linear_slope", 1.0)
-            )
-            if exit_linear_slope < 0.0:
-                exit_linear_slope = 1.0
-            factor /= 1.0 + exit_linear_slope * duration_ratio
-        elif exit_factor_mode == "power":
-            exit_power_alpha = model_reward_parameters.get("exit_power_alpha")
-            if isinstance(exit_power_alpha, (int, float)) and exit_power_alpha < 0.0:
-                exit_power_alpha = None
-            if exit_power_alpha is None:
-                exit_power_tau = model_reward_parameters.get("exit_power_tau")
-                if isinstance(exit_power_tau, (int, float)):
-                    exit_power_tau = float(exit_power_tau)
-                    if 0.0 < exit_power_tau <= 1.0:
-                        exit_power_alpha = -math.log(exit_power_tau) / math.log(2.0)
-            if not isinstance(exit_power_alpha, (int, float)):
-                exit_power_alpha = 1.0
+                alpha = float(alpha)
+            return f / math.pow(1.0 + dr, alpha)
+
+        def _piecewise(f: float, dr: float, p: Mapping) -> float:
+            grace = float(p.get("exit_piecewise_grace", 1.0))
+            if grace < 0.0:
+                grace = 1.0
+            slope = float(p.get("exit_piecewise_slope", 1.0))
+            if slope < 0.0:
+                slope = 1.0
+            if dr <= grace:
+                divisor = 1.0
             else:
-                exit_power_alpha = float(exit_power_alpha)
-            factor /= math.pow(1.0 + duration_ratio, exit_power_alpha)
-        elif exit_factor_mode == "piecewise":
-            exit_piecewise_grace = float(
-                model_reward_parameters.get("exit_piecewise_grace", 1.0)
+                divisor = 1.0 + slope * (dr - grace)
+            return f / divisor
+
+        def _half_life(f: float, dr: float, p: Mapping) -> float:
+            hl = float(p.get("exit_half_life", 0.5))
+            if hl <= 0.0:
+                hl = 0.5
+            return f * math.pow(2.0, -dr / hl)
+
+        strategies: Dict[str, Callable[[float, float, Mapping], float]] = {
+            "legacy": _legacy,
+            "sqrt": _sqrt,
+            "linear": _linear,
+            "power": _power,
+            "piecewise": _piecewise,
+            "half_life": _half_life,
+        }
+
+        strategy_fn = strategies.get(exit_factor_mode, _piecewise)
+        try:
+            factor = strategy_fn(factor, duration_ratio, model_reward_parameters)
+        except Exception as e:
+            logger.warning(
+                "exit_factor_mode '%s' failed (%r), falling back to piecewise",
+                exit_factor_mode,
+                e,
             )
-            if not (0.0 <= exit_piecewise_grace <= 1.0):
-                exit_piecewise_grace = 1.0
-            exit_piecewise_slope = float(
-                model_reward_parameters.get("exit_piecewise_slope", 1.0)
-            )
-            if exit_piecewise_slope < 0.0:
-                exit_piecewise_slope = 1.0
-            if duration_ratio <= exit_piecewise_grace:
-                duration_divisor = 1.0
-            else:
-                duration_divisor = 1.0 + exit_piecewise_slope * (
-                    duration_ratio - exit_piecewise_grace
-                )
-            factor /= duration_divisor
-        elif exit_factor_mode == "half_life":
-            exit_half_life = float(model_reward_parameters.get("exit_half_life", 0.5))
-            if exit_half_life <= 0.0:
-                exit_half_life = 0.5
-            factor *= math.pow(2.0, -duration_ratio / exit_half_life)
+            factor = _piecewise(factor, duration_ratio, model_reward_parameters)
 
         factor *= self._get_pnl_factor(pnl, self.profit_aim * self.rr)
+
+        check_invariants = model_reward_parameters.get("check_invariants", True)
+        check_invariants = (
+            check_invariants
+            if isinstance(check_invariants, bool)
+            else bool(int(check_invariants))
+            if isinstance(check_invariants, (int, float))
+            else True
+        )
+        if check_invariants:
+            if not np.isfinite(factor):
+                logger.debug(
+                    "_get_exit_factor produced non-finite factor; resetting to 0.0"
+                )
+                return 0.0
+            if factor < 0.0 and pnl >= 0.0:
+                logger.debug(
+                    "_get_exit_factor negative with positive pnl (factor=%.5f, pnl=%.5f); clamping to 0.0",
+                    factor,
+                    pnl,
+                )
+                factor = 0.0
+            exit_factor_threshold = float(
+                model_reward_parameters.get("exit_factor_threshold", 10_000.0)
+            )
+            if exit_factor_threshold > 0 and abs(factor) > exit_factor_threshold:
+                logger.warning(
+                    "_get_exit_factor |factor|=%.2f exceeds threshold %.2f",
+                    factor,
+                    exit_factor_threshold,
+                )
 
         return factor
 
@@ -1557,6 +1604,8 @@ class MyRLEnv(Base5ActionRLEnv):
                     "max_idle_duration_candles", max_trade_duration
                 )
             )
+            if max_idle_duration <= 0:
+                max_idle_duration = max_trade_duration
             idle_penalty_scale = float(
                 model_reward_parameters.get("idle_penalty_scale", 1.0)
             )
