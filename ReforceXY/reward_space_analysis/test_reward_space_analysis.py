@@ -663,9 +663,12 @@ class TestRewardAlignment(RewardSpaceTestBase):
         )
 
     def test_exit_factor_calculation(self):
-        """Test exit factor calculation consistency."""
-        # Test different exit factor modes
-        modes_to_test = ["linear", "piecewise", "power"]
+        """Test exit factor calculation consistency across core modes + plateau variant.
+
+        Plateau behavior expressed via exit_plateau=True with a base kernel (e.g. linear).
+        """
+        # Core attenuation kernels (excluding legacy which is step-based)
+        modes_to_test = ["linear", "power"]
 
         for mode in modes_to_test:
             test_params = self.DEFAULT_PARAMS.copy()
@@ -677,11 +680,42 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 duration_ratio=0.3,
                 params=test_params,
             )
-
             self.assertTrue(
                 np.isfinite(factor), f"Exit factor for {mode} should be finite"
             )
             self.assertGreater(factor, 0, f"Exit factor for {mode} should be positive")
+
+        # Plateau+linear variant sanity check (grace region at 0.5)
+        plateau_params = self.DEFAULT_PARAMS.copy()
+        plateau_params.update(
+            {
+                "exit_attenuation_mode": "linear",
+                "exit_plateau": True,
+                "exit_plateau_grace": 0.5,
+                "exit_linear_slope": 1.0,
+            }
+        )
+        plateau_factor_pre = rsa.compute_exit_factor(
+            base_factor=1.0,
+            pnl=0.02,
+            pnl_factor=1.5,
+            duration_ratio=0.4,  # inside grace
+            params=plateau_params,
+        )
+        plateau_factor_post = rsa.compute_exit_factor(
+            base_factor=1.0,
+            pnl=0.02,
+            pnl_factor=1.5,
+            duration_ratio=0.8,  # after grace => attenuated or equal (slope may reduce)
+            params=plateau_params,
+        )
+        self.assertGreater(plateau_factor_pre, 0)
+        self.assertGreater(plateau_factor_post, 0)
+        self.assertGreaterEqual(
+            plateau_factor_pre,
+            plateau_factor_post - 1e-12,
+            "Plateau pre-grace factor should be >= post-grace factor",
+        )
 
     def test_negative_slope_sanitization(self):
         """Negative slopes for linear must be sanitized to positive default (1.0)."""
@@ -691,7 +725,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         pnl = 0.04
         pnl_factor = 1.0
         duration_ratio_linear = 1.2  # any positive ratio
-        duration_ratio_piecewise = 1.3  # > grace so slope matters
+        duration_ratio_plateau = 1.3  # > grace so slope matters
 
         # Linear mode: slope -5.0 should behave like slope=1.0 (sanitized)
         params_lin_neg = self.DEFAULT_PARAMS.copy()
@@ -735,10 +769,10 @@ class TestRewardAlignment(RewardSpaceTestBase):
             }
         )
         val_pl_neg = compute_exit_factor(
-            base_factor, pnl, pnl_factor, duration_ratio_piecewise, params_pl_neg
+            base_factor, pnl, pnl_factor, duration_ratio_plateau, params_pl_neg
         )
         val_pl_pos = compute_exit_factor(
-            base_factor, pnl, pnl_factor, duration_ratio_piecewise, params_pl_pos
+            base_factor, pnl, pnl_factor, duration_ratio_plateau, params_pl_pos
         )
         self.assertAlmostEqualFloat(
             val_pl_neg,
@@ -1399,8 +1433,8 @@ class TestBoundaryConditions(RewardSpaceTestBase):
             "Reward should be finite even with extreme parameters",
         )
 
-    def test_different_exit_factor_modes(self):
-        """Test different exit factor calculation modes."""
+    def test_different_exit_attenuation_modes(self):
+        """Test different exit attenuation modes (legacy, sqrt, linear, power, half_life)."""
         modes = ["legacy", "sqrt", "linear", "power", "half_life"]
 
         for mode in modes:
@@ -1994,7 +2028,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
     Covers:
     - Reward decomposition integrity (total == sum of active component exactly)
     - Exit factor monotonic attenuation per mode where mathematically expected
-    - Boundary parameter conditions (tau extremes, piecewise grace edges, linear slope = 0)
+    - Boundary parameter conditions (tau extremes, plateau grace edges, linear slope = 0)
     - Non-linear power tests for idle & holding penalties (power != 1)
     - Public wrapper `compute_exit_factor` (avoids private function usage in new tests)
     - Warning emission (exit_factor_threshold) without capping
@@ -2207,7 +2241,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
         self.assertGreater(
             val_g1,
             val_g0,
-            "Piecewise grace=1.0 should delay attenuation vs grace=0.0",
+            "Plateau grace=1.0 should delay attenuation vs grace=0.0",
         )
         # Linear slope zero vs positive
         params_lin0 = self.DEFAULT_PARAMS.copy()
@@ -2327,13 +2361,18 @@ class TestRewardRobustness(RewardSpaceTestBase):
 
         params = self.DEFAULT_PARAMS.copy()
         # Try multiple modes / extreme params
-        modes = ["linear", "power", "piecewise", "half_life", "sqrt", "legacy"]
+        modes = ["linear", "power", "half_life", "sqrt", "legacy", "linear_plateau"]
         base_factor = 100.0
         pnl = 0.05
         pnl_factor = 2.0  # amplified
         for mode in modes:
             params_mode = params.copy()
-            params_mode["exit_factor_mode"] = mode
+            if mode == "linear_plateau":
+                params_mode["exit_attenuation_mode"] = "linear"
+                params_mode["exit_plateau"] = True
+                params_mode["exit_plateau_grace"] = 0.4
+            else:
+                params_mode["exit_attenuation_mode"] = mode
             val = compute_exit_factor(base_factor, pnl, pnl_factor, 2.0, params_mode)
             self.assertGreaterEqual(
                 val,

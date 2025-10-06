@@ -668,7 +668,7 @@ All runs execute a sequence of fail‑fast validations; a failure aborts with a 
 | Distribution Metrics | Real vs synthetic shifts | Metrics within mathematical bounds (KL ≥0, JS ∈[0,1], Wasserstein ≥0, KS stats/p ≤[0,1]). Degenerate distributions handled safely (zeroed metrics). |
 | Distribution Diagnostics | Normality & moments | Finite mean/std/skew/kurtosis; Shapiro p-value ∈[0,1]; variance non-negative. |
 | Hypothesis Tests | Test result dicts | p-values & effect sizes within valid ranges; optional multiple-testing adjustment (Benjamini–Hochberg). |
-| Exit Factor Attenuation | Time-based scaling | Centralized piecewise divisor helper ensures single source of truth; threshold is warning-only (no hard cap). |
+| Exit Factor Attenuation | Time-based scaling | Centralized plateau/attenuation divisor helper ensures single source of truth; threshold is warning-only (no hard cap). |
 
 ### Statistical Method Notes
 
