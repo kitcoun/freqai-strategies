@@ -1,3 +1,85 @@
+# Reward Space Analysis (Specification)
+Concise operational guide. No marketing language. Single source of truth for tunables and validation guarantees. Exit factor parity date: 2025‑10‑06.
+## 1. Prérequis
+Python ≥3.8. Recommended: 8GB RAM. GPU non requis.
+Setup minimal:
+```shell
+cd ReforceXY/reward_space_analysis
+python -m venv .venv
+source .venv/bin/activate
+pip install pandas numpy scipy scikit-learn
+Run:
+```shell
+python reward_space_analysis.py --num_samples 20000 --output run1
+python test_reward_space_analysis.py
+## 2. Commandes Rapides
+Basique:
+```shell
+python reward_space_analysis.py --num_samples 10000
+```
+Sensibilité `win_reward_factor`:
+```shell
+python reward_space_analysis.py --num_samples 30000 --params win_reward_factor=2.0 --output wf2
+python reward_space_analysis.py --num_samples 30000 --params win_reward_factor=4.0 --output wf4
+```
+Comparaison réel vs synthétique:
+```shell
+python reward_space_analysis.py --num_samples 80000 --real_episodes ../user_data/models/ReforceXY-PPO/*/episode_rewards.pkl --output real_vs_syn
+```
+Batch simple:
+```shell
+for f in 1.5 2 3; do python reward_space_analysis.py --num_samples 20000 --params win_reward_factor=$f --output wf_$f; done
+```
+## 3. Paramètres (Tous optionnels)
+Paramètres CLI explicites + overrides `--params key=value`. Precedence: individual flag < `--params`.
+| Name | Default | Min | Max | Notes |
+|------|---------|-----|-----|-------|
+| num_samples | 20000 | 1 | — | Nombre d'échantillons synthétiques |
+| seed | 42 | 0 | — | Graine globale (simulation + RF) |
+| stats_seed | (seed) | 0 | — | Graine analytique (tests / bootstrap) |
+| max_trade_duration | 128 | 1 | — | Durée trade référence |
+| holding_max_ratio | 2.5 | >0 | — | Étendue d'échantillonnage durées |
+| pnl_base_std | 0.02 | 0 | — | Volatilité de base PnL |
+| pnl_duration_vol_scale | 0.5 | 0 | — | Amplification hétéroscédasticité |
+| trading_mode | spot | — | — | spot|margin|futures |
+| action_masking | true | — | — | Booléen |
+| base_factor | 100.0 | 0 | — | Facteur commun |
+| profit_target | 0.03 | 0 | — | Objectif profit |
+| risk_reward_ratio | 1.0 | 0 | — | Multiplicateur objectif |
+| invalid_action | -2.0 | — | 0 | Pénalité action invalide |
+| idle_penalty_scale | 1.0 | 0 | — | Échelle idle |
+| idle_penalty_power | 1.0 | 0 | — | Puissance idle |
+| max_idle_duration_candles | 0 | 0 | — | 0 ⇒ fallback max_trade_duration |
+| holding_penalty_scale | 0.5 | 0 | — | Échelle holding |
+| holding_penalty_power | 1.0 | 0 | — | Puissance holding |
+| exit_factor_mode | piecewise | — | — | legacy|sqrt|linear|power|piecewise|half_life |
+| exit_linear_slope | 1.0 | 0 | — | Pente linéaire |
+| exit_piecewise_grace | 1.0 | 0 | — | Frontière sans atténuation (>1 accepté) |
+| exit_piecewise_slope | 1.0 | 0 | — | Pente après grâce (0=plat) |
+| exit_power_tau | 0.5 | >0 | 1 | Tau ⇒ alpha = -ln(tau)/ln 2 |
+| exit_half_life | 0.5 | >0 | — | Demi‑vie exponentielle |
+| exit_factor_threshold | 10000 | >0 | — | Seuil warning-only |
+| efficiency_weight | 0.75 | 0 | 2 | Pondération efficacité |
+| efficiency_center | 0.75 | 0 | 1 | Centre sigmoïde |
+| win_reward_factor | 2.0 | 0 | — | Amplification asymptotique (1+val) |
+| pnl_factor_beta | 0.5 | >0 | — | Sensibilité tanh |
+| check_invariants | true | — | — | Active validations runtime |
+Notes:
+- `win_reward_factor` non plafonné mais borne effective via tanh.
+- `exit_piecewise_grace` >1 étend la zone plein facteur.
+- `exit_factor_threshold` génère un RuntimeWarning uniquement.
+## 4. Reproductibilité
+## 5. Overrides
+## 6. Exemples
+## 7. Résultats (Artifacts)
+## 8. Avancé
+## 9. Tests
+## 10. Dépannage (Condensé)
+## 11. Référence Rapide
+### Couches de Validation
+### Méthodes Statistiques
+### Validation Paramètres
+#### Bornes (rappel)
 # 📊 Reward Space Analysis - User Guide
 
 **Analyze and validate ReforceXY reward logic with synthetic data**
@@ -670,7 +752,7 @@ Design intent: maintain a single canonical defaults map + explicit bounds; no si
 | `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
 | `efficiency_weight` | 0.0 | 2.0 | Blend weight |
 | `efficiency_center` | 0.0 | 1.0 | Sigmoid center |
-| `win_reward_factor` | 0.0 | — | Amplification ≥ 0 (no upper cap; asymptotic multiplier 1+win_reward_factor) |
+| `win_reward_factor` | 0.0 | — | Amplification ≥ 0 |
 | `pnl_factor_beta` | 1e-6 | — | Sensitivity ≥ tiny positive |
 
 Non-finite inputs are reset to the applicable minimum (or 0.0 if only a maximum is declared) and logged as adjustments.
