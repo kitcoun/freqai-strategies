@@ -1419,19 +1419,15 @@ class MyRLEnv(Base5ActionRLEnv):
             return f / (1.0 + slope * dr)
 
         def _power(f: float, dr: float, p: Mapping) -> float:
-            alpha = p.get("exit_power_alpha")
-            if isinstance(alpha, (int, float)) and alpha < 0.0:
-                alpha = None
-            if alpha is None:
-                tau = p.get("exit_power_tau")
-                if isinstance(tau, (int, float)):
-                    tau = float(tau)
-                    if 0.0 < tau <= 1.0:
-                        alpha = -math.log(tau) / ReforceXY._LOG_2
-            if not isinstance(alpha, (int, float)):
-                alpha = 1.0
+            tau = p.get("exit_power_tau")
+            if isinstance(tau, (int, float)):
+                tau = float(tau)
+                if 0.0 < tau <= 1.0:
+                    alpha = -math.log(tau) / ReforceXY._LOG_2
+                else:
+                    alpha = 1.0
             else:
-                alpha = float(alpha)
+                alpha = 1.0
             return f / math.pow(1.0 + dr, alpha)
 
         def _half_life(f: float, dr: float, p: Mapping) -> float:

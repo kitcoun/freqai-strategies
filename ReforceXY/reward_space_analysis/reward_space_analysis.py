@@ -353,19 +353,15 @@ def _get_exit_factor(
         return f / (1.0 + exit_linear_slope * dr)
 
     def _power_kernel(f: float, dr: float) -> float:
-        alpha = params.get("exit_power_alpha")
-        if isinstance(alpha, (int, float)) and alpha < 0.0:
-            alpha = None
-        if alpha is None:
-            tau = params.get("exit_power_tau")
-            if isinstance(tau, (int, float)):
-                tau = float(tau)
-                if 0.0 < tau <= 1.0:
-                    alpha = -math.log(tau) / _LOG_2
-        if not isinstance(alpha, (int, float)):
-            alpha = 1.0
+        tau = params.get("exit_power_tau")
+        if isinstance(tau, (int, float)):
+            tau = float(tau)
+            if 0.0 < tau <= 1.0:
+                alpha = -math.log(tau) / _LOG_2
+            else:
+                alpha = 1.0
         else:
-            alpha = float(alpha)
+            alpha = 1.0
         return f / math.pow(1.0 + dr, alpha)
 
     def _half_life_kernel(f: float, dr: float) -> float:
