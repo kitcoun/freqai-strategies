@@ -700,7 +700,7 @@ Before simulation (early in `main()`), `validate_reward_parameters` enforces num
 | `holding_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
 | `exit_linear_slope` | 0.0 | — | Slope ≥ 0 |
 | `exit_plateau_grace` | 0.0 | — | Plateau grace boundary (full strength until this duration ratio) |
-| `exit_power_tau` | 1e-6 | 1.0 | Mapped to alpha = -ln(tau) |
+| `exit_power_tau` | 1e-6 | 1.0 | Mapped to alpha = -ln(tau)/ln(2) |
 | `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
 | `efficiency_weight` | 0.0 | 2.0 | Blend weight |
 | `efficiency_center` | 0.0 | 1.0 | Linear pivot (efficiency ratio center) |
