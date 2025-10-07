@@ -477,7 +477,7 @@ done
 python test_reward_space_analysis.py
 ```
 
-The suite currently contains 54 tests (current state; this number evolves as new invariants and attenuation modes are added). Always run the full suite after modifying reward logic or attenuation parameters.
+The suite currently contains 59 tests (current state; this number evolves as new invariants and attenuation modes are added). Always run the full suite after modifying reward logic or attenuation parameters.
 
 ### Test Categories
 

@@ -41,6 +41,14 @@ except ImportError as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
+# Canonical test constants
+TEST_BASE_FACTOR: float = 100.0
+TEST_PROFIT_TARGET: float = 0.03
+TEST_RR: float = 1.0
+TEST_RR_HIGH: float = 2.0
+TEST_PNL_STD: float = 0.02
+TEST_PNL_DUR_VOL_SCALE: float = 0.5
+
 
 class RewardSpaceTestBase(unittest.TestCase):
     """Base class with common test utilities."""
@@ -69,21 +77,15 @@ class RewardSpaceTestBase(unittest.TestCase):
         tolerance: float = 1e-6,
         msg: str | None = None,
     ) -> None:
-        """Helper for floating point comparisons with explicit type hints.
-
-        Parameters
-        ----------
-        first : float
-            First value to compare.
-        second : float
-            Second value to compare.
-        tolerance : float, default 1e-6
-            Absolute tolerance allowed between the two values.
-        msg : str | None
-            Optional message to display on failure.
-        """
-        if abs(first - second) > tolerance:
-            self.fail(f"{first} != {second} within {tolerance}: {msg}")
+        """Absolute tolerance compare with explicit failure and finite check."""
+        if not (math.isfinite(first) and math.isfinite(second)):
+            self.fail(msg or f"Non-finite comparison (a={first}, b={second})")
+        diff = abs(first - second)
+        if diff > tolerance:
+            self.fail(
+                msg
+                or f"Difference {diff} exceeds tolerance {tolerance} (a={first}, b={second})"
+            )
 
 
 class TestIntegration(RewardSpaceTestBase):
@@ -242,6 +244,24 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                         value, 0, f"{metric_name} should be non-negative"
                     )
 
+    def test_distribution_shift_identity_null_metrics(self):
+        """Identical distributions should yield (near) zero shift metrics."""
+        df = self._make_test_dataframe(180)
+        metrics_id = compute_distribution_shift_metrics(df, df.copy())
+        for name, val in metrics_id.items():
+            if name.endswith(("_kl_divergence", "_js_distance", "_wasserstein")):
+                self.assertLess(
+                    abs(val),
+                    1e-6,
+                    f"Metric {name} expected ≈ 0 on identical distributions (got {val})",
+                )
+            elif name.endswith("_ks_statistic"):
+                self.assertLess(
+                    abs(val),
+                    5e-3,
+                    f"KS statistic should be near 0 on identical distributions (got {val})",
+                )
+
     def test_hypothesis_testing(self):
         """Test statistical hypothesis tests."""
         df = self._make_test_dataframe(200)
@@ -321,9 +341,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
         breakdown = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
-            base_factor=100.0,
-            profit_target=0.06,
-            risk_reward_ratio=2.0,
+            base_factor=TEST_BASE_FACTOR,
+            profit_target=0.06,  # Scenario-specific larger target kept explicit
+            risk_reward_ratio=TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
@@ -346,7 +366,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         - Take profit reward magnitude > stop loss reward magnitude for comparable |PnL|.
         - Timeout uses current PnL (can be positive or negative); we assert sign consistency only.
         """
-        base_factor = 100.0
+        base_factor = TEST_BASE_FACTOR
         profit_target = 0.06
 
         # Take profit (positive pnl)
@@ -468,7 +488,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params_small["max_idle_duration_candles"] = 50
         params_large["max_idle_duration_candles"] = 200
 
-        base_factor = 100.0
+        base_factor = TEST_BASE_FACTOR
         idle_duration = 40  # below large threshold, near small threshold
         context = RewardContext(
             pnl=0.0,
@@ -627,23 +647,23 @@ class TestRewardAlignment(RewardSpaceTestBase):
         baseline = calculate_reward(
             context,
             params,
-            base_factor=100.0,
-            profit_target=0.03,
-            risk_reward_ratio=2.0,
+            base_factor=TEST_BASE_FACTOR,
+            profit_target=TEST_PROFIT_TARGET,
+            risk_reward_ratio=TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
 
         # Amplified: choose a much larger base_factor (ensure > threshold relative scale)
         amplified_base_factor = max(
-            100.0 * 50, threshold * 2.0 / max(context.pnl, 1e-9)
+            TEST_BASE_FACTOR * 50, threshold * TEST_RR_HIGH / max(context.pnl, 1e-9)
         )
         amplified = calculate_reward(
             context,
             params,
             base_factor=amplified_base_factor,
-            profit_target=0.03,
-            risk_reward_ratio=2.0,
+            profit_target=TEST_PROFIT_TARGET,
+            risk_reward_ratio=TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
@@ -719,9 +739,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
 
     def test_negative_slope_sanitization(self):
         """Negative slopes for linear must be sanitized to positive default (1.0)."""
-        from reward_space_analysis import compute_exit_factor
-
-        base_factor = 100.0
+        base_factor = TEST_BASE_FACTOR
         pnl = 0.04
         pnl_factor = 1.0
         duration_ratio_linear = 1.2  # any positive ratio
@@ -797,7 +815,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         br = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
-            base_factor=100.0,
+            base_factor=TEST_BASE_FACTOR,
             profit_target=0.0,  # critical case
             risk_reward_ratio=1.0,
             short_allowed=True,
@@ -812,13 +830,11 @@ class TestRewardAlignment(RewardSpaceTestBase):
 
     def test_power_mode_alpha_formula(self):
         """Validate power mode: factor ≈ base_factor / (1+r)^alpha where alpha=-log(tau)/log(2)."""
-        from reward_space_analysis import compute_exit_factor
-
         tau = 0.5
         r = 1.2
         alpha = -math.log(tau) / math.log(2.0)
-        base_factor = 100.0
-        pnl = 0.03
+        base_factor = TEST_BASE_FACTOR
+        pnl = TEST_PROFIT_TARGET
         pnl_factor = 1.0  # isolate attenuation
         params = self.DEFAULT_PARAMS.copy()
         params.update(
@@ -836,6 +852,275 @@ class TestRewardAlignment(RewardSpaceTestBase):
             tolerance=1e-9,
             msg=f"Power mode attenuation mismatch (obs={observed}, exp={expected}, alpha={alpha})",
         )
+
+    def test_win_reward_factor_saturation(self):
+        """Saturation test: pnl amplification factor should monotonically approach (1 + win_reward_factor)."""
+        win_reward_factor = 3.0  # asymptote = 4.0
+        beta = 0.5
+        profit_target = TEST_PROFIT_TARGET
+        params = self.DEFAULT_PARAMS.copy()
+        params.update(
+            {
+                "win_reward_factor": win_reward_factor,
+                "pnl_factor_beta": beta,
+                "efficiency_weight": 0.0,  # disable efficiency modulation
+                "exit_attenuation_mode": "linear",
+                "exit_plateau": False,
+                "exit_linear_slope": 0.0,  # keep attenuation = 1
+            }
+        )
+        # Ensure provided base_factor=1.0 is actually used (remove default 100)
+        params.pop("base_factor", None)
+
+        # pnl values: slightly above target, 2x, 5x, 10x target
+        pnl_values = [profit_target * m for m in (1.05, TEST_RR_HIGH, 5.0, 10.0)]
+        ratios_observed = []
+
+        for pnl in pnl_values:
+            context = RewardContext(
+                pnl=pnl,
+                trade_duration=0,  # duration_ratio=0 -> attenuation = 1
+                idle_duration=0,
+                max_trade_duration=100,
+                max_unrealized_profit=pnl,  # neutral wrt efficiency (disabled anyway)
+                min_unrealized_profit=0.0,
+                position=Positions.Long,
+                action=Actions.Long_exit,
+                force_action=None,
+            )
+            br = calculate_reward(
+                context,
+                params,
+                base_factor=1.0,  # isolate pnl_factor directly in exit reward ratio
+                profit_target=profit_target,
+                risk_reward_ratio=1.0,
+                short_allowed=True,
+                action_masking=True,
+            )
+            # br.exit_component = pnl * (base_factor * pnl_factor) => with base_factor=1, attenuation=1 => ratio = exit_component / pnl = pnl_factor
+            ratio = br.exit_component / pnl if pnl != 0 else 0.0
+            ratios_observed.append(ratio)
+
+        # Monotonic non-decreasing (allow tiny float noise)
+        for a, b in zip(ratios_observed, ratios_observed[1:]):
+            self.assertGreaterEqual(
+                b + 1e-12, a, f"Amplification not monotonic: {ratios_observed}"
+            )
+
+        asymptote = 1.0 + win_reward_factor
+        final_ratio = ratios_observed[-1]
+        # Expect to be very close to asymptote (tanh(0.5*(10-1)) ≈ 0.9997)
+        self.assertLess(
+            abs(final_ratio - asymptote),
+            1e-3,
+            f"Final amplification {final_ratio:.6f} not close to asymptote {asymptote:.6f}",
+        )
+
+        # Analytical expected ratios for comparison (not strict assertions except final)
+        expected_ratios = []
+        for pnl in pnl_values:
+            pnl_ratio = pnl / profit_target
+            expected = 1.0 + win_reward_factor * math.tanh(beta * (pnl_ratio - 1.0))
+            expected_ratios.append(expected)
+        # Compare each observed to expected within loose tolerance (model parity)
+        for obs, exp in zip(ratios_observed, expected_ratios):
+            self.assertLess(
+                abs(obs - exp),
+                5e-6,
+                f"Observed amplification {obs:.8f} deviates from expected {exp:.8f}",
+            )
+
+    def test_scale_invariance_and_decomposition(self):
+        """Reward components should scale linearly with base_factor and total == sum of components.
+
+        Contract:
+        R(base_factor * k) = k * R(base_factor) for each non-zero component.
+        """
+        params = self.DEFAULT_PARAMS.copy()
+        # Remove internal base_factor so the explicit argument is used
+        params.pop("base_factor", None)
+        base_factor = 80.0
+        k = 7.5
+        profit_target = TEST_PROFIT_TARGET
+        rr = 1.5
+
+        contexts: list[RewardContext] = [
+            # Winning exit
+            RewardContext(
+                pnl=0.025,
+                trade_duration=40,
+                idle_duration=0,
+                max_trade_duration=100,
+                max_unrealized_profit=0.03,
+                min_unrealized_profit=0.0,
+                position=Positions.Long,
+                action=Actions.Long_exit,
+                force_action=None,
+            ),
+            # Losing exit
+            RewardContext(
+                pnl=-TEST_PNL_STD,
+                trade_duration=60,
+                idle_duration=0,
+                max_trade_duration=100,
+                max_unrealized_profit=0.01,
+                min_unrealized_profit=-0.04,
+                position=Positions.Long,
+                action=Actions.Long_exit,
+                force_action=None,
+            ),
+            # Idle penalty
+            RewardContext(
+                pnl=0.0,
+                trade_duration=0,
+                idle_duration=35,
+                max_trade_duration=120,
+                max_unrealized_profit=0.0,
+                min_unrealized_profit=0.0,
+                position=Positions.Neutral,
+                action=Actions.Neutral,
+                force_action=None,
+            ),
+            # Holding penalty (maintained position)
+            RewardContext(
+                pnl=0.0,
+                trade_duration=80,
+                idle_duration=0,
+                max_trade_duration=100,
+                max_unrealized_profit=0.04,
+                min_unrealized_profit=-0.01,
+                position=Positions.Long,
+                action=Actions.Neutral,
+                force_action=None,
+            ),
+        ]
+
+        tol_scale = 1e-9
+        for ctx in contexts:
+            br1 = calculate_reward(
+                ctx,
+                params,
+                base_factor=base_factor,
+                profit_target=profit_target,
+                risk_reward_ratio=rr,
+                short_allowed=True,
+                action_masking=True,
+            )
+            br2 = calculate_reward(
+                ctx,
+                params,
+                base_factor=base_factor * k,
+                profit_target=profit_target,
+                risk_reward_ratio=rr,
+                short_allowed=True,
+                action_masking=True,
+            )
+
+            # Strict decomposition: total must equal sum of components
+            for br in (br1, br2):
+                comp_sum = (
+                    br.exit_component
+                    + br.idle_penalty
+                    + br.holding_penalty
+                    + br.invalid_penalty
+                )
+                self.assertAlmostEqual(
+                    br.total,
+                    comp_sum,
+                    places=12,
+                    msg=f"Decomposition mismatch (ctx={ctx}, total={br.total}, sum={comp_sum})",
+                )
+
+            # Verify scale invariance for each non-negligible component
+            components1 = {
+                "exit_component": br1.exit_component,
+                "idle_penalty": br1.idle_penalty,
+                "holding_penalty": br1.holding_penalty,
+                "invalid_penalty": br1.invalid_penalty,
+                "total": br1.total,
+            }
+            components2 = {
+                "exit_component": br2.exit_component,
+                "idle_penalty": br2.idle_penalty,
+                "holding_penalty": br2.holding_penalty,
+                "invalid_penalty": br2.invalid_penalty,
+                "total": br2.total,
+            }
+            for key, v1 in components1.items():
+                v2 = components2[key]
+                if abs(v1) < 1e-15 and abs(v2) < 1e-15:
+                    continue  # Skip exact zero (or numerically negligible) components
+                self.assertLess(
+                    abs(v2 - k * v1),
+                    tol_scale * max(1.0, abs(k * v1)),
+                    f"Scale invariance failed for {key}: v1={v1}, v2={v2}, k={k}",
+                )
+
+    def test_long_short_symmetry(self):
+        """Validate Long vs Short exit reward magnitude symmetry for identical PnL.
+
+        Hypothesis: No directional bias implies |R_long(pnl)| ≈ |R_short(pnl)|.
+        """
+        params = self.DEFAULT_PARAMS.copy()
+        params.pop("base_factor", None)
+        base_factor = 120.0
+        profit_target = 0.04
+        rr = 2.0
+        pnls = [0.018, -0.022]
+        for pnl in pnls:
+            ctx_long = RewardContext(
+                pnl=pnl,
+                trade_duration=55,
+                idle_duration=0,
+                max_trade_duration=100,
+                max_unrealized_profit=pnl if pnl > 0 else 0.01,
+                min_unrealized_profit=pnl if pnl < 0 else -0.01,
+                position=Positions.Long,
+                action=Actions.Long_exit,
+                force_action=None,
+            )
+            ctx_short = RewardContext(
+                pnl=pnl,
+                trade_duration=55,
+                idle_duration=0,
+                max_trade_duration=100,
+                max_unrealized_profit=pnl if pnl > 0 else 0.01,
+                min_unrealized_profit=pnl if pnl < 0 else -0.01,
+                position=Positions.Short,
+                action=Actions.Short_exit,
+                force_action=None,
+            )
+            br_long = calculate_reward(
+                ctx_long,
+                params,
+                base_factor=base_factor,
+                profit_target=profit_target,
+                risk_reward_ratio=rr,
+                short_allowed=True,
+                action_masking=True,
+            )
+            br_short = calculate_reward(
+                ctx_short,
+                params,
+                base_factor=base_factor,
+                profit_target=profit_target,
+                risk_reward_ratio=rr,
+                short_allowed=True,
+                action_masking=True,
+            )
+            # Sign aligned with PnL
+            if pnl > 0:
+                self.assertGreater(br_long.exit_component, 0)
+                self.assertGreater(br_short.exit_component, 0)
+            else:
+                self.assertLess(br_long.exit_component, 0)
+                self.assertLess(br_short.exit_component, 0)
+            # Magnitudes should be close (tolerance scaled)
+            self.assertLess(
+                abs(abs(br_long.exit_component) - abs(br_short.exit_component)),
+                1e-9 * max(1.0, abs(br_long.exit_component)),
+                f"Long/Short asymmetry pnl={pnl}: long={br_long.exit_component}, short={br_short.exit_component}",
+            )
 
 
 class TestPublicAPI(RewardSpaceTestBase):
@@ -960,13 +1245,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=50,
-            base_factor=100.0,
-            profit_target=0.03,
-            risk_reward_ratio=1.0,
+            base_factor=TEST_BASE_FACTOR,
+            profit_target=TEST_PROFIT_TARGET,
+            risk_reward_ratio=TEST_RR,
             holding_max_ratio=2.0,
             trading_mode="margin",
-            pnl_base_std=0.02,
-            pnl_duration_vol_scale=0.5,
+            pnl_base_std=TEST_PNL_STD,
+            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
         )
 
         # Critical invariant: Total PnL must equal sum of exit PnL
@@ -1077,13 +1362,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             seed=123,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
-            base_factor=100.0,
-            profit_target=0.03,
+            base_factor=TEST_BASE_FACTOR,
+            profit_target=TEST_PROFIT_TARGET,
             risk_reward_ratio=1.0,
             holding_max_ratio=2.0,
             trading_mode="margin",
-            pnl_base_std=0.02,
-            pnl_duration_vol_scale=0.5,
+            pnl_base_std=TEST_PNL_STD,
+            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
         )
 
         # Filter to exit actions only (where PnL is meaningful)
@@ -1140,7 +1425,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         params["exit_plateau"] = False
 
         reward_power = calculate_reward(
-            context, params, 100.0, 0.03, 1.0, short_allowed=True, action_masking=True
+            context,
+            params,
+            TEST_BASE_FACTOR,
+            TEST_PROFIT_TARGET,
+            TEST_RR,
+            short_allowed=True,
+            action_masking=True,
         )
 
         # Mathematical validation: alpha = -ln(tau) = -ln(0.5) ≈ 0.693
@@ -1156,7 +1447,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         params["exit_half_life"] = 0.5
 
         reward_half_life = calculate_reward(
-            context, params, 100.0, 0.03, 1.0, short_allowed=True, action_masking=True
+            context,
+            params,
+            TEST_BASE_FACTOR,
+            TEST_PROFIT_TARGET,
+            TEST_RR,
+            short_allowed=True,
+            action_masking=True,
         )
 
         # Mathematical validation: 2^(-duration_ratio/half_life) = 2^(-0.5/0.5) = 0.5
@@ -1168,7 +1465,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         params["exit_linear_slope"] = 1.0
 
         reward_linear = calculate_reward(
-            context, params, 100.0, 0.03, 1.0, short_allowed=True, action_masking=True
+            context,
+            params,
+            TEST_BASE_FACTOR,
+            TEST_PROFIT_TARGET,
+            TEST_RR,
+            short_allowed=True,
+            action_masking=True,
         )
 
         # All modes should produce positive rewards but different values
@@ -1248,30 +1551,102 @@ class TestStatisticalValidation(RewardSpaceTestBase):
                     p_val, 0, f"p-value for {test_name} must be >= 0"
                 )
                 self.assertLessEqual(p_val, 1, f"p-value for {test_name} must be <= 1")
-
-            # Effect sizes should be finite and meaningful
+            # Effect size epsilon squared (ANOVA/Kruskal) must be finite and >= 0
             if "effect_size_epsilon_sq" in result:
-                effect_size = result["effect_size_epsilon_sq"]
+                eps2 = result["effect_size_epsilon_sq"]
                 self.assertTrue(
-                    np.isfinite(effect_size),
-                    f"Effect size for {test_name} should be finite",
+                    np.isfinite(eps2),
+                    f"Effect size epsilon^2 for {test_name} should be finite",
                 )
                 self.assertGreaterEqual(
-                    effect_size, 0, f"ε² for {test_name} should be >= 0"
+                    eps2, 0.0, f"Effect size epsilon^2 for {test_name} must be >= 0"
                 )
-
+            # Rank-biserial correlation (Mann-Whitney) must be finite in [-1, 1]
             if "effect_size_rank_biserial" in result:
-                rb_corr = result["effect_size_rank_biserial"]
+                rb = result["effect_size_rank_biserial"]
                 self.assertTrue(
-                    np.isfinite(rb_corr),
+                    np.isfinite(rb),
                     f"Rank-biserial correlation for {test_name} should be finite",
                 )
                 self.assertGreaterEqual(
-                    rb_corr, -1, f"Rank-biserial for {test_name} should be >= -1"
+                    rb, -1.0, f"Rank-biserial correlation for {test_name} must be >= -1"
                 )
                 self.assertLessEqual(
-                    rb_corr, 1, f"Rank-biserial for {test_name} should be <= 1"
+                    rb, 1.0, f"Rank-biserial correlation for {test_name} must be <= 1"
                 )
+            # Generic correlation effect size (Spearman/Pearson) if present
+            if "rho" in result:
+                rho = result["rho"]
+                if rho is not None and np.isfinite(rho):
+                    self.assertGreaterEqual(
+                        rho, -1.0, f"Correlation rho for {test_name} must be >= -1"
+                    )
+                    self.assertLessEqual(
+                        rho, 1.0, f"Correlation rho for {test_name} must be <= 1"
+                    )
+
+    def test_benjamini_hochberg_adjustment(self):
+        """Benjamini-Hochberg adjustment adds p_value_adj & significant_adj fields with valid bounds."""
+        from reward_space_analysis import statistical_hypothesis_tests
+
+        # Use simulation to trigger multiple tests
+        df = simulate_samples(
+            num_samples=1000,
+            seed=123,
+            params=self.DEFAULT_PARAMS,
+            max_trade_duration=100,
+            base_factor=TEST_BASE_FACTOR,
+            profit_target=TEST_PROFIT_TARGET,
+            risk_reward_ratio=1.0,
+            holding_max_ratio=2.0,
+            trading_mode="margin",
+            pnl_base_std=TEST_PNL_STD,
+            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+        )
+
+        results_adj = statistical_hypothesis_tests(
+            df, adjust_method="benjamini_hochberg", seed=777
+        )
+        # At least one test should have run (idle or kruskal etc.)
+        self.assertGreater(len(results_adj), 0, "No hypothesis tests executed")
+        for name, res in results_adj.items():
+            self.assertIn("p_value", res, f"Missing p_value in {name}")
+            self.assertIn("p_value_adj", res, f"Missing p_value_adj in {name}")
+            self.assertIn("significant_adj", res, f"Missing significant_adj in {name}")
+            p_raw = res["p_value"]
+            p_adj = res["p_value_adj"]
+            # Bounds & ordering
+            self.assertTrue(0 <= p_raw <= 1, f"Raw p-value out of bounds ({p_raw})")
+            self.assertTrue(
+                0 <= p_adj <= 1, f"Adjusted p-value out of bounds ({p_adj})"
+            )
+            # BH should not reduce p-value (non-decreasing) after monotonic enforcement
+            self.assertGreaterEqual(
+                p_adj,
+                p_raw - 1e-12,
+                f"Adjusted p-value {p_adj} is smaller than raw {p_raw}",
+            )
+            # Consistency of significance flags
+            alpha = 0.05
+            self.assertEqual(
+                res["significant_adj"],
+                bool(p_adj < alpha),
+                f"significant_adj inconsistent for {name}",
+            )
+            # Optional: if effect sizes present, basic bounds
+            if "effect_size_epsilon_sq" in res:
+                eff = res["effect_size_epsilon_sq"]
+                self.assertTrue(
+                    np.isfinite(eff), f"Effect size finite check failed for {name}"
+                )
+                self.assertGreaterEqual(eff, 0, f"ε² should be >=0 for {name}")
+            if "effect_size_rank_biserial" in res:
+                rb = res["effect_size_rank_biserial"]
+                self.assertTrue(
+                    np.isfinite(rb), f"Rank-biserial finite check failed for {name}"
+                )
+                self.assertGreaterEqual(rb, -1, f"Rank-biserial lower bound {name}")
+                self.assertLessEqual(rb, 1, f"Rank-biserial upper bound {name}")
 
     def test_simulate_samples_with_different_modes(self):
         """Test simulate_samples with different trading modes."""
@@ -1281,9 +1656,9 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
-            base_factor=100.0,
-            profit_target=0.03,
-            risk_reward_ratio=1.0,
+            base_factor=TEST_BASE_FACTOR,
+            profit_target=TEST_PROFIT_TARGET,
+            risk_reward_ratio=TEST_RR,
             holding_max_ratio=2.0,
             trading_mode="spot",
             pnl_base_std=0.02,
