@@ -271,8 +271,8 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
             idle_data = df[df["idle_duration"] > 0]
             if len(idle_data) > 10:
                 # Simple correlation check: idle duration should correlate negatively with idle reward
-                idle_dur = idle_data["idle_duration"].values
-                idle_rew = idle_data["reward_idle"].values
+                idle_dur = idle_data["idle_duration"].to_numpy()
+                idle_rew = idle_data["reward_idle"].to_numpy()
 
                 # Basic validation that data makes sense
                 self.assertTrue(
@@ -874,7 +874,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
 
         # pnl values: slightly above target, 2x, 5x, 10x target
         pnl_values = [profit_target * m for m in (1.05, TEST_RR_HIGH, 5.0, 10.0)]
-        ratios_observed = []
+        ratios_observed: list[float] = []
 
         for pnl in pnl_values:
             context = RewardContext(
@@ -899,7 +899,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             )
             # br.exit_component = pnl * (base_factor * pnl_factor) => with base_factor=1, attenuation=1 => ratio = exit_component / pnl = pnl_factor
             ratio = br.exit_component / pnl if pnl != 0 else 0.0
-            ratios_observed.append(ratio)
+            ratios_observed.append(float(ratio))
 
         # Monotonic non-decreasing (allow tiny float noise)
         for a, b in zip(ratios_observed, ratios_observed[1:]):
@@ -910,6 +910,8 @@ class TestRewardAlignment(RewardSpaceTestBase):
         asymptote = 1.0 + win_reward_factor
         final_ratio = ratios_observed[-1]
         # Expect to be very close to asymptote (tanh(0.5*(10-1)) ≈ 0.9997)
+        if not math.isfinite(final_ratio):
+            self.fail(f"Final ratio is not finite: {final_ratio}")
         self.assertLess(
             abs(final_ratio - asymptote),
             1e-3,
@@ -917,13 +919,15 @@ class TestRewardAlignment(RewardSpaceTestBase):
         )
 
         # Analytical expected ratios for comparison (not strict assertions except final)
-        expected_ratios = []
+        expected_ratios: list[float] = []
         for pnl in pnl_values:
             pnl_ratio = pnl / profit_target
             expected = 1.0 + win_reward_factor * math.tanh(beta * (pnl_ratio - 1.0))
             expected_ratios.append(expected)
         # Compare each observed to expected within loose tolerance (model parity)
         for obs, exp in zip(ratios_observed, expected_ratios):
+            if not (math.isfinite(obs) and math.isfinite(exp)):
+                self.fail(f"Non-finite observed/expected ratio: obs={obs}, exp={exp}")
             self.assertLess(
                 abs(obs - exp),
                 5e-6,
@@ -2327,7 +2331,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         """Test that holding penalty scales progressively after max_duration."""
         max_duration = 100
         durations = [150, 200, 300]  # All > max_duration
-        penalties = []
+        penalties: list[float] = []
 
         for duration in durations:
             context = RewardContext(
