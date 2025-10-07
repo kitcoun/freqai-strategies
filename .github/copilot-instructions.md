@@ -11,8 +11,8 @@ These instructions guide GitHub Copilot to generate changes consistent with this
 
 - **Before coding**:
   - Perform a comprehensive inventory of the codebase. Search for and read:
-    - README.md, CONTRIBUTING.md, and all other documentation files
-    - relevant code files related to the task
+    - README.md, CONTRIBUTING.md, and all other documentation files.
+    - relevant code files related to the task.
   - Identify existing code architecture, design patterns, canonical defaults, naming patterns and coding styles.
 - **When coding**:
   - Follow the core principles below.
