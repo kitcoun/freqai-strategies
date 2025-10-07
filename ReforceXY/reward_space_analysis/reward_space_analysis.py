@@ -698,7 +698,7 @@ def simulate_samples(
     base_factor: float,
     profit_target: float,
     risk_reward_ratio: float,
-    holding_max_ratio: float,
+    max_duration_ratio: float,
     trading_mode: str,
     pnl_base_std: float,
     pnl_duration_vol_scale: float,
@@ -737,9 +737,25 @@ def simulate_samples(
 
         if position == Positions.Neutral:
             trade_duration = 0
-            idle_duration = int(rng.uniform(0, max_trade_duration * holding_max_ratio))
+            max_idle_duration_candles = params.get("max_idle_duration_candles")
+            try:
+                if max_idle_duration_candles is not None:
+                    max_idle_duration_candles = int(max_idle_duration_candles)
+                else:
+                    max_idle_duration_candles = int(
+                        max_trade_duration * max_duration_ratio
+                    )
+            except (TypeError, ValueError):
+                max_idle_duration_candles = int(max_trade_duration * max_duration_ratio)
+
+            if max_idle_duration_candles <= 0:
+                max_idle_duration_candles = int(max_trade_duration * max_duration_ratio)
+
+            idle_duration = int(rng.uniform(0, max_idle_duration_candles))
         else:
-            trade_duration = int(rng.uniform(1, max_trade_duration * holding_max_ratio))
+            trade_duration = int(
+                rng.uniform(1, max_trade_duration * max_duration_ratio)
+            )
             trade_duration = max(1, trade_duration)
             idle_duration = 0
 
@@ -1980,7 +1996,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Risk reward ratio multiplier (default: 1.0).",
     )
     parser.add_argument(
-        "--holding_max_ratio",
+        "--max_duration_ratio",
         type=float,
         default=2.5,
         help="Multiple of max duration used when sampling trade/idle durations.",
@@ -2536,7 +2552,7 @@ def main() -> None:
         base_factor=base_factor,
         profit_target=profit_target,
         risk_reward_ratio=risk_reward_ratio,
-        holding_max_ratio=args.holding_max_ratio,
+        max_duration_ratio=args.max_duration_ratio,
         trading_mode=args.trading_mode,
         pnl_base_std=args.pnl_base_std,
         pnl_duration_vol_scale=args.pnl_duration_vol_scale,
@@ -2549,7 +2565,7 @@ def main() -> None:
         "base_factor": base_factor,
         "profit_target": profit_target,
         "risk_reward_ratio": risk_reward_ratio,
-        "holding_max_ratio": args.holding_max_ratio,
+        "max_duration_ratio": args.max_duration_ratio,
         "trading_mode": args.trading_mode,
         "action_masking": params.get("action_masking", True),
         "pnl_base_std": args.pnl_base_std,

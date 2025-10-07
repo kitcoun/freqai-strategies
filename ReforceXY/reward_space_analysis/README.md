@@ -86,12 +86,11 @@ source .venv/bin/activate
 pip install pandas numpy scipy scikit-learn
 ```
 
-Whenever you need to run analyses or tests, activate the environment first:
+Whenever you need to run analyses, activate the environment first and execute:
 
 ```shell
 source .venv/bin/activate
 python reward_space_analysis.py --num_samples 20000 --output reward_space_outputs
-python test_reward_space_analysis.py
 ```
 
 > Deactivate the environment with `deactivate` when you're done.
@@ -204,14 +203,14 @@ None - all parameters have sensible defaults.
 **`--profit_target`** (float, default: 0.03)
 
 - Target profit threshold as decimal (e.g., 0.03 = 3%)
-- Used for efficiency calculations and holding penalties
+- Used for exit reward
 
 **`--risk_reward_ratio`** (float, default: 1.0)
 
 - Risk/reward ratio multiplier
 - Affects profit target adjustment in reward calculations
 
-**`--holding_max_ratio`** (float, default: 2.5)
+**`--max_duration_ratio`** (float, default: 2.5)
 
 - Multiple of max_trade_duration used for sampling trade/idle durations
 - Higher = more variety in duration scenarios
@@ -289,7 +288,7 @@ effective_r = r - grace    if exit_plateau and r >  grace
 effective_r = r            if not exit_plateau
 ```
 
-| Mode | Multiplier (applied to base_factor * pnl * pnl_factor * efficiency) | Monotonic ↓ | Notes |
+| Mode | Multiplier (applied to base_factor * pnl * pnl_factor * efficiency_factor) | Monotonic ↓ | Notes |
 |------|---------------------------------------------------------------------|-------------|-------|
 | legacy | step: ×1.5 if r* ≤ 1 else ×0.5 | No | Historical discontinuity retained (not smoothed) |
 | sqrt | 1 / sqrt(1 + r*) | Yes | Sub-linear decay |
@@ -298,11 +297,6 @@ effective_r = r            if not exit_plateau
 | half_life | 2^(- r* / hl) | Yes | hl = `exit_half_life`; r* = hl ⇒ factor × 0.5 |
 
 Where r* = `effective_r` above.
-
-Notes:
-- Plateau guarantees continuity at the boundary r = grace for all monotonic kernels; only `legacy` may jump.
-- A single implementation in code (`_get_exit_factor`) mirrors this table; this README is the canonical human-readable mapping.
-- Continuity tests assert small‑epsilon bounded attenuation onset (excluding `legacy`).
 
 _Efficiency configuration:_
 
@@ -515,10 +509,13 @@ done
 ### Run Tests
 
 ```shell
-python test_reward_space_analysis.py
+# activate the venv first
+source .venv/bin/activate
+pip install pytest packaging
+pytest -q
 ```
 
-The suite currently contains 59 tests (current state; this number evolves as new invariants and attenuation modes are added). Always run the full suite after modifying reward logic or attenuation parameters.
+Always run the full suite after modifying reward logic or attenuation parameters.
 
 ### Test Categories
 
