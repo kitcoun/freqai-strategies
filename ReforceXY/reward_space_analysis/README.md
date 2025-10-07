@@ -19,9 +19,52 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 
 ---
 
-**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#️-cli-parameters-reference). For runtime guardrails see [Validation Layers](#-validation-layers-runtime). The exit factor attenuation logic is now centralized through a single internal helper ensuring analytical parity with the live environment.
+**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#-cli-parameters-reference).
 
----
+## Table of contents
+
+- [What is this?](#-what-is-this)
+- [Key Features](#key-features)
+- [Common Use Cases](#-common-use-cases)
+    - [1. Validate Reward Logic](#1-validate-reward-logic)
+    - [2. Analyze Parameter Sensitivity](#2-analyze-parameter-sensitivity)
+    - [3. Debug Reward Issues](#3-debug-reward-issues)
+    - [4. Compare Real vs Synthetic Data](#4-compare-real-vs-synthetic-data)
+- [Prerequisites](#-prerequisites)
+    - [System Requirements](#system-requirements)
+    - [Virtual environment setup](#virtual-environment-setup)
+- [CLI Parameters Reference](#-cli-parameters-reference)
+    - [Required Parameters](#required-parameters)
+    - [Core Simulation Parameters](#core-simulation-parameters)
+    - [Reward Configuration](#reward-configuration)
+    - [PnL / Volatility Controls](#pnl--volatility-controls)
+    - [Trading Environment](#trading-environment)
+    - [Output Configuration](#output-configuration)
+    - [Reproducibility Model](#reproducibility-model)
+    - [Direct Tunable Overrides vs `--params`](#direct-tunable-overrides-vs---params)
+- [Example Commands](#-example-commands)
+- [Understanding Results](#-understanding-results)
+    - [Main Report](#main-report)
+    - [Data Exports](#data-exports)
+    - [Manifest Structure (`manifest.json`)](#manifest-structure-manifestjson)
+    - [Distribution Shift Metric Conventions](#distribution-shift-metric-conventions)
+- [Advanced Usage](#-advanced-usage)
+    - [Custom Parameter Testing](#custom-parameter-testing)
+    - [Real Data Comparison](#real-data-comparison)
+    - [Batch Analysis](#batch-analysis)
+- [Validation & Testing](#-validation--testing)
+    - [Run Tests](#run-tests)
+    - [Test Categories](#test-categories)
+    - [Test Architecture](#test-architecture)
+    - [Code Coverage Analysis](#code-coverage-analysis)
+    - [When to Run Tests](#when-to-run-tests)
+    - [Run Specific Test Categories](#run-specific-test-categories)
+- [Troubleshooting](#-troubleshooting)
+    - [Module Installation Issues](#module-installation-issues)
+    - [No Output Files Generated](#no-output-files-generated)
+    - [Unexpected Reward Values](#unexpected-reward-values)
+    - [Slow Execution](#slow-execution)
+    - [Memory Errors](#memory-errors)
 
 ## 📦 Prerequisites
 
@@ -311,9 +354,7 @@ python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9002
 python reward_space_analysis.py --num_samples 50000 --seed 777
 ```
 
----
-
-#### Direct Tunable Overrides vs `--params`
+### Direct Tunable Overrides vs `--params`
 
 All reward parameters are also available as individual CLI flags. You may choose either style:
 
@@ -400,7 +441,7 @@ Key fields:
 
 Use `params_hash` to verify reproducibility across runs; identical seeds + identical overrides ⇒ identical hash.
 
-#### Distribution Shift Metric Conventions
+### Distribution Shift Metric Conventions
 
 | Metric | Definition | Notes |
 |--------|------------|-------|
@@ -600,111 +641,3 @@ pip install pandas numpy scipy scikit-learn
 - Add more RAM or configure swap file
 - Process data in batches for custom analyses
 
----
-
-## 📞 Quick Reference & Best Practices
-
-### Getting Started
-
-```shell
-# Setup virtual environment (first time only)
-cd ReforceXY/reward_space_analysis
-python -m venv .venv
-source .venv/bin/activate
-pip install pandas numpy scipy scikit-learn
-
-# Basic analysis
-python reward_space_analysis.py --num_samples 20000 --output reward_space_outputs
-
-# Run validation tests
-python test_reward_space_analysis.py
-```
-
-### Best Practices
-
-**For Beginners:**
-
-- Start with 10,000-20,000 samples for quick iteration
-- Use default parameters initially
-- Always run tests after modifying reward logic: `python test_reward_space_analysis.py`
-- Review `statistical_analysis.md` for insights
-
-**For Advanced Users:**
-
-- Use 50,000+ samples for statistical significance
-- Compare multiple parameter sets via batch analysis
-- Validate synthetic analysis against real trading data with `--real_episodes`
-- Export CSV files for custom statistical analysis
-
-**Performance Optimization:**
-
-- Use SSD storage for faster I/O
-- Parallelize parameter sweeps across multiple runs
-- Cache results for repeated analyses
-- Use `--trading_mode spot` for faster exploratory runs
-
-### Common Issues Quick Reference
-
-For detailed troubleshooting, see [Troubleshooting](#-troubleshooting) section.
-
-| Issue              | Quick Solution                                                |
-| ------------------ | ------------------------------------------------------------- |
-| Memory errors      | Reduce `--num_samples` to 10,000-20,000                       |
-| Slow execution     | Use `--trading_mode spot` or reduce samples                   |
-| Unexpected rewards | Run `test_reward_space_analysis.py` and check `--params` overrides |
-| Import errors      | Activate venv: `source .venv/bin/activate`                    |
-| No output files    | Check write permissions and disk space                        |
-| Hash mismatch      | Confirm overrides + seed; compare `reward_param_overrides`    |
-
-### Validation Layers (Runtime)
-
-All runs execute a sequence of fail‑fast validations; a failure aborts with a clear message:
-
-| Layer | Scope | Guarantees |
-|-------|-------|------------|
-| Simulation Invariants | Raw synthetic samples | PnL only on exit actions; sum PnL equals exit PnL; no exit reward without PnL. |
-| Parameter Bounds | Tunables | Clamps values outside declared bounds; records adjustments in manifest. |
-| Bootstrap CIs | Mean estimates | Finite means; ordered CI bounds; non‑NaN across metrics. |
-| Distribution Metrics | Real vs synthetic shifts | Metrics within mathematical bounds (KL ≥0, JS ∈[0,1], Wasserstein ≥0, KS stats/p ≤[0,1]). Degenerate distributions handled safely (zeroed metrics). |
-| Distribution Diagnostics | Normality & moments | Finite mean/std/skew/kurtosis; Shapiro p-value ∈[0,1]; variance non-negative. |
-| Hypothesis Tests | Test result dicts | p-values & effect sizes within valid ranges; optional multiple-testing adjustment (Benjamini–Hochberg). |
-| Exit Factor Attenuation | Time-based scaling | Centralized plateau/attenuation divisor helper ensures single source of truth; threshold is warning-only (no hard cap). |
-
-### Statistical Method Notes
-
-- Bootstrap CIs: percentile method (default 10k resamples in full runs; tests may use fewer). BCa not yet implemented (explicitly deferred).
-- Multiple testing: Benjamini–Hochberg available via `--pvalue_adjust benjamini_hochberg`.
-- JS distance reported as the square root of Jensen–Shannon divergence (hence bounded by 1).
-- Degenerate distributions (all values identical) short‑circuit to stable zero metrics.
-- Random Forest: 400 trees, `n_jobs=1` for determinism.
-- Heteroscedasticity model: σ = `pnl_base_std * (1 + pnl_duration_vol_scale * duration_ratio)`.
-
-### Parameter Validation & Sanitization
-
-Before simulation (early in `main()`), `validate_reward_parameters` enforces numeric bounds (see `_PARAMETER_BOUNDS` in code). Adjusted values are:
-
-1. Clamped to min/max if out of range.
-2. Reset to min if non-finite.
-3. Recorded in `manifest.json` under `parameter_adjustments` with fields: `original`, `adjusted`, `reason` (a comma‑separated list of clamp reasons like `min=0.0`, `max=1.0`, `non_finite_reset`).
-
-
-#### Parameter Bounds Summary
-
-| Parameter | Min | Max | Notes |
-|-----------|-----|-----|-------|
-| `invalid_action` | — | 0.0 | Must be ≤ 0 (penalty) |
-| `base_factor` | 0.0 | — | Global scaling factor |
-| `idle_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
-| `idle_penalty_scale` | 0.0 | — | Scale ≥ 0 |
-| `holding_penalty_scale` | 0.0 | — | Scale ≥ 0 |
-| `holding_penalty_power` | 0.0 | — | Power exponent ≥ 0 |
-| `exit_linear_slope` | 0.0 | — | Slope ≥ 0 |
-| `exit_plateau_grace` | 0.0 | — | Plateau grace boundary (full strength until this duration ratio) |
-| `exit_power_tau` | 1e-6 | 1.0 | Mapped to alpha = -ln(tau)/ln(2) |
-| `exit_half_life` | 1e-6 | — | Half-life in duration ratio units |
-| `efficiency_weight` | 0.0 | 2.0 | Blend weight |
-| `efficiency_center` | 0.0 | 1.0 | Linear pivot (efficiency ratio center) |
-| `win_reward_factor` | 0.0 | — | Asymptotic bonus multiplier for pnl above target |
-| `pnl_factor_beta` | 1e-6 | — | Sensitivity ≥ tiny positive |
-
-Non-finite inputs are reset to the applicable minimum (or 0.0 if only a maximum is declared) and logged as adjustments.

@@ -1,5 +1,16 @@
 # FreqAI strategies
 
+## Table of contents
+
+- [QuickAdapter](#quickadapter)
+	- [Quick start](#quick-start)
+	- [Configuration tunables](#configuration-tunables)
+- [ReforceXY](#reforcexy)
+	- [Quick start](#quick-start-1)
+	- [Configuration tunables](#configuration-tunables-1)
+- [Common workflows](#common-workflows)
+- [Note](#note)
+
 ## QuickAdapter
 
 ### Quick start
