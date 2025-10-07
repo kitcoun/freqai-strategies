@@ -23,7 +23,6 @@ import pandas as pd
 
 # Import functions to test
 try:
-    import reward_space_analysis as rsa
     from reward_space_analysis import (
         DEFAULT_MODEL_REWARD_PARAMETERS,
         Actions,
@@ -33,6 +32,7 @@ try:
         bootstrap_confidence_intervals,
         calculate_reward,
         compute_distribution_shift_metrics,
+        compute_exit_factor,
         distribution_diagnostics,
         parse_overrides,
         simulate_samples,
@@ -673,7 +673,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         for mode in modes_to_test:
             test_params = self.DEFAULT_PARAMS.copy()
             test_params["exit_attenuation_mode"] = mode
-            factor = rsa.compute_exit_factor(
+            factor = compute_exit_factor(
                 base_factor=1.0,
                 pnl=0.02,
                 pnl_factor=1.5,
@@ -695,14 +695,14 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 "exit_linear_slope": 1.0,
             }
         )
-        plateau_factor_pre = rsa.compute_exit_factor(
+        plateau_factor_pre = compute_exit_factor(
             base_factor=1.0,
             pnl=0.02,
             pnl_factor=1.5,
             duration_ratio=0.4,  # inside grace
             params=plateau_params,
         )
-        plateau_factor_post = rsa.compute_exit_factor(
+        plateau_factor_post = compute_exit_factor(
             base_factor=1.0,
             pnl=0.02,
             pnl_factor=1.5,
