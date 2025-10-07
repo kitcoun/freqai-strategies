@@ -19,7 +19,7 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 
 ---
 
-**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#-cli-parameters-reference).
+**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#️-cli-parameters-reference).
 
 ## Table of contents
 
@@ -33,7 +33,7 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 - [Prerequisites](#-prerequisites)
     - [System Requirements](#system-requirements)
     - [Virtual environment setup](#virtual-environment-setup)
-- [CLI Parameters Reference](#-cli-parameters-reference)
+- [CLI Parameters Reference](#️-cli-parameters-reference)
     - [Required Parameters](#required-parameters)
     - [Core Simulation Parameters](#core-simulation-parameters)
     - [Reward Configuration](#reward-configuration)
