@@ -31,6 +31,7 @@ try:
         Positions,
         RewardContext,
         _get_exit_factor,
+        _get_pnl_factor,
         bootstrap_confidence_intervals,
         build_argument_parser,
         calculate_reward,
@@ -82,7 +83,7 @@ class RewardSpaceTestBase(unittest.TestCase):
         msg: str | None = None,
     ) -> None:
         """Absolute tolerance compare with explicit failure and finite check."""
-        if not (math.isfinite(first) and math.isfinite(second)):
+        if not (np.isfinite(first) and np.isfinite(second)):
             self.fail(msg or f"Non-finite comparison (a={first}, b={second})")
         diff = abs(first - second)
         if diff > tolerance:
@@ -482,6 +483,33 @@ class TestRewardAlignment(RewardSpaceTestBase):
             abs(sl_breakdown.exit_component),
             "Take profit reward magnitude should exceed stop loss reward magnitude",
         )
+
+    def test_efficiency_zero_policy(self):
+        """Ensure pnl == 0 with max_unrealized_profit == 0 does not get boosted.
+
+        This verifies the policy: near-zero pnl -> no efficiency modulation.
+        """
+
+        # Build context where pnl == 0.0 and max_unrealized_profit == pnl
+        ctx = RewardContext(
+            pnl=0.0,
+            trade_duration=1,
+            idle_duration=0,
+            max_trade_duration=100,
+            max_unrealized_profit=0.0,
+            min_unrealized_profit=-0.02,
+            position=Positions.Long,
+            action=Actions.Long_exit,
+            force_action=None,
+        )
+
+        params = self.DEFAULT_PARAMS.copy()
+        profit_target = self.TEST_PROFIT_TARGET * self.TEST_RR
+
+        pnl_factor = _get_pnl_factor(params, ctx, profit_target)
+        # Expect no efficiency modulation: factor should be >= 0 and close to 1.0
+        self.assertTrue(np.isfinite(pnl_factor))
+        self.assertAlmostEqualFloat(pnl_factor, 1.0, tolerance=1e-6)
 
     def test_max_idle_duration_candles_logic(self):
         """Idle penalty scaling test with explicit max_idle_duration_candles."""
@@ -914,7 +942,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         asymptote = 1.0 + win_reward_factor
         final_ratio = ratios_observed[-1]
         # Expect to be very close to asymptote (tanh(0.5*(10-1)) ≈ 0.9997)
-        if not math.isfinite(final_ratio):
+        if not np.isfinite(final_ratio):
             self.fail(f"Final ratio is not finite: {final_ratio}")
         self.assertLess(
             abs(final_ratio - asymptote),
@@ -930,7 +958,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             expected_ratios.append(expected)
         # Compare each observed to expected within loose tolerance (model parity)
         for obs, exp in zip(ratios_observed, expected_ratios):
-            if not (math.isfinite(obs) and math.isfinite(exp)):
+            if not (np.isfinite(obs) and np.isfinite(exp)):
                 self.fail(f"Non-finite observed/expected ratio: obs={obs}, exp={exp}")
             self.assertLess(
                 abs(obs - exp),

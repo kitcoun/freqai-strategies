@@ -89,7 +89,7 @@ def _get_param_float(params: Dict[str, float | str], key: str, default: float) -
             fval = float(value)
         except (ValueError, TypeError):
             return default
-        return fval if math.isfinite(fval) else default
+        return fval if np.isfinite(fval) else default
     # String parsing
     if isinstance(value, str):
         stripped = value.strip()
@@ -99,7 +99,7 @@ def _get_param_float(params: Dict[str, float | str], key: str, default: float) -
             fval = float(stripped)
         except ValueError:
             return default
-        return fval if math.isfinite(fval) else default
+        return fval if np.isfinite(fval) else default
     # Unsupported type
     return default
 
@@ -247,10 +247,10 @@ def validate_reward_parameters(
         if "max" in bounds and adjusted > bounds["max"]:
             adjusted = bounds["max"]
             reason_parts.append(f"max={bounds['max']}")
-        if not math.isfinite(adjusted):
+        if not np.isfinite(adjusted):
             adjusted = bounds.get("min", 0.0)
             reason_parts.append("non_finite_reset")
-        if not math.isclose(adjusted, original):
+        if not np.isclose(adjusted, original):
             sanitized[key] = adjusted
             adjustments[key] = {
                 "original": original,
@@ -344,9 +344,9 @@ def _get_exit_factor(
     """
     # Basic finiteness checks
     if (
-        not math.isfinite(base_factor)
-        or not math.isfinite(pnl)
-        or not math.isfinite(duration_ratio)
+        not np.isfinite(base_factor)
+        or not np.isfinite(pnl)
+        or not np.isfinite(duration_ratio)
     ):
         return 0.0
 
@@ -425,13 +425,13 @@ def _get_exit_factor(
 
     # Invariant & safety checks
     if _to_bool(params.get("check_invariants", True)):
-        if not math.isfinite(base_factor):
+        if not np.isfinite(base_factor):
             return 0.0
         if base_factor < 0.0 and pnl >= 0.0:
             # Clamp: avoid negative amplification on non-negative pnl
             base_factor = 0.0
         thr = params.get("exit_factor_threshold")
-        if isinstance(thr, (int, float)) and thr > 0 and math.isfinite(thr):
+        if isinstance(thr, (int, float)) and thr > 0 and np.isfinite(thr):
             if abs(base_factor) > thr:
                 warnings.warn(
                     (
@@ -450,7 +450,7 @@ def _get_pnl_factor(
     """Env-aligned PnL factor combining profit amplification and exit efficiency."""
     pnl = context.pnl
 
-    if not math.isfinite(pnl) or not math.isfinite(profit_target):
+    if not np.isfinite(pnl) or not np.isfinite(profit_target):
         return 0.0
 
     profit_target_factor = 1.0
@@ -465,15 +465,20 @@ def _get_pnl_factor(
     efficiency_factor = 1.0
     efficiency_weight = float(params.get("efficiency_weight", 1.0))
     efficiency_center = float(params.get("efficiency_center", 0.5))
-    if efficiency_weight != 0.0 and pnl >= 0.0:
+    if efficiency_weight != 0.0 and not np.isclose(pnl, 0.0):
         max_pnl = max(context.max_unrealized_profit, pnl)
         min_pnl = min(context.min_unrealized_profit, pnl)
         range_pnl = max_pnl - min_pnl
-        if math.isfinite(range_pnl) and not math.isclose(range_pnl, 0.0):
+        if np.isfinite(range_pnl) and not np.isclose(range_pnl, 0.0):
             efficiency_ratio = (pnl - min_pnl) / range_pnl
-            efficiency_factor = 1.0 + efficiency_weight * (
-                efficiency_ratio - efficiency_center
-            )
+            if pnl > 0.0:
+                efficiency_factor = 1.0 + efficiency_weight * (
+                    efficiency_ratio - efficiency_center
+                )
+            elif pnl < 0.0:
+                efficiency_factor = 1.0 + efficiency_weight * (
+                    efficiency_center - efficiency_ratio
+                )
 
     return max(0.0, profit_target_factor * efficiency_factor)
 
@@ -1008,7 +1013,7 @@ def _compute_relationship_stats(
     trade_bins = np.linspace(0, max_trade_duration * 3.0, 13)
     pnl_min = float(df["pnl"].min())
     pnl_max = float(df["pnl"].max())
-    if math.isclose(pnl_min, pnl_max):
+    if np.isclose(pnl_min, pnl_max):
         pnl_max = pnl_min + 1e-6
     pnl_bins = np.linspace(pnl_min, pnl_max, 13)
 
@@ -1357,7 +1362,7 @@ def compute_distribution_shift_metrics(
         # Guard against degenerate distributions (all values identical)
         if not np.isfinite(min_val) or not np.isfinite(max_val):
             continue
-        if math.isclose(max_val, min_val, rel_tol=0, abs_tol=1e-12):
+        if np.isclose(max_val, min_val, rel_tol=0, abs_tol=1e-12):
             # All mass at a single point -> shift metrics are all zero by definition
             metrics[f"{feature}_kl_divergence"] = 0.0
             metrics[f"{feature}_js_distance"] = 0.0

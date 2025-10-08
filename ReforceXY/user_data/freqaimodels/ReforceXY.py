@@ -1526,15 +1526,20 @@ class MyRLEnv(Base5ActionRLEnv):
         efficiency_factor = 1.0
         efficiency_weight = float(model_reward_parameters.get("efficiency_weight", 1.0))
         efficiency_center = float(model_reward_parameters.get("efficiency_center", 0.5))
-        if efficiency_weight != 0.0 and pnl >= 0.0:
+        if efficiency_weight != 0.0 and not np.isclose(pnl, 0.0):
             max_pnl = max(self.get_max_unrealized_profit(), pnl)
             min_pnl = min(self.get_min_unrealized_profit(), pnl)
             range_pnl = max_pnl - min_pnl
             if np.isfinite(range_pnl) and not np.isclose(range_pnl, 0.0):
                 efficiency_ratio = (pnl - min_pnl) / range_pnl
-                efficiency_factor = 1.0 + efficiency_weight * (
-                    efficiency_ratio - efficiency_center
-                )
+                if pnl > 0.0:
+                    efficiency_factor = 1.0 + efficiency_weight * (
+                        efficiency_ratio - efficiency_center
+                    )
+                elif pnl < 0.0:
+                    efficiency_factor = 1.0 + efficiency_weight * (
+                        efficiency_center - efficiency_ratio
+                    )
 
         return max(0.0, pnl_target_factor * efficiency_factor)
 
