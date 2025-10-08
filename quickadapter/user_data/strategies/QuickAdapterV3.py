@@ -1151,7 +1151,7 @@ class QuickAdapterV3(IStrategy):
         rate: float,
         min_natr_ratio_percent: float = 0.009,
         max_natr_ratio_percent: float = 0.035,
-        lookback_period: int = 1,
+        lookback_period: int = 2,
         decay_ratio: float = 0.5,
     ) -> bool:
         """
