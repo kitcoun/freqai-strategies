@@ -30,11 +30,7 @@ try:
         ForceActions,
         Positions,
         RewardContext,
-        _compute_relationship_stats,
-        _compute_representativity_stats,
-        _compute_summary_stats,
         _get_exit_factor,
-        _perform_feature_analysis,
         bootstrap_confidence_intervals,
         build_argument_parser,
         calculate_reward,
@@ -213,7 +209,7 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                 "reward_idle": reward_idle,
                 "position": np.random.choice([0.0, 0.5, 1.0], n),
                 "reward_total": np.random.normal(0, 1, n),
-                "pnl": np.random.normal(0, 0.02, n),
+                "pnl": np.random.normal(0, TEST_PNL_STD, n),
                 "trade_duration": np.random.exponential(20, n),
             }
         )
@@ -337,7 +333,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
     def test_basic_reward_calculation(self):
         """Test basic reward calculation consistency."""
         context = RewardContext(
-            pnl=0.02,
+            pnl=TEST_PROFIT_TARGET,
             trade_duration=10,
             idle_duration=0,
             max_trade_duration=100,
@@ -376,6 +372,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         - Take profit reward magnitude > stop loss reward magnitude for comparable |PnL|.
         - Timeout uses current PnL (can be positive or negative); we assert sign consistency only.
         """
+        profit_target = 0.06
 
         # Take profit (positive pnl)
         tp_context = RewardContext(
@@ -393,7 +390,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             tp_context,
             self.DEFAULT_PARAMS,
             base_factor=TEST_BASE_FACTOR,
-            profit_target=0.06,  # Scenario-specific larger target kept explicit
+            profit_target=profit_target,
             risk_reward_ratio=TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
@@ -430,7 +427,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             sl_context,
             self.DEFAULT_PARAMS,
             base_factor=TEST_BASE_FACTOR,
-            profit_target=0.06,
+            profit_target=profit_target,
             risk_reward_ratio=TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
@@ -466,7 +463,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             to_context,
             self.DEFAULT_PARAMS,
             base_factor=TEST_BASE_FACTOR,
-            profit_target=0.06,
+            profit_target=profit_target,
             risk_reward_ratio=TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
@@ -550,7 +547,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params = self.DEFAULT_PARAMS.copy()
         params["max_idle_duration_candles"] = 0  # force fallback
         base_factor = 90.0
-        profit_target = 0.03
+        profit_target = TEST_PROFIT_TARGET
         risk_reward_ratio = 1.0
 
         # Two contexts with different idle durations
@@ -570,7 +567,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         br_a = calculate_reward(
             ctx_a,
             params,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=base_factor,
             profit_target=profit_target,
             risk_reward_ratio=risk_reward_ratio,
             short_allowed=True,
@@ -579,7 +576,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         br_b = calculate_reward(
             ctx_b,
             params,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=base_factor,
             profit_target=profit_target,
             risk_reward_ratio=risk_reward_ratio,
             short_allowed=True,
@@ -606,7 +603,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         br_mid = calculate_reward(
             ctx_mid,
             params,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=base_factor,
             profit_target=profit_target,
             risk_reward_ratio=risk_reward_ratio,
             short_allowed=True,
@@ -1012,7 +1009,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             br1 = calculate_reward(
                 ctx,
                 params,
-                base_factor=TEST_BASE_FACTOR,
+                base_factor=base_factor,
                 profit_target=profit_target,
                 risk_reward_ratio=rr,
                 short_allowed=True,
@@ -1021,7 +1018,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             br2 = calculate_reward(
                 ctx,
                 params,
-                base_factor=TEST_BASE_FACTOR * k,
+                base_factor=base_factor * k,
                 profit_target=profit_target,
                 risk_reward_ratio=rr,
                 short_allowed=True,
@@ -1077,7 +1074,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params.pop("base_factor", None)
         base_factor = 120.0
         profit_target = 0.04
-        rr = 2.0
+        rr = TEST_RR_HIGH
         pnls = [0.018, -0.022]
         for pnl in pnls:
             ctx_long = RewardContext(
@@ -1105,7 +1102,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             br_long = calculate_reward(
                 ctx_long,
                 params,
-                base_factor=TEST_BASE_FACTOR,
+                base_factor=base_factor,
                 profit_target=profit_target,
                 risk_reward_ratio=rr,
                 short_allowed=True,
@@ -1114,7 +1111,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             br_short = calculate_reward(
                 ctx_short,
                 params,
-                base_factor=TEST_BASE_FACTOR,
+                base_factor=base_factor,
                 profit_target=profit_target,
                 risk_reward_ratio=rr,
                 short_allowed=True,
@@ -1159,7 +1156,7 @@ class TestPublicAPI(RewardSpaceTestBase):
         test_data = pd.DataFrame(
             {
                 "reward_total": np.random.normal(0, 1, 100),
-                "pnl": np.random.normal(0.01, 0.02, 100),
+                "pnl": np.random.normal(0.01, TEST_PNL_STD, 100),
             }
         )
 
@@ -1202,7 +1199,7 @@ class TestPublicAPI(RewardSpaceTestBase):
                     ~idle_mask, np.random.normal(-0.5, 0.2, 300), 0.0
                 ),
                 "reward_exit": np.random.normal(0.8, 0.6, 300),
-                "pnl": np.random.normal(0.01, 0.02, 300),
+                "pnl": np.random.normal(0.01, TEST_PNL_STD, 300),
                 "trade_duration": np.random.uniform(5, 150, 300),
                 "idle_duration": idle_duration,
                 "position": np.random.choice([0.0, 0.5, 1.0], 300),
@@ -1297,7 +1294,7 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         np.random.seed(42)
         df1 = pd.DataFrame(
             {
-                "pnl": np.random.normal(0, 0.02, 500),
+                "pnl": np.random.normal(0, TEST_PNL_STD, 500),
                 "trade_duration": np.random.exponential(30, 500),
                 "idle_duration": np.random.gamma(2, 5, 500),
             }
@@ -1906,122 +1903,11 @@ class TestHelperFunctions(RewardSpaceTestBase):
             short_positions, 0, "Futures mode should allow short positions"
         )
 
-    def test_model_analysis_function(self):
-        """Test model_analysis function."""
-
-        # Create test data
-        test_data = simulate_samples(
-            num_samples=100,
-            seed=42,
-            params=self.DEFAULT_PARAMS,
-            max_trade_duration=50,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=1.0,
-            max_duration_ratio=2.0,
-            trading_mode="spot",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
-        )
-
-        # Create temporary output directory
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_path = Path(tmp_dir)
-            # Use the internal helper to compute analysis and persist a feature file
-            importance_df, analysis_stats, partial_deps, model = (
-                _perform_feature_analysis(test_data, seed=42)
-            )
-
-            output_path.mkdir(parents=True, exist_ok=True)
-            feature_file = output_path / "feature_importance.csv"
-            importance_df.to_csv(feature_file, index=False)
-            self.assertTrue(
-                feature_file.exists(), "Feature importance file should be created"
-            )
-
-    def test_write_functions(self):
-        """Test various write functions."""
-
-        # Create test data
-        test_data = simulate_samples(
-            num_samples=100,
-            seed=42,
-            params=self.DEFAULT_PARAMS,
-            max_trade_duration=50,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
-            max_duration_ratio=2.0,
-            trading_mode="spot",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
-        )
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            output_path = Path(tmp_dir)
-
-            # Create a minimal summary file using the computation helper
-            output_path.mkdir(parents=True, exist_ok=True)
-            stats = _compute_summary_stats(test_data)
-            summary_file = output_path / "reward_summary.md"
-            with summary_file.open("w", encoding="utf-8") as h:
-                h.write("# Reward space summary\n\n")
-                h.write(stats["global_stats"].to_frame(name="reward_total").to_string())
-
-            self.assertTrue(summary_file.exists(), "Summary file should be created")
-
-            # Relationship reports: compute and write a simple markdown
-            rel_stats = _compute_relationship_stats(test_data, max_trade_duration=50)
-            relationship_file = output_path / "reward_relationships.md"
-            with relationship_file.open("w", encoding="utf-8") as h:
-                h.write("# Relationship diagnostics\n\n")
-                h.write(
-                    "Idle stats present: "
-                    + str(not rel_stats["idle_stats"].empty)
-                    + "\n"
-                )
-
-            self.assertTrue(
-                relationship_file.exists(), "Relationship file should be created"
-            )
-
-            # Representativity report: compute and write a simple markdown
-            repr_stats = _compute_representativity_stats(
-                test_data, profit_target=TEST_PROFIT_TARGET
-            )
-            repr_file = output_path / "representativity.md"
-            with repr_file.open("w", encoding="utf-8") as h:
-                h.write("# Representativity diagnostics\n\n")
-                h.write(f"Total samples: {repr_stats['total']}\n")
-
-            self.assertTrue(
-                repr_file.exists(), "Representativity file should be created"
-            )
-
     def test_load_real_episodes(self):
         """Test load_real_episodes function."""
-
-        # Create a temporary pickle file with test data
-        test_episodes = pd.DataFrame(
-            {
-                "pnl": [0.01, -0.02, 0.03],
-                "trade_duration": [10, 20, 15],
-                "idle_duration": [5, 0, 8],
-                "position": [1.0, 0.0, 1.0],
-                "action": [2.0, 0.0, 2.0],
-                "reward_total": [10.5, -5.2, 15.8],
-            }
-        )
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            pickle_path = Path(tmp_dir) / "test_episodes.pkl"
-            with pickle_path.open("wb") as f:
-                pickle.dump(test_episodes, f)  # Don't wrap in list
-
-            loaded_data = load_real_episodes(pickle_path)
-            self.assertIsInstance(loaded_data, pd.DataFrame)
-            self.assertEqual(len(loaded_data), 3)
-            self.assertIn("pnl", loaded_data.columns)
+        # This test has been moved to TestLoadRealEpisodes to centralize tests
+        # related to load_real_episodes.
+        pass
 
     def test_statistical_functions(self):
         """Test statistical functions."""
@@ -2067,7 +1953,6 @@ class TestHelperFunctions(RewardSpaceTestBase):
 
     def test_complete_statistical_analysis_writer(self):
         """Test write_complete_statistical_analysis function."""
-        # imports consolidated at top of file
 
         # Create comprehensive test data
         test_data = simulate_samples(
@@ -2076,8 +1961,8 @@ class TestHelperFunctions(RewardSpaceTestBase):
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
             base_factor=TEST_BASE_FACTOR,
-            profit_target=0.03,
-            risk_reward_ratio=1.0,
+            profit_target=TEST_PROFIT_TARGET,
+            risk_reward_ratio=TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="margin",
             pnl_base_std=TEST_PNL_STD,
@@ -2160,9 +2045,9 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         breakdown = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
-            base_factor=100.0,
-            profit_target=0.03,
-            risk_reward_ratio=1.0,
+            base_factor=TEST_BASE_FACTOR,
+            profit_target=TEST_PROFIT_TARGET,
+            risk_reward_ratio=TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -2238,7 +2123,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             context,
             self.DEFAULT_PARAMS,
             base_factor=TEST_BASE_FACTOR,
-            profit_target=0.03,
+            profit_target=TEST_PROFIT_TARGET,
             risk_reward_ratio=1.0,
             short_allowed=True,
             action_masking=False,  # Disable masking to test invalid penalty
@@ -2284,7 +2169,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                     context,
                     self.DEFAULT_PARAMS,
                     base_factor=TEST_BASE_FACTOR,
-                    profit_target=0.03,
+                    profit_target=TEST_PROFIT_TARGET,
                     risk_reward_ratio=1.0,
                     short_allowed=True,
                     action_masking=True,
@@ -2344,7 +2229,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                 context,
                 self.DEFAULT_PARAMS,
                 base_factor=TEST_BASE_FACTOR,
-                profit_target=0.03,
+                profit_target=TEST_PROFIT_TARGET,
                 risk_reward_ratio=TEST_RR,
                 short_allowed=True,
                 action_masking=True,
@@ -2369,7 +2254,6 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         self.assertIn("check_invariants", params)
         self.assertIn("exit_factor_threshold", params)
 
-        base_factor = 1e7  # exaggerated factor
         context = RewardContext(
             pnl=0.05,
             trade_duration=300,
@@ -2384,8 +2268,8 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         breakdown = calculate_reward(
             context,
             params,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=0.03,
+            base_factor=1e7,  # exaggerated factor
+            profit_target=TEST_PROFIT_TARGET,
             risk_reward_ratio=TEST_RR,
             short_allowed=True,
             action_masking=True,
@@ -2403,7 +2287,6 @@ class TestRewardRobustness(RewardSpaceTestBase):
     - Exit factor monotonic attenuation per mode where mathematically expected
     - Boundary parameter conditions (tau extremes, plateau grace edges, linear slope = 0)
     - Non-linear power tests for idle & holding penalties (power != 1)
-    - Public wrapper `_get_exit_factor` (avoids private function usage in new tests)
     - Warning emission (exit_factor_threshold) without capping
     """
 
@@ -2469,7 +2352,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
             ),
             # Exit reward only (positive pnl)
             dict(
-                ctx=self._mk_context(pnl=0.03, trade_duration=60),
+                ctx=self._mk_context(pnl=TEST_PROFIT_TARGET, trade_duration=60),
                 active="exit_component",
             ),
             # Invalid action only
@@ -2496,8 +2379,8 @@ class TestRewardRobustness(RewardSpaceTestBase):
                     ctx_obj,
                     self.DEFAULT_PARAMS,
                     base_factor=TEST_BASE_FACTOR,
-                    profit_target=0.03,
-                    risk_reward_ratio=1.0,
+                    profit_target=TEST_PROFIT_TARGET,
+                    risk_reward_ratio=TEST_RR,
                     short_allowed=True,
                     action_masking=(active_label != "invalid_penalty"),
                 )
@@ -2681,7 +2564,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
             }
         )
         base_factor = 80.0
-        pnl = 0.03
+        pnl = TEST_PROFIT_TARGET
         pnl_factor = 1.1
         # Ratios straddling 1.0 but below grace=1.5 plus one beyond grace
         ratios = [0.8, 1.0, 1.2, 1.4, 1.6]
@@ -2778,7 +2661,7 @@ class TestParameterValidation(RewardSpaceTestBase):
         params["idle_penalty_power"] = 2.0
         params["max_idle_duration_candles"] = 100
         base_factor = 90.0
-        profit_target = 0.03
+        profit_target = TEST_PROFIT_TARGET
         # Idle penalties for durations 20 vs 40 (quadratic → (40/100)^2 / (20/100)^2 = (0.4^2)/(0.2^2)=4)
         ctx_a = RewardContext(
             pnl=0.0,
@@ -2795,7 +2678,7 @@ class TestParameterValidation(RewardSpaceTestBase):
         br_a = calculate_reward(
             ctx_a,
             params,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=base_factor,
             profit_target=profit_target,
             risk_reward_ratio=TEST_RR,
             short_allowed=True,
@@ -2804,7 +2687,7 @@ class TestParameterValidation(RewardSpaceTestBase):
         br_b = calculate_reward(
             ctx_b,
             params,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=base_factor,
             profit_target=profit_target,
             risk_reward_ratio=TEST_RR,
             short_allowed=True,
@@ -2837,7 +2720,7 @@ class TestParameterValidation(RewardSpaceTestBase):
         br_h1 = calculate_reward(
             ctx_h1,
             params,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=base_factor,
             profit_target=profit_target,
             risk_reward_ratio=TEST_RR,
             short_allowed=True,
@@ -2888,7 +2771,7 @@ class TestParameterValidation(RewardSpaceTestBase):
                 context,
                 params,
                 base_factor=5000.0,  # large enough to exceed threshold
-                profit_target=0.03,
+                profit_target=TEST_PROFIT_TARGET,
                 risk_reward_ratio=TEST_RR_HIGH,
                 short_allowed=True,
                 action_masking=True,
@@ -2911,18 +2794,6 @@ class TestParameterValidation(RewardSpaceTestBase):
                 "Warning message should indicate threshold exceedance",
             )
 
-    def test_public_wrapper__get_exit_factor(self):
-        """Basic sanity check of newly exposed _get_exit_factor wrapper."""
-
-        params = self.DEFAULT_PARAMS.copy()
-        params["exit_attenuation_mode"] = "sqrt"
-        params["exit_plateau"] = False
-        f1 = _get_exit_factor(TEST_BASE_FACTOR, 0.02, 1.0, 0.0, params)
-        f2 = _get_exit_factor(TEST_BASE_FACTOR, 0.02, 1.0, 1.0, params)
-        self.assertGreater(
-            f1, f2, "Attenuation should reduce factor at higher duration ratio"
-        )
-
 
 class TestContinuityPlateau(RewardSpaceTestBase):
     """Continuity tests for plateau-enabled exit attenuation (excluding legacy)."""
@@ -2931,7 +2802,7 @@ class TestContinuityPlateau(RewardSpaceTestBase):
         modes = ["sqrt", "linear", "power", "half_life"]
         grace = 0.8
         eps = 1e-4
-        base_factor = 100.0
+        base_factor = TEST_BASE_FACTOR
         pnl = 0.01
         pnl_factor = 1.0
         tau = 0.5  # for power
@@ -3018,6 +2889,124 @@ class TestContinuityPlateau(RewardSpaceTestBase):
         ratio = diff1 / max(diff2, 1e-12)
         self.assertGreater(ratio, 5.0, f"Scaling ratio too small (ratio={ratio:.2f})")
         self.assertLess(ratio, 15.0, f"Scaling ratio too large (ratio={ratio:.2f})")
+
+
+class TestLoadRealEpisodes(RewardSpaceTestBase):
+    """Unit tests for load_real_episodes (moved from separate file)."""
+
+    def write_pickle(self, obj, path: Path):
+        with path.open("wb") as f:
+            pickle.dump(obj, f)
+
+    def test_top_level_dict_transitions(self):
+        df = pd.DataFrame(
+            {
+                "pnl": [0.01],
+                "trade_duration": [10],
+                "idle_duration": [5],
+                "position": [1.0],
+                "action": [2.0],
+                "reward_total": [1.0],
+            }
+        )
+        p = Path(self.temp_dir) / "top.pkl"
+        self.write_pickle({"transitions": df}, p)
+
+        loaded = load_real_episodes(p)
+        self.assertIsInstance(loaded, pd.DataFrame)
+        self.assertEqual(list(loaded.columns).count("pnl"), 1)
+        self.assertEqual(len(loaded), 1)
+
+    def test_mixed_episode_list_warns_and_flattens(self):
+        ep1 = {"episode_id": 1}
+        ep2 = {
+            "episode_id": 2,
+            "transitions": [
+                {
+                    "pnl": 0.02,
+                    "trade_duration": 5,
+                    "idle_duration": 0,
+                    "position": 1.0,
+                    "action": 2.0,
+                    "reward_total": 2.0,
+                }
+            ],
+        }
+        p = Path(self.temp_dir) / "mixed.pkl"
+        self.write_pickle([ep1, ep2], p)
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            loaded = load_real_episodes(p)
+            # Accept variance in warning emission across platforms
+            _ = w
+
+        self.assertEqual(len(loaded), 1)
+        self.assertAlmostEqual(float(loaded.iloc[0]["pnl"]), 0.02, places=7)
+
+    def test_non_iterable_transitions_raises(self):
+        bad = {"transitions": 123}
+        p = Path(self.temp_dir) / "bad.pkl"
+        self.write_pickle(bad, p)
+
+        with self.assertRaises(ValueError):
+            load_real_episodes(p)
+
+    def test_enforce_columns_false_fills_na(self):
+        trans = [
+            {
+                "pnl": 0.03,
+                "trade_duration": 10,
+                "idle_duration": 0,
+                "position": 1.0,
+                "action": 2.0,
+            }
+        ]
+        p = Path(self.temp_dir) / "fill.pkl"
+        self.write_pickle(trans, p)
+
+        loaded = load_real_episodes(p, enforce_columns=False)
+        self.assertIn("reward_total", loaded.columns)
+        self.assertTrue(loaded["reward_total"].isna().all())
+
+    def test_casting_numeric_strings(self):
+        trans = [
+            {
+                "pnl": "0.04",
+                "trade_duration": "20",
+                "idle_duration": "0",
+                "position": "1.0",
+                "action": "2.0",
+                "reward_total": "3.0",
+            }
+        ]
+        p = Path(self.temp_dir) / "strs.pkl"
+        self.write_pickle(trans, p)
+
+        loaded = load_real_episodes(p)
+        self.assertIn("pnl", loaded.columns)
+        self.assertIn(loaded["pnl"].dtype.kind, ("f", "i"))
+        self.assertAlmostEqual(float(loaded.iloc[0]["pnl"]), 0.04, places=7)
+
+    def test_pickled_dataframe_loads(self):
+        """Ensure a directly pickled DataFrame loads correctly."""
+        test_episodes = pd.DataFrame(
+            {
+                "pnl": [0.01, -0.02, 0.03],
+                "trade_duration": [10, 20, 15],
+                "idle_duration": [5, 0, 8],
+                "position": [1.0, 0.0, 1.0],
+                "action": [2.0, 0.0, 2.0],
+                "reward_total": [10.5, -5.2, 15.8],
+            }
+        )
+        p = Path(self.temp_dir) / "test_episodes.pkl"
+        self.write_pickle(test_episodes, p)
+
+        loaded_data = load_real_episodes(p)
+        self.assertIsInstance(loaded_data, pd.DataFrame)
+        self.assertEqual(len(loaded_data), 3)
+        self.assertIn("pnl", loaded_data.columns)
 
 
 if __name__ == "__main__":

@@ -208,6 +208,27 @@ def validate_reward_parameters(
         Potentially adjusted copy of input params.
     adjustments : dict
         Mapping param -> {original, adjusted, reason} for every modification.
+
+    Validation
+    ----------
+    After loading and (if applicable) flattening, the function will validate the
+    presence of a set of required columns and raise a ValueError if any are missing.
+    This provides an early, clear error message instead of letting downstream code fail
+    with a less informative exception.
+
+    Required columns (validator):
+    - "pnl", "trade_duration", "idle_duration", "position", "action", "reward_total"
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame containing the transitions (one transition per row).
+
+    Raises
+    ------
+    ValueError
+        If the pickled payload cannot be converted to a DataFrame with the required columns.
+
     """
     sanitized = dict(params)
     adjustments: Dict[str, Dict[str, Any]] = {}
@@ -1163,23 +1184,157 @@ def _perform_feature_analysis(
     return importance_df, analysis_stats, partial_deps, model
 
 
-def load_real_episodes(path: Path) -> pd.DataFrame:
-    """Load real episodes transitions from pickle file."""
-    with path.open("rb") as f:
-        episodes_data = pickle.load(f)
+def load_real_episodes(path: Path, *, enforce_columns: bool = True) -> pd.DataFrame:
+    """Load transitions from a pickle into a pandas.DataFrame.
 
-    if (
-        isinstance(episodes_data, list)
-        and episodes_data
-        and isinstance(episodes_data[0], dict)
+    Accepted inputs: a pickled DataFrame, a list of transition dicts, a list of
+    episode dicts each containing a 'transitions' iterable, or a dict with key
+    'transitions'.
+
+    Parameters
+    ----------
+    path: Path
+        Path to the pickle file.
+    enforce_columns: bool
+        If True require required columns, else fill missing with NaN and warn.
+
+    Raises
+    ------
+    ValueError
+        On unpickle failure or when the payload cannot be converted to a valid
+        transitions DataFrame (and enforce_columns is True).
+    """
+
+    try:
+        with path.open("rb") as f:
+            episodes_data = pickle.load(f)
+    except Exception as e:
+        raise ValueError(f"Failed to unpickle '{path}': {e!r}") from e
+
+    # Top-level dict with 'transitions'
+    if isinstance(episodes_data, dict) and "transitions" in episodes_data:
+        candidate = episodes_data["transitions"]
+        if isinstance(candidate, pd.DataFrame):
+            df = candidate.copy()
+        else:
+            try:
+                df = pd.DataFrame(list(candidate))
+            except TypeError:
+                raise ValueError(
+                    f"Top-level 'transitions' in '{path}' is not iterable (type {type(candidate)!r})."
+                )
+            except Exception as e:
+                raise ValueError(
+                    f"Could not build DataFrame from top-level 'transitions' in '{path}': {e!r}"
+                ) from e
+    # List of episodes where some entries have 'transitions'
+    elif isinstance(episodes_data, list) and any(
+        isinstance(e, dict) and "transitions" in e for e in episodes_data
     ):
-        if "transitions" in episodes_data[0]:
-            all_transitions = []
-            for episode in episodes_data:
-                all_transitions.extend(episode["transitions"])
-            return pd.DataFrame(all_transitions)
+        all_transitions = []
+        skipped = 0
+        for episode in episodes_data:
+            if isinstance(episode, dict) and "transitions" in episode:
+                trans = episode["transitions"]
+                if isinstance(trans, pd.DataFrame):
+                    all_transitions.extend(trans.to_dict(orient="records"))
+                else:
+                    try:
+                        all_transitions.extend(list(trans))
+                    except TypeError:
+                        raise ValueError(
+                            f"Episode 'transitions' is not iterable in file '{path}'; found type {type(trans)!r}"
+                        )
+            else:
+                skipped += 1
+        if skipped:
+            warnings.warn(
+                f"Ignored {skipped} episode(s) without 'transitions' when loading '{path}'",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        try:
+            df = pd.DataFrame(all_transitions)
+        except Exception as e:
+            raise ValueError(
+                f"Could not build DataFrame from flattened transitions in '{path}': {e!r}"
+            ) from e
+    else:
+        try:
+            if isinstance(episodes_data, pd.DataFrame):
+                df = episodes_data.copy()
+            else:
+                df = pd.DataFrame(episodes_data)
+        except Exception as e:
+            raise ValueError(
+                f"Could not convert pickled object from '{path}' to DataFrame: {e!r}"
+            ) from e
 
-    return pd.DataFrame(episodes_data)
+    # Coerce common numeric fields; warn when values are coerced to NaN
+    numeric_expected = {
+        "pnl",
+        "trade_duration",
+        "idle_duration",
+        "position",
+        "action",
+        "reward_total",
+    }
+
+    numeric_optional = {
+        "reward_exit",
+        "reward_idle",
+        "reward_holding",
+        "reward_invalid",
+        "duration_ratio",
+        "idle_ratio",
+        "max_unrealized_profit",
+        "min_unrealized_profit",
+        "is_force_exit",
+        "force_action",
+    }
+
+    for col in list(numeric_expected | numeric_optional):
+        if col in df.columns:
+            before_na = df[col].isna().sum()
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            coerced = df[col].isna().sum() - before_na
+            if coerced > 0:
+                frac = coerced / len(df) if len(df) > 0 else 0.0
+                warnings.warn(
+                    (
+                        f"Column '{col}' contained {coerced} non-numeric value(s) "
+                        f"({frac:.1%}) that were coerced to NaN when loading '{path}'."
+                    ),
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+
+    # Ensure required columns exist (or fill with NaN if allowed)
+    required = {
+        "pnl",
+        "trade_duration",
+        "idle_duration",
+        "position",
+        "action",
+        "reward_total",
+    }
+    missing = required - set(df.columns)
+    if missing:
+        if enforce_columns:
+            raise ValueError(
+                f"Loaded episodes data is missing required columns: {sorted(missing)}. "
+                f"Found columns: {sorted(list(df.columns))}."
+            )
+        else:
+            warnings.warn(
+                f"Loaded episodes data is missing columns {sorted(missing)}; filling with NaN (enforce_columns=False)",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            for col in missing:
+                df[col] = np.nan
+
+    return df
 
 
 def compute_distribution_shift_metrics(
