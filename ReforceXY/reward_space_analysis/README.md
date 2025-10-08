@@ -60,7 +60,6 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
     - [When to Run Tests](#when-to-run-tests)
     - [Run Specific Test Categories](#run-specific-test-categories)
 - [Troubleshooting](#-troubleshooting)
-    - [Module Installation Issues](#module-installation-issues)
     - [No Output Files Generated](#no-output-files-generated)
     - [Unexpected Reward Values](#unexpected-reward-values)
     - [Slow Execution](#slow-execution)
@@ -300,8 +299,8 @@ Where r* = `effective_r` above.
 
 _Efficiency configuration:_
 
-- `efficiency_weight` (default: 1.0) - Weight for efficiency factor in exit reward
-- `efficiency_center` (default: 0.35) - Linear pivot in [0,1] for efficiency ratio. If efficiency_ratio > center ⇒ amplification (>1); if < center ⇒ attenuation (<1, floored at 0).
+-- `efficiency_weight` (default: 1.0) - Weight for efficiency factor in exit reward
+-- `efficiency_center` (default: 0.5) - Linear pivot in [0,1] for efficiency ratio. If efficiency_ratio > center ⇒ amplification (>1); if < center ⇒ attenuation (<1, floored at 0).
 
 _Profit factor configuration:_
 
@@ -537,16 +536,14 @@ Always run the full suite after modifying reward logic or attenuation parameters
 
 - **Single test file**: `test_reward_space_analysis.py` (consolidates all testing)
 - **Base class**: `RewardSpaceTestBase` with shared configuration and utilities
-- **Unified framework**: `unittest` with optional `pytest` configuration
 - **Reproducible**: Fixed seed (`seed = 42`) for consistent results
 
 ### Code Coverage Analysis
 
 ```shell
-pip install coverage
-coverage run --source=. test_reward_space_analysis.py
-coverage report -m
-coverage html  # open htmlcov/index.html
+pip install pytest-cov
+pytest -q --cov=. --cov-report=term-missing
+pytest -q --cov=. --cov-report=html # open htmlcov/index.html
 ```
 
 **Coverage Focus Areas:**
@@ -569,31 +566,15 @@ coverage html  # open htmlcov/index.html
 ### Run Specific Test Categories
 
 ```shell
-# All tests (recommended)
-python test_reward_space_analysis.py
+pytest -q test_reward_space_analysis.py::TestIntegration
+pytest -q test_reward_space_analysis.py::TestStatisticalCoherence
+pytest -q test_reward_space_analysis.py::TestRewardAlignment
 
-# Individual test classes using unittest
-python -m unittest test_reward_space_analysis.TestIntegration
-python -m unittest test_reward_space_analysis.TestStatisticalCoherence
-python -m unittest test_reward_space_analysis.TestRewardAlignment
-
-# With pytest (if installed)
-pytest test_reward_space_analysis.py -v
 ```
 
 ---
 
 ## 🆘 Troubleshooting
-
-### Module Installation Issues
-
-**Symptom:** `ModuleNotFoundError` or import errors
-
-**Solution:**
-
-```shell
-pip install pandas numpy scipy scikit-learn
-```
 
 ### No Output Files Generated
 

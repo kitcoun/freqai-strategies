@@ -141,7 +141,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     "exit_half_life": 0.5,
     # Efficiency keys (env defaults)
     "efficiency_weight": 1.0,
-    "efficiency_center": 0.35,
+    "efficiency_center": 0.5,
     # Profit factor params (env defaults)
     "win_reward_factor": 2.0,
     "pnl_factor_beta": 0.5,
@@ -304,7 +304,7 @@ class RewardBreakdown:
 
 
 def _get_exit_factor(
-    factor: float,
+    base_factor: float,
     pnl: float,
     pnl_factor: float,
     duration_ratio: float,
@@ -323,7 +323,7 @@ def _get_exit_factor(
     """
     # Basic finiteness checks
     if (
-        not math.isfinite(factor)
+        not math.isfinite(base_factor)
         or not math.isfinite(pnl)
         or not math.isfinite(duration_ratio)
     ):
@@ -390,37 +390,37 @@ def _get_exit_factor(
         kernel = _linear_kernel
 
     try:
-        factor = kernel(factor, effective_dr)
+        base_factor = kernel(base_factor, effective_dr)
     except Exception as e:
         warnings.warn(
             f"exit_attenuation_mode '{exit_attenuation_mode}' failed ({e!r}); fallback linear (effective_dr={effective_dr:.5f})",
             RuntimeWarning,
             stacklevel=2,
         )
-        factor = _linear_kernel(factor, effective_dr)
+        base_factor = _linear_kernel(base_factor, effective_dr)
 
     # Apply pnl_factor after time attenuation
-    factor *= pnl_factor
+    base_factor *= pnl_factor
 
     # Invariant & safety checks
     if _to_bool(params.get("check_invariants", True)):
-        if not math.isfinite(factor):
+        if not math.isfinite(base_factor):
             return 0.0
-        if factor < 0.0 and pnl >= 0.0:
+        if base_factor < 0.0 and pnl >= 0.0:
             # Clamp: avoid negative amplification on non-negative pnl
-            factor = 0.0
+            base_factor = 0.0
         thr = params.get("exit_factor_threshold")
         if isinstance(thr, (int, float)) and thr > 0 and math.isfinite(thr):
-            if abs(factor) > thr:
+            if abs(base_factor) > thr:
                 warnings.warn(
                     (
-                        f"_get_exit_factor |factor|={abs(factor):.2f} exceeds threshold {thr:.2f}"
+                        f"_get_exit_factor |factor|={abs(base_factor):.2f} exceeds threshold {thr:.2f}"
                     ),
                     RuntimeWarning,
                     stacklevel=2,
                 )
 
-    return factor
+    return base_factor
 
 
 def _get_pnl_factor(
@@ -443,7 +443,7 @@ def _get_pnl_factor(
 
     efficiency_factor = 1.0
     efficiency_weight = float(params.get("efficiency_weight", 1.0))
-    efficiency_center = float(params.get("efficiency_center", 0.35))
+    efficiency_center = float(params.get("efficiency_center", 0.5))
     if efficiency_weight != 0.0 and pnl >= 0.0:
         max_pnl = max(context.max_unrealized_profit, pnl)
         min_pnl = min(context.min_unrealized_profit, pnl)
@@ -546,17 +546,6 @@ def _compute_exit_reward(
         base_factor, context.pnl, pnl_factor, duration_ratio, params
     )
     return context.pnl * exit_factor
-
-
-def compute_exit_factor(
-    base_factor: float,
-    pnl: float,
-    pnl_factor: float,
-    duration_ratio: float,
-    params: Dict[str, float | str],
-) -> float:
-    """Public wrapper to compute the time-attenuated + pnl-scaled exit factor."""
-    return _get_exit_factor(base_factor, pnl, pnl_factor, duration_ratio, params)
 
 
 def calculate_reward(
@@ -964,30 +953,6 @@ def _compute_summary_stats(df: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
-def write_summary(df: pd.DataFrame, output_dir: Path) -> None:
-    """Legacy function - kept for backward compatibility."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = output_dir / "reward_summary.md"
-    stats = _compute_summary_stats(df)
-
-    with summary_path.open("w", encoding="utf-8") as handle:
-        handle.write("# Reward space summary\n\n")
-        handle.write("## Global statistics\n\n")
-        handle.write(stats["global_stats"].to_frame(name="reward_total").to_string())
-        handle.write("\n\n")
-        handle.write("## Action-wise reward statistics\n\n")
-        handle.write(stats["action_summary"].to_string())
-        handle.write("\n\n")
-        handle.write("## Component activation ratio\n\n")
-        handle.write(
-            stats["component_share"].to_frame(name="activation_rate").to_string()
-        )
-        handle.write("\n\n")
-        handle.write("## Component bounds (min/mean/max)\n\n")
-        handle.write(stats["component_bounds"].to_string())
-        handle.write("\n")
-
-
 def _binned_stats(
     df: pd.DataFrame,
     column: str,
@@ -1054,45 +1019,6 @@ def _compute_relationship_stats(
     }
 
 
-def write_relationship_reports(
-    df: pd.DataFrame,
-    output_dir: Path,
-    max_trade_duration: int,
-) -> None:
-    """Legacy function - kept for backward compatibility."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    relationships_path = output_dir / "reward_relationships.md"
-    stats = _compute_relationship_stats(df, max_trade_duration)
-
-    with relationships_path.open("w", encoding="utf-8") as handle:
-        handle.write("# Reward component relationships\n\n")
-
-        handle.write("## Idle penalty by idle duration bins\n\n")
-        if stats["idle_stats"].empty:
-            handle.write("_No idle samples present._\n\n")
-        else:
-            handle.write(stats["idle_stats"].to_string())
-            handle.write("\n\n")
-
-        handle.write("## Holding penalty by trade duration bins\n\n")
-        if stats["holding_stats"].empty:
-            handle.write("_No holding samples present._\n\n")
-        else:
-            handle.write(stats["holding_stats"].to_string())
-            handle.write("\n\n")
-
-        handle.write("## Exit reward by PnL bins\n\n")
-        if stats["exit_stats"].empty:
-            handle.write("_No exit samples present._\n\n")
-        else:
-            handle.write(stats["exit_stats"].to_string())
-            handle.write("\n\n")
-
-        handle.write("## Correlation matrix\n\n")
-        handle.write(stats["correlation"].to_csv(sep="\t", float_format="%.4f"))
-        handle.write("\n")
-
-
 def _compute_representativity_stats(
     df: pd.DataFrame, profit_target: float, max_trade_duration: int | None = None
 ) -> Dict[str, Any]:
@@ -1138,46 +1064,6 @@ def _compute_representativity_stats(
         "exit_activated": exit_activated,
         "force_exit_share": force_exit_share,
     }
-
-
-def write_representativity_report(
-    df: pd.DataFrame,
-    output_dir: Path,
-    profit_target: float,
-    max_trade_duration: int,
-) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / "representativity.md"
-
-    stats = _compute_representativity_stats(df, profit_target)
-
-    with path.open("w", encoding="utf-8") as h:
-        h.write("# Representativity diagnostics\n\n")
-        h.write(f"Total samples: {stats['total']}\n\n")
-        h.write("## Position distribution\n\n")
-        h.write(stats["pos_counts"].to_frame(name="count").to_string())
-        h.write("\n\n")
-        h.write("## Action distribution\n\n")
-        h.write(stats["act_counts"].to_frame(name="count").to_string())
-        h.write("\n\n")
-        h.write("## Key regime coverage\n\n")
-        h.write(f"pnl > target fraction: {stats['pnl_above_target']:.4f}\n")
-        h.write(f"pnl near target [0.8,1.2] fraction: {stats['pnl_near_target']:.4f}\n")
-        h.write(
-            f"duration overage (>1.0) fraction: {stats['duration_overage_share']:.4f}\n"
-        )
-        h.write(f"idle activated fraction: {stats['idle_activated']:.4f}\n")
-        h.write(f"holding activated fraction: {stats['holding_activated']:.4f}\n")
-        h.write(f"exit activated fraction: {stats['exit_activated']:.4f}\n")
-        h.write(f"force exit fraction: {stats['force_exit_share']:.4f}\n")
-        h.write(f"extreme pnl (|pnl|>=0.14) fraction: {stats['pnl_extreme']:.4f}\n")
-        h.write("\n")
-        h.write(
-            "Notes: Coverage of critical regimes (pnl≈target, overage>1) and component activation\n"
-        )
-        h.write(
-            "are indicators of sufficient reward space representativity for the analysis.\n"
-        )
 
 
 def _perform_feature_analysis(
@@ -1275,37 +1161,6 @@ def _perform_feature_analysis(
     }
 
     return importance_df, analysis_stats, partial_deps, model
-
-
-def model_analysis(df: pd.DataFrame, output_dir: Path, seed: int) -> None:
-    """Legacy wrapper for backward compatibility."""
-    importance_df, analysis_stats, partial_deps, model = _perform_feature_analysis(
-        df, seed
-    )
-
-    # Save feature importance
-    importance_df.to_csv(output_dir / "feature_importance.csv", index=False)
-
-    # Save diagnostics
-    diagnostics_path = output_dir / "model_diagnostics.md"
-    top_features = importance_df.head(10)
-    with diagnostics_path.open("w", encoding="utf-8") as handle:
-        handle.write("# Random forest diagnostics\n\n")
-        handle.write(f"R^2 score on hold-out set: {analysis_stats['r2_score']:.4f}\n\n")
-        handle.write("## Feature importance (top 10)\n\n")
-        handle.write(top_features.to_string(index=False))
-        handle.write("\n\n")
-        handle.write(
-            "Partial dependence data exported to CSV files for trade_duration, "
-            "idle_duration, and pnl.\n"
-        )
-
-    # Save partial dependence data
-    for feature, pd_df in partial_deps.items():
-        pd_df.to_csv(
-            output_dir / f"partial_dependence_{feature}.csv",
-            index=False,
-        )
 
 
 def load_real_episodes(path: Path) -> pd.DataFrame:
@@ -1785,168 +1640,6 @@ def _validate_distribution_diagnostics(diag: Dict[str, Any]) -> None:
         if key.endswith("_qq_r_squared"):
             if not (0 <= value <= 1):
                 raise AssertionError(f"Q-Q R^2 {key} must be in [0,1], got {value}")
-
-
-def write_enhanced_statistical_report(
-    df: pd.DataFrame,
-    output_dir: Path,
-    real_df: Optional[pd.DataFrame] = None,
-    *,
-    adjust_method: str = "none",
-) -> None:
-    """Generate enhanced statistical report with hypothesis tests and CI."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    report_path = output_dir / "enhanced_statistical_report.md"
-
-    # Derive a deterministic seed for statistical tests: prefer provided seed if present in df attrs else fallback
-    test_seed = 42
-    if (
-        hasattr(df, "attrs")
-        and "seed" in df.attrs
-        and isinstance(df.attrs["seed"], int)
-    ):
-        test_seed = int(df.attrs["seed"])
-    hypothesis_tests = statistical_hypothesis_tests(
-        df, adjust_method=adjust_method, seed=test_seed
-    )
-
-    metrics_for_ci = [
-        "reward_total",
-        "reward_idle",
-        "reward_holding",
-        "reward_exit",
-        "pnl",
-    ]
-    confidence_intervals = bootstrap_confidence_intervals(df, metrics_for_ci)
-
-    dist_diagnostics = distribution_diagnostics(df)
-
-    shift_metrics = {}
-    if real_df is not None:
-        shift_metrics = compute_distribution_shift_metrics(df, real_df)
-
-    with report_path.open("w", encoding="utf-8") as f:
-        f.write("# Enhanced Statistical Report\n\n")
-        f.write("**Generated with rigorous scientific methodology**\n\n")
-
-        f.write("## 1. Statistical Hypothesis Tests\n\n")
-        for test_name, test_result in hypothesis_tests.items():
-            f.write(f"### {test_name.replace('_', ' ').title()}\n\n")
-            f.write(f"- **Test:** {test_result['test']}\n")
-            f.write(
-                f"- **Statistic:** {test_result.get('statistic', test_result.get('rho', 'N/A')):.4f}\n"
-            )
-            f.write(f"- **p-value:** {test_result['p_value']:.4e}\n")
-            if "p_value_adj" in test_result:
-                f.write(
-                    f"- **p-value (adj BH):** {test_result['p_value_adj']:.4e} -> {'✅' if test_result['significant_adj'] else '❌'} (α=0.05)\n"
-                )
-            f.write(
-                f"- **Significant (α=0.05):** {'✅ Yes' if test_result['significant'] else '❌ No'}\n"
-            )
-
-            if "ci_95" in test_result:
-                ci = test_result["ci_95"]
-                f.write(f"- **95% CI:** [{ci[0]:.4f}, {ci[1]:.4f}]\n")
-
-            if "effect_size_epsilon_sq" in test_result:
-                f.write(
-                    f"- **Effect Size (ε²):** {test_result['effect_size_epsilon_sq']:.4f}\n"
-                )
-
-            if "interpretation" in test_result:
-                f.write(f"- **Interpretation:** {test_result['interpretation']}\n")
-
-            f.write("\n")
-
-        f.write("## 2. Bootstrap Confidence Intervals (95%)\n\n")
-        f.write("| Metric | Point Estimate | CI Lower | CI Upper | Width |\n")
-        f.write("|--------|----------------|----------|----------|-------|\n")
-
-        for metric, (est, low, high) in confidence_intervals.items():
-            width = high - low
-            f.write(
-                f"| {metric} | {est:.4f} | {low:.4f} | {high:.4f} | {width:.4f} |\n"
-            )
-
-        f.write("\n## 3. Distribution Diagnostics\n\n")
-
-        for col in ["reward_total", "pnl", "trade_duration"]:
-            if f"{col}_mean" in dist_diagnostics:
-                f.write(f"### {col}\n\n")
-                f.write(f"- **Mean:** {dist_diagnostics[f'{col}_mean']:.4f}\n")
-                f.write(f"- **Std:** {dist_diagnostics[f'{col}_std']:.4f}\n")
-                f.write(f"- **Skewness:** {dist_diagnostics[f'{col}_skewness']:.4f}\n")
-                f.write(f"- **Kurtosis:** {dist_diagnostics[f'{col}_kurtosis']:.4f}\n")
-
-                if f"{col}_shapiro_pval" in dist_diagnostics:
-                    is_normal = (
-                        "✅ Yes"
-                        if dist_diagnostics[f"{col}_is_normal_shapiro"]
-                        else "❌ No"
-                    )
-                    f.write(
-                        f"- **Normal (Shapiro-Wilk):** {is_normal} (p={dist_diagnostics[f'{col}_shapiro_pval']:.4e})\n"
-                    )
-
-                if f"{col}_qq_r_squared" in dist_diagnostics:
-                    f.write(
-                        f"- **Q-Q R²:** {dist_diagnostics[f'{col}_qq_r_squared']:.4f}\n"
-                    )
-
-                f.write("\n")
-
-        if shift_metrics:
-            f.write("## 4. Distribution Shift Metrics (Synthetic vs Real)\n\n")
-            f.write("| Feature | KL Div | JS Dist | Wasserstein | KS p-value |\n")
-            f.write("|---------|--------|---------|-------------|------------|\n")
-
-            for feature in ["pnl", "trade_duration", "idle_duration"]:
-                kl_key = f"{feature}_kl_divergence"
-                if kl_key in shift_metrics:
-                    f.write(f"| {feature} | {shift_metrics[kl_key]:.4f} | ")
-                    f.write(f"{shift_metrics[f'{feature}_js_distance']:.4f} | ")
-                    f.write(f"{shift_metrics[f'{feature}_wasserstein']:.4f} | ")
-                    f.write(f"{shift_metrics[f'{feature}_ks_pvalue']:.4e} |\n")
-
-            f.write("\n**Interpretation:**\n")
-            f.write("- KL/JS (distance) < 0.2: Acceptable similarity\n")
-            f.write("- Wasserstein: Lower is better\n")
-            f.write(
-                "- KS p-value > 0.05: Distributions not significantly different\n\n"
-            )
-
-        f.write("## 5. Methodological Recommendations\n\n")
-
-        has_issues = []
-
-        if "reward_total_is_normal_shapiro" in dist_diagnostics:
-            if not dist_diagnostics["reward_total_is_normal_shapiro"]:
-                has_issues.append(
-                    "⚠️ **Non-normal reward distribution:** Use non-parametric tests"
-                )
-
-        if shift_metrics:
-            high_divergence = any(
-                shift_metrics.get(f"{feat}_kl_divergence", 0) > 0.5
-                for feat in ["pnl", "trade_duration", "idle_duration"]
-            )
-            if high_divergence:
-                has_issues.append(
-                    "🔴 **High distribution shift:** Consider real episode sampling"
-                )
-
-        if has_issues:
-            f.write("**Issues identified:**\n\n")
-            for issue in has_issues:
-                f.write(f"- {issue}\n")
-        else:
-            f.write("✅ **No major methodological issues detected.**\n")
-
-        f.write("\n---\n\n")
-        f.write(
-            "**References:** Efron & Tibshirani (1993), Henderson et al. (2018), Pineau et al. (2021)\n"
-        )
 
 
 def build_argument_parser() -> argparse.ArgumentParser:

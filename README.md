@@ -59,7 +59,7 @@ docker compose up -d --build
 | freqai.feature_parameters.label_kmedoids_metric | `euclidean` | string | Metric used for k-medoids clustering. |
 | freqai.feature_parameters.label_kmedoids_selection | `min` | enum {`min`,`medoid`} | Strategy to select trial in the best k-medoids cluster. |
 | freqai.feature_parameters.label_knn_metric | `minkowski` | string | Distance metric for KNN. |
-| freqai.feature_parameters.label_knn_p_order | `null` | float | p-order for KNN Minkowski metric distance. |
+| freqai.feature_parameters.label_knn_p_order | `None` | float | p-order for KNN Minkowski metric distance. (optional) |
 | freqai.feature_parameters.label_knn_n_neighbors | 5 | int >= 1 | Number of neighbors for KNN. |
 | _Prediction thresholds_ |  |  |  |
 | freqai.prediction_thresholds_smoothing | `mean` | enum {`mean`,`isodata`,`li`,`minimum`,`otsu`,`triangle`,`yen`,`soft_extremum`} | Thresholding method for prediction thresholds smoothing. |
@@ -77,7 +77,7 @@ docker compose up -d --build
 | freqai.optuna_hyperopt.label_candles_step | 1 | int >= 1 | Step for Zigzag NATR horizon search space. |
 | freqai.optuna_hyperopt.train_candles_step | 10 | int >= 1 | Step for training sets size search space. |
 | freqai.optuna_hyperopt.expansion_ratio | 0.4 | float [0,1] | HPO search space expansion ratio. |
-| freqai.optuna_hyperopt.seed | 1 | int >= 0 | HPO random seed. |
+| freqai.optuna_hyperopt.seed | 1 | int >= 0 | HPO RNG seed. |
 
 ## ReforceXY
 

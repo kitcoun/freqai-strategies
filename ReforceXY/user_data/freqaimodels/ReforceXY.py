@@ -111,6 +111,10 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "n_trials": 100,
                 "n_startup_trials": 15,
                 "timeout_hours": 0,
+                "continuous": false,                // If true, perform continuous optimization
+                "warm_start": false,                // If true, enqueue previous best params if exists
+                "seed": 42,                         // RNG seed
+                "storage": "sqlite",                // Optuna storage backend (sqlite|file)
             }
         }
     }
@@ -1521,9 +1525,7 @@ class MyRLEnv(Base5ActionRLEnv):
 
         efficiency_factor = 1.0
         efficiency_weight = float(model_reward_parameters.get("efficiency_weight", 1.0))
-        efficiency_center = float(
-            model_reward_parameters.get("efficiency_center", 0.35)
-        )
+        efficiency_center = float(model_reward_parameters.get("efficiency_center", 0.5))
         if efficiency_weight != 0.0 and pnl >= 0.0:
             max_pnl = max(self.get_max_unrealized_profit(), pnl)
             min_pnl = min(self.get_min_unrealized_profit(), pnl)
