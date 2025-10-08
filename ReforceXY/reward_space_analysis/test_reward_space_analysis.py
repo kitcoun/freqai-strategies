@@ -1903,12 +1903,6 @@ class TestHelperFunctions(RewardSpaceTestBase):
             short_positions, 0, "Futures mode should allow short positions"
         )
 
-    def test_load_real_episodes(self):
-        """Test load_real_episodes function."""
-        # This test has been moved to TestLoadRealEpisodes to centralize tests
-        # related to load_real_episodes.
-        pass
-
     def test_statistical_functions(self):
         """Test statistical functions."""
 
