@@ -47,14 +47,6 @@ except ImportError as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
-# Canonical test constants
-TEST_BASE_FACTOR: float = 100.0
-TEST_PROFIT_TARGET: float = 0.03
-TEST_RR: float = 1.0
-TEST_RR_HIGH: float = 2.0
-TEST_PNL_STD: float = 0.02
-TEST_PNL_DUR_VOL_SCALE: float = 0.5
-
 
 class RewardSpaceTestBase(unittest.TestCase):
     """Base class with common test utilities."""
@@ -65,6 +57,12 @@ class RewardSpaceTestBase(unittest.TestCase):
         cls.SEED = 42
         cls.DEFAULT_PARAMS = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
         cls.TEST_SAMPLES = 50  # Small for speed
+        cls.TEST_BASE_FACTOR = 100.0
+        cls.TEST_PROFIT_TARGET = 0.03
+        cls.TEST_RR = 1.0
+        cls.TEST_RR_HIGH = 2.0
+        cls.TEST_PNL_STD = 0.02
+        cls.TEST_PNL_DUR_VOL_SCALE = 0.5
 
     def setUp(self):
         """Set up test fixtures with reproducible random seed."""
@@ -209,7 +207,7 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                 "reward_idle": reward_idle,
                 "position": np.random.choice([0.0, 0.5, 1.0], n),
                 "reward_total": np.random.normal(0, 1, n),
-                "pnl": np.random.normal(0, TEST_PNL_STD, n),
+                "pnl": np.random.normal(0, self.TEST_PNL_STD, n),
                 "trade_duration": np.random.exponential(20, n),
             }
         )
@@ -333,7 +331,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
     def test_basic_reward_calculation(self):
         """Test basic reward calculation consistency."""
         context = RewardContext(
-            pnl=TEST_PROFIT_TARGET,
+            pnl=self.TEST_PROFIT_TARGET,
             trade_duration=10,
             idle_duration=0,
             max_trade_duration=100,
@@ -347,9 +345,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
         breakdown = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=self.TEST_BASE_FACTOR,
             profit_target=0.06,  # Scenario-specific larger target kept explicit
-            risk_reward_ratio=TEST_RR_HIGH,
+            risk_reward_ratio=self.TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
@@ -389,9 +387,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
         tp_breakdown = calculate_reward(
             tp_context,
             self.DEFAULT_PARAMS,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=self.TEST_BASE_FACTOR,
             profit_target=profit_target,
-            risk_reward_ratio=TEST_RR_HIGH,
+            risk_reward_ratio=self.TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
@@ -426,9 +424,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
         sl_breakdown = calculate_reward(
             sl_context,
             self.DEFAULT_PARAMS,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=self.TEST_BASE_FACTOR,
             profit_target=profit_target,
-            risk_reward_ratio=TEST_RR_HIGH,
+            risk_reward_ratio=self.TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
@@ -462,9 +460,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
         to_breakdown = calculate_reward(
             to_context,
             self.DEFAULT_PARAMS,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=self.TEST_BASE_FACTOR,
             profit_target=profit_target,
-            risk_reward_ratio=TEST_RR_HIGH,
+            risk_reward_ratio=self.TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
@@ -493,7 +491,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params_small["max_idle_duration_candles"] = 50
         params_large["max_idle_duration_candles"] = 200
 
-        base_factor = TEST_BASE_FACTOR
+        base_factor = self.TEST_BASE_FACTOR
         idle_duration = 40  # below large threshold, near small threshold
         context = RewardContext(
             pnl=0.0,
@@ -511,17 +509,17 @@ class TestRewardAlignment(RewardSpaceTestBase):
             context,
             params_small,
             base_factor,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
         breakdown_large = calculate_reward(
             context,
             params_large,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=self.TEST_BASE_FACTOR,
             profit_target=0.06,
-            risk_reward_ratio=TEST_RR,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -547,7 +545,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params = self.DEFAULT_PARAMS.copy()
         params["max_idle_duration_candles"] = 0  # force fallback
         base_factor = 90.0
-        profit_target = TEST_PROFIT_TARGET
+        profit_target = self.TEST_PROFIT_TARGET
         risk_reward_ratio = 1.0
 
         # Two contexts with different idle durations
@@ -652,23 +650,24 @@ class TestRewardAlignment(RewardSpaceTestBase):
         baseline = calculate_reward(
             context,
             params,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR_HIGH,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
 
         # Amplified: choose a much larger base_factor (ensure > threshold relative scale)
         amplified_base_factor = max(
-            TEST_BASE_FACTOR * 50, threshold * TEST_RR_HIGH / max(context.pnl, 1e-9)
+            self.TEST_BASE_FACTOR * 50,
+            threshold * self.TEST_RR_HIGH / max(context.pnl, 1e-9),
         )
         amplified = calculate_reward(
             context,
             params,
             base_factor=amplified_base_factor,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR_HIGH,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
@@ -744,7 +743,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
 
     def test_negative_slope_sanitization(self):
         """Negative slopes for linear must be sanitized to positive default (1.0)."""
-        base_factor = TEST_BASE_FACTOR
+        base_factor = self.TEST_BASE_FACTOR
         pnl = 0.04
         pnl_factor = 1.0
         duration_ratio_linear = 1.2  # any positive ratio
@@ -820,9 +819,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
         br = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
-            base_factor=TEST_BASE_FACTOR,
+            base_factor=self.TEST_BASE_FACTOR,
             profit_target=0.0,  # critical case
-            risk_reward_ratio=TEST_RR,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -838,8 +837,8 @@ class TestRewardAlignment(RewardSpaceTestBase):
         tau = 0.5
         r = 1.2
         alpha = -math.log(tau) / math.log(2.0)
-        base_factor = TEST_BASE_FACTOR
-        pnl = TEST_PROFIT_TARGET
+        base_factor = self.TEST_BASE_FACTOR
+        pnl = self.TEST_PROFIT_TARGET
         pnl_factor = 1.0  # isolate attenuation
         params = self.DEFAULT_PARAMS.copy()
         params.update(
@@ -862,7 +861,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         """Saturation test: pnl amplification factor should monotonically approach (1 + win_reward_factor)."""
         win_reward_factor = 3.0  # asymptote = 4.0
         beta = 0.5
-        profit_target = TEST_PROFIT_TARGET
+        profit_target = self.TEST_PROFIT_TARGET
         params = self.DEFAULT_PARAMS.copy()
         params.update(
             {
@@ -878,7 +877,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params.pop("base_factor", None)
 
         # pnl values: slightly above target, 2x, 5x, 10x target
-        pnl_values = [profit_target * m for m in (1.05, TEST_RR_HIGH, 5.0, 10.0)]
+        pnl_values = [profit_target * m for m in (1.05, self.TEST_RR_HIGH, 5.0, 10.0)]
         ratios_observed: list[float] = []
 
         for pnl in pnl_values:
@@ -950,7 +949,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params.pop("base_factor", None)
         base_factor = 80.0
         k = 7.5
-        profit_target = TEST_PROFIT_TARGET
+        profit_target = self.TEST_PROFIT_TARGET
         rr = 1.5
 
         contexts: list[RewardContext] = [
@@ -968,7 +967,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             ),
             # Losing exit
             RewardContext(
-                pnl=-TEST_PNL_STD,
+                pnl=-self.TEST_PNL_STD,
                 trade_duration=60,
                 idle_duration=0,
                 max_trade_duration=100,
@@ -1074,7 +1073,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params.pop("base_factor", None)
         base_factor = 120.0
         profit_target = 0.04
-        rr = TEST_RR_HIGH
+        rr = self.TEST_RR_HIGH
         pnls = [0.018, -0.022]
         for pnl in pnls:
             ctx_long = RewardContext(
@@ -1156,7 +1155,7 @@ class TestPublicAPI(RewardSpaceTestBase):
         test_data = pd.DataFrame(
             {
                 "reward_total": np.random.normal(0, 1, 100),
-                "pnl": np.random.normal(0.01, TEST_PNL_STD, 100),
+                "pnl": np.random.normal(0.01, self.TEST_PNL_STD, 100),
             }
         )
 
@@ -1199,7 +1198,7 @@ class TestPublicAPI(RewardSpaceTestBase):
                     ~idle_mask, np.random.normal(-0.5, 0.2, 300), 0.0
                 ),
                 "reward_exit": np.random.normal(0.8, 0.6, 300),
-                "pnl": np.random.normal(0.01, TEST_PNL_STD, 300),
+                "pnl": np.random.normal(0.01, self.TEST_PNL_STD, 300),
                 "trade_duration": np.random.uniform(5, 150, 300),
                 "idle_duration": idle_duration,
                 "position": np.random.choice([0.0, 0.5, 1.0], 300),
@@ -1250,13 +1249,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=50,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="margin",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
 
         # Critical invariant: Total PnL must equal sum of exit PnL
@@ -1294,7 +1293,7 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         np.random.seed(42)
         df1 = pd.DataFrame(
             {
-                "pnl": np.random.normal(0, TEST_PNL_STD, 500),
+                "pnl": np.random.normal(0, self.TEST_PNL_STD, 500),
                 "trade_duration": np.random.exponential(30, 500),
                 "idle_duration": np.random.gamma(2, 5, 500),
             }
@@ -1367,13 +1366,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             seed=123,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="margin",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
 
         # Filter to exit actions only (where PnL is meaningful)
@@ -1425,9 +1424,9 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         reward_power = calculate_reward(
             context,
             params,
-            TEST_BASE_FACTOR,
-            TEST_PROFIT_TARGET,
-            TEST_RR,
+            self.TEST_BASE_FACTOR,
+            self.TEST_PROFIT_TARGET,
+            self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -1447,9 +1446,9 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         reward_half_life = calculate_reward(
             context,
             params,
-            TEST_BASE_FACTOR,
-            TEST_PROFIT_TARGET,
-            TEST_RR,
+            self.TEST_BASE_FACTOR,
+            self.TEST_PROFIT_TARGET,
+            self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -1465,9 +1464,9 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         reward_linear = calculate_reward(
             context,
             params,
-            TEST_BASE_FACTOR,
-            TEST_PROFIT_TARGET,
-            TEST_RR,
+            self.TEST_BASE_FACTOR,
+            self.TEST_PROFIT_TARGET,
+            self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -1590,13 +1589,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             seed=123,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="margin",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
 
         results_adj = statistical_hypothesis_tests(
@@ -1651,13 +1650,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="spot",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
 
         # Should not have any short positions
@@ -1672,13 +1671,13 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="margin",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
 
         # Should have required columns
@@ -1738,8 +1737,8 @@ class TestStatisticalValidation(RewardSpaceTestBase):
                 breakdown = calculate_reward(
                     context,
                     self.DEFAULT_PARAMS,
-                    base_factor=TEST_BASE_FACTOR,
-                    profit_target=TEST_PROFIT_TARGET,
+                    base_factor=self.TEST_BASE_FACTOR,
+                    profit_target=self.TEST_PROFIT_TARGET,
                     risk_reward_ratio=1.0,
                     short_allowed=True,
                     action_masking=True,
@@ -1792,8 +1791,8 @@ class TestBoundaryConditions(RewardSpaceTestBase):
             context,
             extreme_params,
             base_factor=10000.0,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -1827,9 +1826,9 @@ class TestBoundaryConditions(RewardSpaceTestBase):
                 breakdown = calculate_reward(
                     context,
                     test_params,
-                    base_factor=TEST_BASE_FACTOR,
-                    profit_target=TEST_PROFIT_TARGET,
-                    risk_reward_ratio=TEST_RR,
+                    base_factor=self.TEST_BASE_FACTOR,
+                    profit_target=self.TEST_PROFIT_TARGET,
+                    risk_reward_ratio=self.TEST_RR,
                     short_allowed=True,
                     action_masking=True,
                 )
@@ -1855,13 +1854,13 @@ class TestHelperFunctions(RewardSpaceTestBase):
             seed=42,
             params={"action_masking": "true"},
             max_trade_duration=50,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="spot",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
         self.assertIsInstance(df1, pd.DataFrame)
 
@@ -1870,13 +1869,13 @@ class TestHelperFunctions(RewardSpaceTestBase):
             seed=42,
             params={"action_masking": "false"},
             max_trade_duration=50,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="spot",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
         self.assertIsInstance(df2, pd.DataFrame)
 
@@ -1888,13 +1887,13 @@ class TestHelperFunctions(RewardSpaceTestBase):
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=50,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="futures",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
 
         # Should have some short positions
@@ -1954,13 +1953,13 @@ class TestHelperFunctions(RewardSpaceTestBase):
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             max_duration_ratio=2.0,
             trading_mode="margin",
-            pnl_base_std=TEST_PNL_STD,
-            pnl_duration_vol_scale=TEST_PNL_DUR_VOL_SCALE,
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1970,7 +1969,7 @@ class TestHelperFunctions(RewardSpaceTestBase):
                 test_data,
                 output_path,
                 max_trade_duration=100,
-                profit_target=TEST_PROFIT_TARGET,
+                profit_target=self.TEST_PROFIT_TARGET,
                 seed=42,
                 real_df=None,
             )
@@ -2009,8 +2008,8 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         breakdown = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
             risk_reward_ratio=1.0,
             short_allowed=True,
             action_masking=True,
@@ -2039,9 +2038,9 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         breakdown = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -2081,8 +2080,8 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                 breakdown = calculate_reward(
                     context,
                     self.DEFAULT_PARAMS,
-                    base_factor=TEST_BASE_FACTOR,
-                    profit_target=TEST_PROFIT_TARGET,
+                    base_factor=self.TEST_BASE_FACTOR,
+                    profit_target=self.TEST_PROFIT_TARGET,
                     risk_reward_ratio=1.0,
                     short_allowed=True,
                     action_masking=True,
@@ -2116,8 +2115,8 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         breakdown = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
-            base_factor=TEST_BASE_FACTOR,
-            profit_target=TEST_PROFIT_TARGET,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
             risk_reward_ratio=1.0,
             short_allowed=True,
             action_masking=False,  # Disable masking to test invalid penalty
@@ -2162,8 +2161,8 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                 breakdown = calculate_reward(
                     context,
                     self.DEFAULT_PARAMS,
-                    base_factor=TEST_BASE_FACTOR,
-                    profit_target=TEST_PROFIT_TARGET,
+                    base_factor=self.TEST_BASE_FACTOR,
+                    profit_target=self.TEST_PROFIT_TARGET,
                     risk_reward_ratio=1.0,
                     short_allowed=True,
                     action_masking=True,
@@ -2222,9 +2221,9 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             breakdown = calculate_reward(
                 context,
                 self.DEFAULT_PARAMS,
-                base_factor=TEST_BASE_FACTOR,
-                profit_target=TEST_PROFIT_TARGET,
-                risk_reward_ratio=TEST_RR,
+                base_factor=self.TEST_BASE_FACTOR,
+                profit_target=self.TEST_PROFIT_TARGET,
+                risk_reward_ratio=self.TEST_RR,
                 short_allowed=True,
                 action_masking=True,
             )
@@ -2263,8 +2262,8 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             context,
             params,
             base_factor=1e7,  # exaggerated factor
-            profit_target=TEST_PROFIT_TARGET,
-            risk_reward_ratio=TEST_RR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -2346,7 +2345,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
             ),
             # Exit reward only (positive pnl)
             dict(
-                ctx=self._mk_context(pnl=TEST_PROFIT_TARGET, trade_duration=60),
+                ctx=self._mk_context(pnl=self.TEST_PROFIT_TARGET, trade_duration=60),
                 active="exit_component",
             ),
             # Invalid action only
@@ -2372,9 +2371,9 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 br = calculate_reward(
                     ctx_obj,
                     self.DEFAULT_PARAMS,
-                    base_factor=TEST_BASE_FACTOR,
-                    profit_target=TEST_PROFIT_TARGET,
-                    risk_reward_ratio=TEST_RR,
+                    base_factor=self.TEST_BASE_FACTOR,
+                    profit_target=self.TEST_PROFIT_TARGET,
+                    risk_reward_ratio=self.TEST_RR,
                     short_allowed=True,
                     action_masking=(active_label != "invalid_penalty"),
                 )
@@ -2407,7 +2406,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
         """
 
         modes = ["sqrt", "linear", "power", "half_life", "plateau_linear"]
-        base_factor = TEST_BASE_FACTOR
+        base_factor = self.TEST_BASE_FACTOR
         pnl = 0.05
         pnl_factor = 1.0
         for mode in modes:
@@ -2528,7 +2527,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 "exit_linear_slope": 0.0,
             }
         )
-        base_factor = TEST_BASE_FACTOR
+        base_factor = self.TEST_BASE_FACTOR
         pnl = 0.04
         pnl_factor = 1.2
         ratios = [0.3, 0.6, 1.0, 1.4]
@@ -2558,7 +2557,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
             }
         )
         base_factor = 80.0
-        pnl = TEST_PROFIT_TARGET
+        pnl = self.TEST_PROFIT_TARGET
         pnl_factor = 1.1
         # Ratios straddling 1.0 but below grace=1.5 plus one beyond grace
         ratios = [0.8, 1.0, 1.2, 1.4, 1.6]
@@ -2583,7 +2582,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
         params = self.DEFAULT_PARAMS.copy()
         params["exit_attenuation_mode"] = "legacy"
         params["exit_plateau"] = False
-        base_factor = TEST_BASE_FACTOR
+        base_factor = self.TEST_BASE_FACTOR
         pnl = 0.02
         pnl_factor = 1.0
         # ratio below 1 vs above 1
@@ -2606,7 +2605,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
         params = self.DEFAULT_PARAMS.copy()
         # Try multiple modes / extreme params
         modes = ["linear", "power", "half_life", "sqrt", "legacy", "linear_plateau"]
-        base_factor = TEST_BASE_FACTOR
+        base_factor = self.TEST_BASE_FACTOR
         pnl = 0.05
         pnl_factor = 2.0  # amplified
         for mode in modes:
@@ -2655,7 +2654,7 @@ class TestParameterValidation(RewardSpaceTestBase):
         params["idle_penalty_power"] = 2.0
         params["max_idle_duration_candles"] = 100
         base_factor = 90.0
-        profit_target = TEST_PROFIT_TARGET
+        profit_target = self.TEST_PROFIT_TARGET
         # Idle penalties for durations 20 vs 40 (quadratic → (40/100)^2 / (20/100)^2 = (0.4^2)/(0.2^2)=4)
         ctx_a = RewardContext(
             pnl=0.0,
@@ -2674,7 +2673,7 @@ class TestParameterValidation(RewardSpaceTestBase):
             params,
             base_factor=base_factor,
             profit_target=profit_target,
-            risk_reward_ratio=TEST_RR,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -2683,7 +2682,7 @@ class TestParameterValidation(RewardSpaceTestBase):
             params,
             base_factor=base_factor,
             profit_target=profit_target,
-            risk_reward_ratio=TEST_RR,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -2711,12 +2710,13 @@ class TestParameterValidation(RewardSpaceTestBase):
             force_action=None,
         )
         ctx_h2 = dataclasses.replace(ctx_h1, trade_duration=140)
+        # Compute baseline and comparison holding penalties
         br_h1 = calculate_reward(
             ctx_h1,
             params,
             base_factor=base_factor,
             profit_target=profit_target,
-            risk_reward_ratio=TEST_RR,
+            risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
             action_masking=True,
         )
@@ -2765,8 +2765,8 @@ class TestParameterValidation(RewardSpaceTestBase):
                 context,
                 params,
                 base_factor=5000.0,  # large enough to exceed threshold
-                profit_target=TEST_PROFIT_TARGET,
-                risk_reward_ratio=TEST_RR_HIGH,
+                profit_target=self.TEST_PROFIT_TARGET,
+                risk_reward_ratio=self.TEST_RR_HIGH,
                 short_allowed=True,
                 action_masking=True,
             )
@@ -2796,7 +2796,7 @@ class TestContinuityPlateau(RewardSpaceTestBase):
         modes = ["sqrt", "linear", "power", "half_life"]
         grace = 0.8
         eps = 1e-4
-        base_factor = TEST_BASE_FACTOR
+        base_factor = self.TEST_BASE_FACTOR
         pnl = 0.01
         pnl_factor = 1.0
         tau = 0.5  # for power
