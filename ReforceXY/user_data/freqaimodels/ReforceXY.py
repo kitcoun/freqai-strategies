@@ -1616,10 +1616,10 @@ class MyRLEnv(Base5ActionRLEnv):
             if max_idle_duration <= 0:
                 max_idle_duration = 2 * max_trade_duration
             idle_penalty_scale = float(
-                model_reward_parameters.get("idle_penalty_scale", 0.75)
+                model_reward_parameters.get("idle_penalty_scale", 0.5)
             )
             idle_penalty_power = float(
-                model_reward_parameters.get("idle_penalty_power", 1.0)
+                model_reward_parameters.get("idle_penalty_power", 1.025)
             )
             idle_duration = self.get_idle_duration()
             idle_duration_ratio = idle_duration / max(1, max_idle_duration)
@@ -1635,10 +1635,10 @@ class MyRLEnv(Base5ActionRLEnv):
             and action == Actions.Neutral.value
         ):
             holding_penalty_scale = float(
-                model_reward_parameters.get("holding_penalty_scale", 0.5)
+                model_reward_parameters.get("holding_penalty_scale", 0.25)
             )
             holding_penalty_power = float(
-                model_reward_parameters.get("holding_penalty_power", 1.0)
+                model_reward_parameters.get("holding_penalty_power", 1.025)
             )
 
             if duration_ratio < 1.0:

@@ -259,13 +259,13 @@ _Invalid action penalty:_
 
 _Idle penalty configuration:_
 
-- `idle_penalty_scale` (default: 0.75) - Scale of idle penalty
-- `idle_penalty_power` (default: 1.0) - Power applied to idle penalty scaling
+- `idle_penalty_scale` (default: 0.5) - Scale of idle penalty
+- `idle_penalty_power` (default: 1.025) - Power applied to idle penalty scaling
 
 _Holding penalty configuration:_
 
-- `holding_penalty_scale` (default: 0.5) - Scale of holding penalty
-- `holding_penalty_power` (default: 1.0) - Power applied to holding penalty scaling
+- `holding_penalty_scale` (default: 0.25) - Scale of holding penalty
+- `holding_penalty_power` (default: 1.025) - Power applied to holding penalty scaling
 
 _Exit attenuation configuration:_
 

@@ -636,8 +636,8 @@ class TestRewardAlignment(RewardSpaceTestBase):
             action_masking=True,
         )
         self.assertLess(br_mid.idle_penalty, 0.0)
-        idle_penalty_scale = float(params.get("idle_penalty_scale", 0.75))
-        idle_penalty_power = float(params.get("idle_penalty_power", 1.0))
+        idle_penalty_scale = float(params.get("idle_penalty_scale", 0.5))
+        idle_penalty_power = float(params.get("idle_penalty_power", 1.025))
         # Internal factor may come from params (overrides provided base_factor argument)
         factor_used = float(params.get("base_factor", base_factor))
         idle_factor = factor_used * (profit_target * risk_reward_ratio) / 3.0

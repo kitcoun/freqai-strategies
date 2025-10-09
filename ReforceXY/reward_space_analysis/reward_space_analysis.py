@@ -125,13 +125,13 @@ DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
     "invalid_action": -2.0,
     "base_factor": 100.0,
     # Idle penalty (env defaults)
-    "idle_penalty_power": 1.0,
-    "idle_penalty_scale": 0.75,
+    "idle_penalty_scale": 0.5,
+    "idle_penalty_power": 1.025,
     # Fallback semantics: if <=0 or unset → 2 * max_trade_duration_candles (grace window before full idle penalty)
     "max_idle_duration_candles": 0,
     # Holding keys (env defaults)
-    "holding_penalty_scale": 0.5,
-    "holding_penalty_power": 1.0,
+    "holding_penalty_scale": 0.25,
+    "holding_penalty_power": 1.025,
     # Exit attenuation configuration (env default)
     "exit_attenuation_mode": "linear",
     "exit_plateau": True,
@@ -512,8 +512,16 @@ def _idle_penalty(
     context: RewardContext, idle_factor: float, params: Dict[str, float | str]
 ) -> float:
     """Mirror the environment's idle penalty behaviour."""
-    idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 0.75)
-    idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.0)
+    idle_penalty_scale = _get_param_float(
+        params,
+        "idle_penalty_scale",
+        DEFAULT_MODEL_REWARD_PARAMETERS.get("idle_penalty_scale", 0.5),
+    )
+    idle_penalty_power = _get_param_float(
+        params,
+        "idle_penalty_power",
+        DEFAULT_MODEL_REWARD_PARAMETERS.get("idle_penalty_power", 1.025),
+    )
     max_trade_duration_candles = params.get("max_trade_duration_candles")
     try:
         if max_trade_duration_candles is not None:
@@ -542,8 +550,16 @@ def _holding_penalty(
     context: RewardContext, holding_factor: float, params: Dict[str, float | str]
 ) -> float:
     """Mirror the environment's holding penalty behaviour."""
-    holding_penalty_scale = _get_param_float(params, "holding_penalty_scale", 0.5)
-    holding_penalty_power = _get_param_float(params, "holding_penalty_power", 1.0)
+    holding_penalty_scale = _get_param_float(
+        params,
+        "holding_penalty_scale",
+        DEFAULT_MODEL_REWARD_PARAMETERS.get("holding_penalty_scale", 0.25),
+    )
+    holding_penalty_power = _get_param_float(
+        params,
+        "holding_penalty_power",
+        DEFAULT_MODEL_REWARD_PARAMETERS.get("holding_penalty_power", 1.025),
+    )
     duration_ratio = _compute_duration_ratio(
         context.trade_duration, context.max_trade_duration
     )
