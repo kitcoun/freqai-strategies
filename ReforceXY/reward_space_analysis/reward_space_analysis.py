@@ -1378,7 +1378,7 @@ def compute_distribution_shift_metrics(
         # Guard against degenerate distributions (all values identical)
         if not np.isfinite(min_val) or not np.isfinite(max_val):
             continue
-        if np.isclose(max_val, min_val, rel_tol=0, abs_tol=1e-12):
+        if np.isclose(max_val, min_val, rtol=0, atol=1e-12):
             # All mass at a single point -> shift metrics are all zero by definition
             metrics[f"{feature}_kl_divergence"] = 0.0
             metrics[f"{feature}_js_distance"] = 0.0
