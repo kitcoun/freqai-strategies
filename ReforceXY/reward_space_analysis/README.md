@@ -299,8 +299,8 @@ Where r* = `effective_r` above.
 
 _Efficiency configuration:_
 
--- `efficiency_weight` (default: 1.0) - Weight for efficiency factor in exit reward
--- `efficiency_center` (default: 0.5) - Linear pivot in [0,1] for efficiency ratio. If efficiency_ratio > center ⇒ amplification (>1); if < center ⇒ attenuation (<1, floored at 0).
+- `efficiency_weight` (default: 1.0) - Weight for efficiency factor in exit reward
+- `efficiency_center` (default: 0.5) - Linear pivot in [0,1] for efficiency ratio. If efficiency_ratio > center ⇒ amplification (>1); if < center ⇒ attenuation (<1, floored at 0).
 
 _Profit factor configuration:_
 
