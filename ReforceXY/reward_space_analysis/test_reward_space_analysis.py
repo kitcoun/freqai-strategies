@@ -640,8 +640,8 @@ class TestRewardAlignment(RewardSpaceTestBase):
         idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 0.5)
         idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.025)
         # Internal factor may come from params (overrides provided base_factor argument)
-        factor_used = _get_param_float(params, "base_factor", float(base_factor))
-        idle_factor = factor_used * (profit_target * risk_reward_ratio) / 3.0
+        factor = _get_param_float(params, "base_factor", float(base_factor))
+        idle_factor = factor * (profit_target * risk_reward_ratio) / 3.0
         observed_ratio = abs(br_mid.idle_penalty) / (idle_factor * idle_penalty_scale)
         if observed_ratio > 0:
             implied_D = 120 / (observed_ratio ** (1 / idle_penalty_power))
@@ -649,7 +649,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 implied_D,
                 200.0,
                 tolerance=12.0,  # modest tolerance for float ops / rounding
-                msg=f"Fallback denominator mismatch (implied={implied_D}, expected≈200, factor_used={factor_used})",
+                msg=f"Fallback denominator mismatch (implied={implied_D}, expected≈200, factor={factor})",
             )
 
     def test_exit_factor_threshold_warning_non_capping(self):
