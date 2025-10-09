@@ -31,6 +31,7 @@ try:
         Positions,
         RewardContext,
         _get_exit_factor,
+        _get_param_float,
         _get_pnl_factor,
         bootstrap_confidence_intervals,
         build_argument_parser,
@@ -636,10 +637,10 @@ class TestRewardAlignment(RewardSpaceTestBase):
             action_masking=True,
         )
         self.assertLess(br_mid.idle_penalty, 0.0)
-        idle_penalty_scale = float(params.get("idle_penalty_scale", 0.5))
-        idle_penalty_power = float(params.get("idle_penalty_power", 1.025))
+        idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 0.5)
+        idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.025)
         # Internal factor may come from params (overrides provided base_factor argument)
-        factor_used = float(params.get("base_factor", base_factor))
+        factor_used = _get_param_float(params, "base_factor", float(base_factor))
         idle_factor = factor_used * (profit_target * risk_reward_ratio) / 3.0
         observed_ratio = abs(br_mid.idle_penalty) / (idle_factor * idle_penalty_scale)
         if observed_ratio > 0:
@@ -660,7 +661,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params = self.DEFAULT_PARAMS.copy()
         # Remove base_factor from params so that the function uses the provided argument (makes scaling observable)
         params.pop("base_factor", None)
-        threshold = float(params.get("exit_factor_threshold", 10_000.0))
+        exit_factor_threshold = _get_param_float(
+            params, "exit_factor_threshold", 10_000.0
+        )
 
         context = RewardContext(
             pnl=0.08,  # above typical profit_target * RR
@@ -688,7 +691,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         # Amplified: choose a much larger base_factor (ensure > threshold relative scale)
         amplified_base_factor = max(
             self.TEST_BASE_FACTOR * 50,
-            threshold * self.TEST_RR_HIGH / max(context.pnl, 1e-9),
+            exit_factor_threshold * self.TEST_RR_HIGH / max(context.pnl, 1e-9),
         )
         amplified = calculate_reward(
             context,
