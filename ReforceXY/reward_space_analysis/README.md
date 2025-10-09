@@ -476,14 +476,10 @@ python reward_space_analysis.py \
 
 For production validation, compare synthetic analysis with real trading episodes:
 
-1. **Enable logging** in your ReforceXY config
-2. **Run training** to collect real episodes
-3. **Compare distributions** using `--real_episodes`
-
 ```shell
 python reward_space_analysis.py \
     --num_samples 100000 \
-    --real_episodes ../user_data/models/ReforceXY-PPO/sub_train_BTCUSDT_20231201/episode_rewards.pkl \
+    --real_episodes ../user_data/transitions/episode_rewards.pkl \
     --output real_vs_synthetic
 ```
 
