@@ -1243,7 +1243,7 @@ class QuickAdapterV3(IStrategy):
                     f"User denied {trade_direction} {order} for {pair}: "
                     f"close_k[{-k}] {format_number(close_k)} "
                     f"did not break threshold_k[{-(k + 1)}] {format_number(threshold_k)} "
-                    f"(decayed min/max natr_ratio_percent: min={format_number(decayed_min_natr_ratio_percent)}, max={format_number(decayed_max_natr_ratio_percent)})"
+                    f"(decayed natr_ratio_percent: min={format_number(decayed_min_natr_ratio_percent)}, max={format_number(decayed_max_natr_ratio_percent)})"
                 )
                 return False
 

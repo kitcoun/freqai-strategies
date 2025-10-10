@@ -161,7 +161,7 @@ python reward_space_analysis.py \
 # Then compare:
 python reward_space_analysis.py \
     --num_samples 100000 \
-    --real_episodes ../user_data/transitions/*.pkl \
+    --real_episodes path/to/episode_rewards.pkl \
     --output real_vs_synthetic
 ```
 
@@ -315,7 +315,7 @@ _Invariant / safety controls:_
 
 - Path to real episode rewards pickle file for distribution comparison
 - Enables distribution shift analysis (KL(synthetic‖real), JS distance, Wasserstein distance, KS test)
-- Example: `../user_data/models/ReforceXY-PPO/sub_train_SYMBOL_DATE/episode_rewards.pkl`
+- Example: `path/to/episode_rewards.pkl`
 
 **`--pvalue_adjust`** (choice: none|benjamini_hochberg, default: none)
 
@@ -383,7 +383,7 @@ python reward_space_analysis.py \
 # Real vs synthetic comparison
 python reward_space_analysis.py \
     --num_samples 100000 \
-    --real_episodes ../user_data/models/path/to/episode_rewards.pkl \
+    --real_episodes path/to/episode_rewards.pkl \
     --output validation
 ```
 
@@ -479,7 +479,7 @@ For production validation, compare synthetic analysis with real trading episodes
 ```shell
 python reward_space_analysis.py \
     --num_samples 100000 \
-    --real_episodes ../user_data/transitions/episode_rewards.pkl \
+    --real_episodes path/to/episode_rewards.pkl \
     --output real_vs_synthetic
 ```
 
