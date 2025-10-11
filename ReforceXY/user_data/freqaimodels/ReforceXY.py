@@ -1766,8 +1766,8 @@ class MyRLEnv(Base5ActionRLEnv):
     def is_terminated(self) -> bool:
         return (
             self._current_tick == self._end_tick
-            or self._total_profit <= self.max_drawdown
-            or self._total_unrealized_profit <= self.max_drawdown
+            or self._total_profit < self.max_drawdown
+            or self._total_unrealized_profit < self.max_drawdown
         )
 
     def is_truncated(self) -> bool:
@@ -2012,9 +2012,6 @@ class MyRLEnv(Base5ActionRLEnv):
                     ("short_enter", "v", "firebrick", 5, 0.1, "Short enter"),
                     ("long_exit", ".", "cornflowerblue", 4, 0.1, "Long exit"),
                     ("short_exit", ".", "thistle", 4, -0.1, "Short exit"),
-                    ("take_profit", "*", "lime", 8, 0.1, "Take profit"),
-                    ("stop_loss", "x", "red", 8, -0.1, "Stop loss"),
-                    ("timeout", "1", "yellow", 8, 0.0, "Timeout"),
                 ]
 
                 legend_scale_factor = 1.5
@@ -2073,8 +2070,6 @@ class MyRLEnv(Base5ActionRLEnv):
             ):
                 axs[1].legend(loc="upper left", fontsize=8)
             axs[1].axhline(y=0, label="0", alpha=0.33, color="gray")
-            axs[1].axhline(y=self.take_profit, label="tp", alpha=0.33, color="green")
-            axs[1].axhline(y=self.stop_loss, label="sl", alpha=0.33, color="red")
 
             axs[2].set_ylabel("reward")
             reward_series = history.get("reward")
