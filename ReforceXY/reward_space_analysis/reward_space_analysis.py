@@ -13,7 +13,7 @@ Capabilities:
 Exit attenuation mode normalization:
 - User supplied ``exit_attenuation_mode`` is taken as-is (case-sensitive) and validated
     against the allowed set. Any invalid value (including casing mismatch) results in a
-    silent fallback to ``'linear'`` (parity with the live environment) – no warning.
+    silent fallback to ``'linear'``.
 
 Architecture principles:
 - Single source of truth: ``DEFAULT_MODEL_REWARD_PARAMETERS`` (dynamic CLI generation).
@@ -267,7 +267,7 @@ def _normalize_and_validate_mode(params: RewardParams) -> None:
     Behaviour (mirrors in-env logic):
     - Do not force lowercase or strip user formatting; use the value as provided.
     - Supported modes (case-sensitive): {legacy, sqrt, linear, power, half_life}.
-    - If the value is not among supported keys, silently fall back to 'linear'
+    - If the value is not among supported keys, silently fallback to 'linear'
       without emitting a warning (environment side performs a silent fallback).
     - If the key is absent or value is ``None``: leave untouched (upstream defaults
       will inject 'linear').
@@ -286,7 +286,7 @@ def add_tunable_cli_args(parser: argparse.ArgumentParser) -> None:
     Rules:
     - Use the same underscored names as option flags (e.g., --idle_penalty_scale).
     - Defaults are None so only user-provided values override params.
-    - For exit_attenuation_mode, enforce allowed choices (case-sensitive; invalid value will later silently fallback to 'linear').
+    - For exit_attenuation_mode, enforce allowed choices (case-sensitive).
     - Skip keys already managed as top-level options (e.g., base_factor) to avoid duplicates.
     """
     skip_keys = {"base_factor"}  # already defined as top-level
