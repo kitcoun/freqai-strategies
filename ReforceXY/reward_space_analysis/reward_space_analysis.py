@@ -6,12 +6,17 @@ Capabilities:
 - Percentile bootstrap confidence intervals (BCa not yet implemented).
 - Distribution diagnostics (Shapiro, Anderson, skewness, kurtosis, Q-Q R²).
 - Distribution shift metrics (KL divergence, JS distance, Wasserstein, KS test) with
-    degenerate (constant) distribution safe‑guards.
+    degenerate (constant) distribution safeguards.
 - Unified RandomForest feature importance + partial dependence.
 - Heteroscedastic PnL simulation (variance scales with duration).
 
+Exit attenuation mode normalization:
+- User supplied ``exit_attenuation_mode`` is taken as-is (case-sensitive) and validated
+    against the allowed set. Any invalid value (including casing mismatch) results in a
+    silent fallback to ``'linear'`` (parity with the live environment) – no warning.
+
 Architecture principles:
-- Single source of truth: `DEFAULT_MODEL_REWARD_PARAMETERS` for tunables + dynamic CLI.
+- Single source of truth: ``DEFAULT_MODEL_REWARD_PARAMETERS`` (dynamic CLI generation).
 - Determinism: explicit seeding, parameter hashing for manifest traceability.
 - Extensibility: modular helpers (sampling, reward calculation, statistics, reporting).
 """
@@ -26,7 +31,7 @@ import random
 import warnings
 from enum import Enum, IntEnum
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, Mapping
 
 import numpy as np
 import pandas as pd
@@ -53,12 +58,6 @@ class Positions(Enum):
     Neutral = 0.5
 
 
-class ForceActions(IntEnum):
-    Take_profit = 0
-    Stop_loss = 1
-    Timeout = 2
-
-
 def _to_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -74,12 +73,14 @@ def _to_bool(value: Any) -> bool:
     return bool(text)
 
 
-def _get_param_float(params: Dict[str, float | str], key: str, default: float) -> float:
+def _get_param_float(
+    params: Mapping[str, RewardParamValue], key: str, default: RewardParamValue
+) -> float:
     """Extract float parameter with type safety and default fallback."""
     value = params.get(key, default)
-    # None -> default
+    # None -> NaN
     if value is None:
-        return default
+        return np.nan
     # Bool: treat explicitly (avoid surprising True->1.0 unless intentional)
     if isinstance(value, bool):
         return float(int(value))
@@ -88,20 +89,20 @@ def _get_param_float(params: Dict[str, float | str], key: str, default: float) -
         try:
             fval = float(value)
         except (ValueError, TypeError):
-            return default
-        return fval if np.isfinite(fval) else default
+            return np.nan
+        return fval if np.isfinite(fval) else np.nan
     # String parsing
     if isinstance(value, str):
         stripped = value.strip()
         if stripped == "":
-            return default
+            return np.nan
         try:
             fval = float(stripped)
         except ValueError:
-            return default
-        return fval if np.isfinite(fval) else default
+            return np.nan
+        return fval if np.isfinite(fval) else np.nan
     # Unsupported type
-    return default
+    return np.nan
 
 
 def _compute_duration_ratio(trade_duration: int, max_trade_duration: int) -> float:
@@ -121,14 +122,21 @@ def _is_short_allowed(trading_mode: str) -> bool:
 # Mathematical constants pre-computed for performance
 _LOG_2 = math.log(2.0)
 
-DEFAULT_MODEL_REWARD_PARAMETERS: Dict[str, float | str] = {
+RewardParamValue = Union[float, str, bool, None]
+RewardParams = Dict[str, RewardParamValue]
+
+
+# Allowed exit attenuation modes
+ALLOWED_EXIT_MODES = {"legacy", "sqrt", "linear", "power", "half_life"}
+
+DEFAULT_MODEL_REWARD_PARAMETERS: RewardParams = {
     "invalid_action": -2.0,
     "base_factor": 100.0,
     # Idle penalty (env defaults)
     "idle_penalty_scale": 0.5,
     "idle_penalty_power": 1.025,
-    # Fallback semantics: if <=0 or unset → 2 * max_trade_duration_candles (grace window before full idle penalty)
-    "max_idle_duration_candles": 0,
+    # Fallback semantics: 2 * max_trade_duration_candles
+    "max_idle_duration_candles": None,
     # Holding keys (env defaults)
     "holding_penalty_scale": 0.25,
     "holding_penalty_power": 1.025,
@@ -155,7 +163,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "base_factor": "Base reward factor used inside the environment.",
     "idle_penalty_power": "Power applied to idle penalty scaling.",
     "idle_penalty_scale": "Scale of idle penalty.",
-    "max_idle_duration_candles": "Maximum idle duration candles before full idle penalty scaling; 0 = use 2 * max_trade_duration_candles.",
+    "max_idle_duration_candles": "Maximum idle duration candles before full idle penalty scaling.",
     "holding_penalty_scale": "Scale of holding penalty.",
     "holding_penalty_power": "Power applied to holding penalty scaling.",
     "exit_attenuation_mode": "Attenuation kernel (legacy|sqrt|linear|power|half_life).",
@@ -198,37 +206,30 @@ _PARAMETER_BOUNDS: Dict[str, Dict[str, float]] = {
 
 
 def validate_reward_parameters(
-    params: Dict[str, float | str],
-) -> Tuple[Dict[str, float | str], Dict[str, Dict[str, Any]]]:
+    params: RewardParams,
+) -> Tuple[RewardParams, Dict[str, Dict[str, Any]]]:
     """Validate and clamp reward parameter values.
+
+    This function enforces numeric bounds declared in ``_PARAMETER_BOUNDS``. Values
+    outside their allowed range are clamped and an entry is recorded in the
+    ``adjustments`` mapping describing the original value, the adjusted value and the
+    reason (which bound triggered the change). Non‑finite values are reset to the
+    minimum bound (or 0.0 if no explicit minimum is defined).
+
+    It does NOT perform schema validation of any DataFrame (legacy text removed).
+
+    Parameters
+    ----------
+    params : dict
+        Raw user supplied reward parameter overrides (already merged with defaults
+        upstream). The dict is not mutated in‑place; a sanitized copy is returned.
 
     Returns
     -------
     sanitized_params : dict
-        Potentially adjusted copy of input params.
-    adjustments : dict
-        Mapping param -> {original, adjusted, reason} for every modification.
-
-    Validation
-    ----------
-    After loading and (if applicable) flattening, the function will validate the
-    presence of a set of required columns and raise a ValueError if any are missing.
-    This provides an early, clear error message instead of letting downstream code fail
-    with a less informative exception.
-
-    Required columns (validator):
-    - "pnl", "trade_duration", "idle_duration", "position", "action", "reward_total"
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame containing the transitions (one transition per row).
-
-    Raises
-    ------
-    ValueError
-        If the pickled payload cannot be converted to a DataFrame with the required columns.
-
+        Possibly adjusted copy of the provided parameters.
+    adjustments : dict[str, dict]
+        Mapping: param -> {original, adjusted, reason} for every modified entry.
     """
     sanitized = dict(params)
     adjustments: Dict[str, Dict[str, Any]] = {}
@@ -260,13 +261,32 @@ def validate_reward_parameters(
     return sanitized, adjustments
 
 
+def _normalize_and_validate_mode(params: RewardParams) -> None:
+    """Align normalization of ``exit_attenuation_mode`` with ReforceXY environment.
+
+    Behaviour (mirrors in-env logic):
+    - Do not force lowercase or strip user formatting; use the value as provided.
+    - Supported modes (case-sensitive): {legacy, sqrt, linear, power, half_life}.
+    - If the value is not among supported keys, silently fall back to 'linear'
+      without emitting a warning (environment side performs a silent fallback).
+    - If the key is absent or value is ``None``: leave untouched (upstream defaults
+      will inject 'linear').
+    """
+    exit_attenuation_mode = params.get("exit_attenuation_mode")
+    if exit_attenuation_mode is None:
+        return
+    exit_attenuation_mode = str(exit_attenuation_mode)
+    if exit_attenuation_mode not in ALLOWED_EXIT_MODES:
+        params["exit_attenuation_mode"] = "linear"
+
+
 def add_tunable_cli_args(parser: argparse.ArgumentParser) -> None:
     """Dynamically add CLI options for each tunable in DEFAULT_MODEL_REWARD_PARAMETERS.
 
     Rules:
     - Use the same underscored names as option flags (e.g., --idle_penalty_scale).
     - Defaults are None so only user-provided values override params.
-    - For exit_attenuation_mode, enforce allowed choices and lowercase conversion.
+    - For exit_attenuation_mode, enforce allowed choices (case-sensitive; invalid value will later silently fallback to 'linear').
     - Skip keys already managed as top-level options (e.g., base_factor) to avoid duplicates.
     """
     skip_keys = {"base_factor"}  # already defined as top-level
@@ -279,8 +299,8 @@ def add_tunable_cli_args(parser: argparse.ArgumentParser) -> None:
         if key == "exit_attenuation_mode":
             parser.add_argument(
                 f"--{key}",
-                type=str.lower,
-                choices=["legacy", "sqrt", "linear", "power", "half_life"],
+                type=str,  # case preserved; validation + silent fallback occurs before factor computation
+                choices=sorted(ALLOWED_EXIT_MODES),
                 default=None,
                 help=help_text,
             )
@@ -312,7 +332,6 @@ class RewardContext:
     min_unrealized_profit: float
     position: Positions
     action: Actions
-    force_action: Optional[ForceActions]
 
 
 @dataclasses.dataclass
@@ -329,18 +348,23 @@ def _get_exit_factor(
     pnl: float,
     pnl_factor: float,
     duration_ratio: float,
-    params: Dict[str, float | str],
+    params: RewardParams,
 ) -> float:
-    """Compute exit factor = time attenuation kernel (with optional plateau) * pnl_factor.
+    """Compute exit factor = time attenuation kernel (with optional plateau) * ``pnl_factor``.
 
-    Parity: mirrors `ReforceXY._get_exit_factor`.
+    Parity: mirrors the live environment's logic (``ReforceXY._get_exit_factor``).
 
-    Steps:
-      1. Sanitize inputs (finite, non-negative duration_ratio).
-      2. Derive effective duration ratio: if plateau enabled and r <= grace ⇒ 0 else r' = r - grace.
-      3. Apply kernel (legacy|sqrt|linear|power|half_life). Unknown ⇒ linear.
-      4. Multiply by externally supplied pnl_factor (includes profit amplification & efficiency).
-      5. Enforce invariants (finite, non-negative when pnl ≥ 0, warn if |factor| exceeds threshold).
+    Assumptions:
+    - ``_normalize_and_validate_mode`` has already run (invalid modes replaced by 'linear').
+    - ``exit_attenuation_mode`` is therefore either a member of ``ALLOWED_EXIT_MODES`` or 'linear'.
+    - All numeric tunables are accessed through ``_get_param_float`` for safety.
+
+    Algorithm steps:
+      1. Finiteness & non-negative guard on inputs.
+      2. Plateau handling: effective duration ratio = 0 within grace region else (r - grace).
+      3. Kernel application (legacy|sqrt|linear|power|half_life).
+      4. Multiply by externally supplied ``pnl_factor`` (already includes profit & efficiency effects).
+      5. Invariants: ensure finiteness; clamp negative factor when pnl >= 0; emit threshold warning.
     """
     # Basic finiteness checks
     if (
@@ -354,7 +378,7 @@ def _get_exit_factor(
     if duration_ratio < 0.0:
         duration_ratio = 0.0
 
-    exit_attenuation_mode = str(params.get("exit_attenuation_mode", "linear")).lower()
+    exit_attenuation_mode = str(params.get("exit_attenuation_mode", "linear"))
     exit_plateau = _to_bool(params.get("exit_plateau", True))
 
     exit_plateau_grace = _get_param_float(params, "exit_plateau_grace", 1.0)
@@ -449,7 +473,7 @@ def _get_exit_factor(
 
 
 def _get_pnl_factor(
-    params: Dict[str, float | str], context: RewardContext, profit_target: float
+    params: RewardParams, context: RewardContext, profit_target: float
 ) -> float:
     """Env-aligned PnL factor combining profit amplification and exit efficiency."""
     pnl = context.pnl
@@ -508,13 +532,7 @@ def _is_valid_action(
     action: Actions,
     *,
     short_allowed: bool,
-    force_action: Optional[ForceActions],
 ) -> bool:
-    if force_action is not None and position in (Positions.Long, Positions.Short):
-        if position == Positions.Long:
-            return action == Actions.Long_exit
-        return action == Actions.Short_exit
-
     if action == Actions.Neutral:
         return True
     if action == Actions.Long_enter:
@@ -529,7 +547,7 @@ def _is_valid_action(
 
 
 def _idle_penalty(
-    context: RewardContext, idle_factor: float, params: Dict[str, float | str]
+    context: RewardContext, idle_factor: float, params: RewardParams
 ) -> float:
     """Mirror the environment's idle penalty behaviour."""
     idle_penalty_scale = _get_param_float(
@@ -559,15 +577,13 @@ def _idle_penalty(
             max_idle_duration = int(max_idle_duration_candles)
         except (TypeError, ValueError):
             max_idle_duration = 2 * max_trade_duration_candles
-        if max_idle_duration <= 0:
-            max_idle_duration = 2 * max_trade_duration_candles
 
     idle_duration_ratio = context.idle_duration / max(1, max_idle_duration)
     return -idle_factor * idle_penalty_scale * idle_duration_ratio**idle_penalty_power
 
 
 def _holding_penalty(
-    context: RewardContext, holding_factor: float, params: Dict[str, float | str]
+    context: RewardContext, holding_factor: float, params: RewardParams
 ) -> float:
     """Mirror the environment's holding penalty behaviour."""
     holding_penalty_scale = _get_param_float(
@@ -598,7 +614,7 @@ def _compute_exit_reward(
     base_factor: float,
     pnl_factor: float,
     context: RewardContext,
-    params: Dict[str, float | str],
+    params: RewardParams,
 ) -> float:
     """Compose the exit reward: pnl * exit_factor."""
     duration_ratio = _compute_duration_ratio(
@@ -612,7 +628,7 @@ def _compute_exit_reward(
 
 def calculate_reward(
     context: RewardContext,
-    params: Dict[str, float | str],
+    params: RewardParams,
     base_factor: float,
     profit_target: float,
     risk_reward_ratio: float,
@@ -626,7 +642,6 @@ def calculate_reward(
         context.position,
         context.action,
         short_allowed=short_allowed,
-        force_action=context.force_action,
     )
     if not is_valid and not action_masking:
         breakdown.invalid_penalty = _get_param_float(params, "invalid_action", -2.0)
@@ -649,21 +664,6 @@ def calculate_reward(
     idle_factor = factor * profit_target_final / 3.0
     pnl_factor = _get_pnl_factor(params, context, profit_target_final)
     holding_factor = idle_factor
-
-    if context.force_action in (
-        ForceActions.Take_profit,
-        ForceActions.Stop_loss,
-        ForceActions.Timeout,
-    ):
-        exit_reward = _compute_exit_reward(
-            factor,
-            pnl_factor,
-            context,
-            params,
-        )
-        breakdown.exit_component = exit_reward
-        breakdown.total = exit_reward
-        return breakdown
 
     if context.action == Actions.Neutral and context.position == Positions.Neutral:
         breakdown.idle_penalty = _idle_penalty(context, idle_factor, params)
@@ -726,23 +726,23 @@ def _sample_action(
     return rng.choices(choices, weights=weights, k=1)[0]
 
 
-def parse_overrides(overrides: Iterable[str]) -> Dict[str, float | str]:
-    parsed: Dict[str, float | str] = {}
+def parse_overrides(overrides: Iterable[str]) -> RewardParams:
+    parsed: RewardParams = {}
     for override in overrides:
         if "=" not in override:
             raise ValueError(f"Invalid override format: '{override}'")
-        key, raw_value = override.split("=", 1)
+        key, value = override.split("=", 1)
         try:
-            parsed[key] = float(raw_value)
+            parsed[key] = float(value)
         except ValueError:
-            parsed[key] = raw_value
+            parsed[key] = value
     return parsed
 
 
 def simulate_samples(
     num_samples: int,
     seed: int,
-    params: Dict[str, float | str],
+    params: RewardParams,
     max_trade_duration: int,
     base_factor: float,
     profit_target: float,
@@ -765,24 +765,7 @@ def simulate_samples(
             position_weights = [0.6, 0.4]
 
         position = rng.choices(position_choices, weights=position_weights, k=1)[0]
-        force_action: Optional[ForceActions]
-        if position != Positions.Neutral and rng.random() < 0.08:
-            force_action = rng.choice(
-                [ForceActions.Take_profit, ForceActions.Stop_loss, ForceActions.Timeout]
-            )
-        else:
-            force_action = None
-
-        if (
-            action_masking
-            and force_action is not None
-            and position != Positions.Neutral
-        ):
-            action = (
-                Actions.Long_exit if position == Positions.Long else Actions.Short_exit
-            )
-        else:
-            action = _sample_action(position, rng, short_allowed=short_allowed)
+        action = _sample_action(position, rng, short_allowed=short_allowed)
 
         if position == Positions.Neutral:
             trade_duration = 0
@@ -795,9 +778,6 @@ def simulate_samples(
                         max_trade_duration * max_duration_ratio
                     )
             except (TypeError, ValueError):
-                max_idle_duration_candles = int(max_trade_duration * max_duration_ratio)
-
-            if max_idle_duration_candles <= 0:
                 max_idle_duration_candles = int(max_trade_duration * max_duration_ratio)
 
             idle_duration = int(rng.uniform(0, max_idle_duration_candles))
@@ -824,14 +804,6 @@ def simulate_samples(
             elif position == Positions.Short:
                 pnl -= 0.005 * duration_factor
 
-            # Force actions should correlate with PnL sign
-            if force_action == ForceActions.Take_profit:
-                # Take profit exits should have positive PnL
-                pnl = abs(pnl) + rng.uniform(0.01, 0.05)
-            elif force_action == ForceActions.Stop_loss:
-                # Stop loss exits should have negative PnL
-                pnl = -abs(pnl) - rng.uniform(0.01, 0.05)
-
             # Clip PnL to realistic range
             pnl = max(min(pnl, 0.15), -0.15)
 
@@ -855,7 +827,6 @@ def simulate_samples(
             min_unrealized_profit=min_unrealized_profit,
             position=position,
             action=action,
-            force_action=force_action,
         )
 
         breakdown = calculate_reward(
@@ -877,15 +848,11 @@ def simulate_samples(
                 "idle_ratio": context.idle_duration / max(1, max_trade_duration),
                 "position": float(context.position.value),
                 "action": float(context.action.value),
-                "force_action": float(
-                    -1 if context.force_action is None else context.force_action.value
-                ),
                 "reward_total": breakdown.total,
                 "reward_invalid": breakdown.invalid_penalty,
                 "reward_idle": breakdown.idle_penalty,
                 "reward_holding": breakdown.holding_penalty,
                 "reward_exit": breakdown.exit_component,
-                "is_force_exit": float(context.force_action is not None),
                 "is_invalid": float(breakdown.invalid_penalty != 0.0),
             }
         )
@@ -1109,7 +1076,6 @@ def _compute_representativity_stats(
     idle_activated = float((df["reward_idle"] != 0).mean())
     holding_activated = float((df["reward_holding"] != 0).mean())
     exit_activated = float((df["reward_exit"] != 0).mean())
-    force_exit_share = float(df["is_force_exit"].mean())
 
     return {
         "total": total,
@@ -1122,7 +1088,6 @@ def _compute_representativity_stats(
         "idle_activated": idle_activated,
         "holding_activated": holding_activated,
         "exit_activated": exit_activated,
-        "force_exit_share": force_exit_share,
     }
 
 
@@ -1152,11 +1117,12 @@ def _perform_feature_analysis(
         "idle_ratio",
         "position",
         "action",
-        "force_action",
-        "is_force_exit",
         "is_invalid",
     ]
     X = df[feature_cols]
+    for col in ("trade_duration", "idle_duration"):
+        if col in X.columns and pd.api.types.is_integer_dtype(X[col]):
+            X[col] = X[col].astype(float)
     y = df["reward_total"]
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.25, random_state=seed
@@ -1328,8 +1294,6 @@ def load_real_episodes(path: Path, *, enforce_columns: bool = True) -> pd.DataFr
         "idle_ratio",
         "max_unrealized_profit",
         "min_unrealized_profit",
-        "is_force_exit",
-        "force_action",
     }
 
     for col in list(numeric_expected | numeric_optional):
@@ -1552,38 +1516,7 @@ def statistical_hypothesis_tests(
             "n_groups": len(position_groups),
         }
 
-    # Test 3: Force vs regular exits
-    force_exits = df[df["is_force_exit"] == 1]["reward_exit"].dropna()
-    regular_exits = df[(df["is_force_exit"] == 0) & (df["reward_exit"] != 0)][
-        "reward_exit"
-    ].dropna()
-
-    if len(force_exits) >= 30 and len(regular_exits) >= 30:
-        u_stat, p_val = stats.mannwhitneyu(
-            force_exits, regular_exits, alternative="two-sided"
-        )
-        n1, n2 = len(force_exits), len(regular_exits)
-        # Rank-biserial correlation (directional): r = 2*U1/(n1*n2) - 1
-        # Compute U1 from sum of ranks of the first group for a robust sign.
-        combined = np.concatenate([force_exits.values, regular_exits.values])
-        ranks = stats.rankdata(combined, method="average")
-        R1 = float(ranks[:n1].sum())
-        U1 = R1 - n1 * (n1 + 1) / 2.0
-        r_rb = (2.0 * U1) / (n1 * n2) - 1.0
-
-        results["force_vs_regular_exits"] = {
-            "test": "Mann-Whitney U",
-            "statistic": float(u_stat),
-            "p_value": float(p_val),
-            "significant": bool(p_val < alpha),
-            "effect_size_rank_biserial": float(r_rb),
-            "median_force": float(force_exits.median()),
-            "median_regular": float(regular_exits.median()),
-            "n_force": len(force_exits),
-            "n_regular": len(regular_exits),
-        }
-
-    # Test 4: PnL sign differences
+    # Test 3: PnL sign differences
     pnl_positive = df[df["pnl"] > 0]["reward_total"].dropna()
     pnl_negative = df[df["pnl"] < 0]["reward_total"].dropna()
 
@@ -2139,7 +2072,6 @@ def write_complete_statistical_analysis(
             f"| Holding penalty | {representativity_stats['holding_activated']:.1%} |\n"
         )
         f.write(f"| Exit reward | {representativity_stats['exit_activated']:.1%} |\n")
-        f.write(f"| Force exit | {representativity_stats['force_exit_share']:.1%} |\n")
         f.write("\n")
 
         # Section 3: Reward Component Relationships
@@ -2250,25 +2182,6 @@ def write_complete_statistical_analysis(
                     f"- Significant (α=0.05): {'✅ Yes' if h['significant'] else '❌ No'}\n"
                 )
                 f.write(f"- **Interpretation:** {h['interpretation']} effect\n\n")
-
-            if "force_vs_regular_exits" in hypothesis_tests:
-                h = hypothesis_tests["force_vs_regular_exits"]
-                f.write("#### 5.1.3 Force vs Regular Exits Comparison\n\n")
-                f.write(f"**Test Method:** {h['test']}\n\n")
-                f.write(f"- U-statistic: **{h['statistic']:.4f}**\n")
-                f.write(f"- p-value: {h['p_value']:.4g}\n")
-                if "p_value_adj" in h:
-                    f.write(
-                        f"- p-value (adj BH): {h['p_value_adj']:.4g} -> {'✅' if h['significant_adj'] else '❌'} (α=0.05)\n"
-                    )
-                f.write(
-                    f"- Effect size (rank-biserial): {h['effect_size_rank_biserial']:.4f}\n"
-                )
-                f.write(f"- Median (force): {h['median_force']:.4f}\n")
-                f.write(f"- Median (regular): {h['median_regular']:.4f}\n")
-                f.write(
-                    f"- Significant (α=0.05): {'✅ Yes' if h['significant'] else '❌ No'}\n\n"
-                )
 
             if "pnl_sign_reward_difference" in hypothesis_tests:
                 h = hypothesis_tests["pnl_sign_reward_difference"]
@@ -2413,6 +2326,8 @@ def main() -> None:
     # Early parameter validation (moved before simulation for alignment with docs)
     params_validated, adjustments = validate_reward_parameters(params)
     params = params_validated
+    # Normalize attenuation mode
+    _normalize_and_validate_mode(params)
 
     base_factor = _get_param_float(params, "base_factor", float(args.base_factor))
     profit_target = _get_param_float(params, "profit_target", float(args.profit_target))

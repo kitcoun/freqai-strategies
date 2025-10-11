@@ -269,7 +269,7 @@ _Holding penalty configuration:_
 
 _Exit attenuation configuration:_
 
-- `exit_attenuation_mode` (default: linear) - Selects attenuation kernel (see table below: legacy|sqrt|linear|power|half_life).
+- `exit_attenuation_mode` (default: linear) - Selects attenuation kernel (see table below: legacy|sqrt|linear|power|half_life). Fallback to linear.
 - `exit_plateau` (default: true) - Enables plateau (no attenuation until `exit_plateau_grace`).
 - `exit_plateau_grace` (default: 1.0) - Duration ratio boundary of full‑strength region (may exceed 1.0).
 - `exit_linear_slope` (default: 1.0) - Slope parameter used only when mode = linear.
@@ -332,7 +332,7 @@ _Invariant / safety controls:_
 
 | Component | Controlled By | Notes |
 |-----------|---------------|-------|
-| Sample simulation | `--seed` | Drives action sampling, PnL noise, force actions. |
+| Sample simulation | `--seed` | Drives action sampling, PnL noise generation. |
 | Statistical tests / bootstrap | `--stats_seed` (fallback `--seed`) | Local RNG; isolation prevents side‑effects in user code. |
 | RandomForest & permutation importance | `--seed` | Ensures identical splits and tree construction. |
 | Partial dependence grids | Deterministic | Depends only on fitted model & data. |

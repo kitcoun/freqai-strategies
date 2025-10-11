@@ -7,7 +7,7 @@ import time
 import warnings
 from collections import defaultdict
 from collections.abc import Mapping
-from enum import IntEnum
+
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Type, Union
 
@@ -66,12 +66,6 @@ warnings.filterwarnings("ignore", category=ExperimentalWarning)
 logger = logging.getLogger(__name__)
 
 
-class ForceActions(IntEnum):
-    Take_profit = 0
-    Stop_loss = 1
-    Timeout = 2
-
-
 class ReforceXY(BaseReinforcementLearningModel):
     """
     Custom Freqtrade Freqai reinforcement learning prediction model.
@@ -79,15 +73,12 @@ class ReforceXY(BaseReinforcementLearningModel):
     {
         "freqaimodel": "ReforceXY",
         "strategy": "RLAgentStrategy",
-        "minimal_roi": {"0": 0.03},                 // Take_profit exit value used with force_actions
-        "stoploss": -0.02,                          // Stop_loss exit value used with force_actions
         ...
         "freqai": {
             ...
             "rl_config": {
                 ...
-                "max_trade_duration_candles": 96,   // Timeout exit value used with force_actions
-                "force_actions": false,             // Utilize minimal_roi, stoploss, and max_trade_duration_candles as TP/SL/Timeout in the environment
+                "max_trade_duration_candles": 96,   // Maximum trade duration in candles
                 "n_envs": 1,                        // Number of DummyVecEnv or SubProcVecEnv training environments
                 "n_eval_envs": 1,                   // Number of DummyVecEnv or SubProcVecEnv evaluation environments
                 "multiprocessing": false,           // Use SubprocVecEnv if n_envs>1 (otherwise DummyVecEnv)
@@ -126,7 +117,7 @@ class ReforceXY(BaseReinforcementLearningModel):
     """
 
     _LOG_2 = math.log(2.0)
-    _action_masks_cache: Dict[Tuple[str, int, Optional[int]], NDArray[np.bool_]] = {}
+    _action_masks_cache: Dict[Tuple[bool, int], NDArray[np.bool_]] = {}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -195,27 +186,17 @@ class ReforceXY(BaseReinforcementLearningModel):
     def get_action_masks(
         can_short: bool,
         position: Positions,
-        force_action: Optional[ForceActions] = None,
     ) -> NDArray[np.bool_]:
         position = ReforceXY._normalize_position(position)
 
         cache_key = (
             can_short,
             position.value,
-            force_action.value if force_action else None,
         )
         if cache_key in ReforceXY._action_masks_cache:
             return ReforceXY._action_masks_cache[cache_key]
 
         action_masks = np.zeros(len(Actions), dtype=np.bool_)
-
-        if force_action is not None and position in (Positions.Long, Positions.Short):
-            if position == Positions.Long:
-                action_masks[Actions.Long_exit.value] = True
-            else:
-                action_masks[Actions.Short_exit.value] = True
-            ReforceXY._action_masks_cache[cache_key] = action_masks
-            return ReforceXY._action_masks_cache[cache_key]
 
         action_masks[Actions.Neutral.value] = True
         if position == Positions.Neutral:
@@ -1311,25 +1292,13 @@ class MyRLEnv(Base5ActionRLEnv):
         super().__init__(*args, **kwargs)
         self._set_observation_space()
         self.action_masking: bool = self.rl_config.get("action_masking", False)
-        self.force_actions: bool = self.rl_config.get("force_actions", False)
-        self._force_action: Optional[ForceActions] = None
-        self.take_profit: float = self.config.get("minimal_roi", {}).get("0", 0.03)
-        self.stop_loss: float = self.config.get("stoploss", -0.02)
-        self.timeout: int = self.rl_config.get("max_trade_duration_candles", 128)
+        self.max_trade_duration_candles: int = self.rl_config.get(
+            "max_trade_duration_candles", 128
+        )
         self._last_closed_position: Optional[Positions] = None
         self._last_closed_trade_tick: int = 0
         self._max_unrealized_profit: float = -np.inf
         self._min_unrealized_profit: float = np.inf
-        if self.force_actions:
-            logger.info(
-                "%s - take_profit: %s, stop_loss: %s, timeout: %s candles (%s days), observation_space: %s",
-                self.id,
-                self.take_profit,
-                self.stop_loss,
-                self.timeout,
-                steps_to_days(self.timeout, self.config.get("timeframe")),
-                self.observation_space,
-            )
 
     def _set_observation_space(self) -> None:
         """
@@ -1350,9 +1319,7 @@ class MyRLEnv(Base5ActionRLEnv):
         )
 
     def _is_valid(self, action: int) -> bool:
-        return ReforceXY.get_action_masks(
-            self.can_short, self._position, self._force_action
-        )[action]
+        return ReforceXY.get_action_masks(self.can_short, self._position)[action]
 
     def reset_env(
         self,
@@ -1373,7 +1340,6 @@ class MyRLEnv(Base5ActionRLEnv):
         Reset is called at the beginning of every episode
         """
         observation, history = super().reset(seed, **kwargs)
-        self._force_action: Optional[ForceActions] = None
         self._last_closed_position: Optional[Positions] = None
         self._last_closed_trade_tick: int = 0
         self._max_unrealized_profit = -np.inf
@@ -1569,7 +1535,7 @@ class MyRLEnv(Base5ActionRLEnv):
         # mrr = self.get_most_recent_return()
         # mrp = self.get_most_recent_profit()
 
-        max_trade_duration = max(1, self.timeout)
+        max_trade_duration = max(self.max_trade_duration_candles, 1)
         trade_duration = self.get_trade_duration()
         duration_ratio = trade_duration / max_trade_duration
 
@@ -1577,14 +1543,6 @@ class MyRLEnv(Base5ActionRLEnv):
         pnl_target = self.profit_aim * self.rr
         idle_factor = base_factor * pnl_target / 3.0
         holding_factor = idle_factor
-
-        # Force exits
-        if self._force_action in (
-            ForceActions.Take_profit,
-            ForceActions.Stop_loss,
-            ForceActions.Timeout,
-        ):
-            return pnl * self._get_exit_factor(base_factor, pnl, duration_ratio)
 
         # # you can use feature values from dataframe
         # rsi_now = self.get_feature_value(
@@ -1613,8 +1571,6 @@ class MyRLEnv(Base5ActionRLEnv):
                     "max_idle_duration_candles", 2 * max_trade_duration
                 )
             )
-            if max_idle_duration <= 0:
-                max_idle_duration = 2 * max_trade_duration
             idle_penalty_scale = float(
                 model_reward_parameters.get("idle_penalty_scale", 0.5)
             )
@@ -1700,23 +1656,6 @@ class MyRLEnv(Base5ActionRLEnv):
 
         return np.ascontiguousarray(observations)
 
-    def _get_force_action(self) -> Optional[ForceActions]:
-        if not self.force_actions or self._position == Positions.Neutral:
-            return None
-
-        trade_duration = self.get_trade_duration()
-        if trade_duration <= 1:
-            return None
-        if trade_duration >= self.timeout:
-            return ForceActions.Timeout
-
-        pnl = self.get_unrealized_profit()
-        if pnl >= self.take_profit:
-            return ForceActions.Take_profit
-        if pnl <= self.stop_loss:
-            return ForceActions.Stop_loss
-        return None
-
     def _get_position(self, action: int) -> Positions:
         return {
             Actions.Long_enter.value: Positions.Long,
@@ -1742,11 +1681,6 @@ class MyRLEnv(Base5ActionRLEnv):
         """
         Execute trade based on the given action
         """
-        # Force exit trade
-        if self._force_action is not None:
-            self._exit_trade()
-            self.tensorboard_log(f"{self._force_action.name}", category="actions/force")
-            return f"{self._force_action.name}"
 
         if not self.is_tradesignal(action):
             return None
@@ -1779,7 +1713,6 @@ class MyRLEnv(Base5ActionRLEnv):
         self._update_unrealized_total_profit()
         pre_pnl = self.get_unrealized_profit()
         self._update_portfolio_log_returns()
-        self._force_action = self._get_force_action()
         reward = self.calculate_reward(action)
         self.total_reward += reward
         self.tensorboard_log(Actions._member_names_[action], category="actions")
@@ -1795,7 +1728,6 @@ class MyRLEnv(Base5ActionRLEnv):
             "tick": self._current_tick,
             "position": self._position.value,
             "action": action,
-            "force_action": (self._force_action.name if self._force_action else None),
             "pre_pnl": round(pre_pnl, 5),
             "pnl": round(pnl, 5),
             "delta_pnl": round(delta_pnl, 5),
@@ -1857,9 +1789,7 @@ class MyRLEnv(Base5ActionRLEnv):
         )
 
     def action_masks(self) -> NDArray[np.bool_]:
-        return ReforceXY.get_action_masks(
-            self.can_short, self._position, self._force_action
-        )
+        return ReforceXY.get_action_masks(self.can_short, self._position)
 
     def get_feature_value(
         self,
@@ -2468,7 +2398,7 @@ class InfoMetricsCallback(TensorboardCallback):
             self._safe_logger_record(f"info/{metric}", value, exclude=logger_exclude)
 
         if isinstance(infos_list, list) and infos_list:
-            cat_keys = ("force_action", "action", "position")
+            cat_keys = ("action", "position")
             cat_counts: Dict[str, Dict[Any, int]] = {
                 k: defaultdict(int) for k in cat_keys
             }

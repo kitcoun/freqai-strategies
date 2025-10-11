@@ -15,10 +15,6 @@
   // "trading_mode": "futures",
   // "margin_mode": "isolated",
   "trading_mode": "spot",
-  // "minimal_roi": {
-  //   "0": 0.03
-  // }, // Take_profit exit value used with force_actions
-  // "stoploss": -0.02, // Stop_loss exit value used with force_actions
   "stoploss": -0.99,
   "unfilledtimeout": {
     "entry": 10,
@@ -170,8 +166,7 @@
       "add_state_info": true,
       "cpu_count": 4,
       "max_training_drawdown_pct": 0.02,
-      "max_trade_duration_candles": 96, // Timeout exit value used with force_actions
-      "force_actions": false, // Utilize minimal_roi, stoploss, and max_trade_duration_candles as TP/SL/Timeout in the environment
+      "max_trade_duration_candles": 96, // Maximum trade duration in candles
       "n_envs": 8, // Number of DummyVecEnv or SubProcVecEnv training environments
       "multiprocessing": true, // Use SubprocVecEnv if n_envs>1 (otherwise DummyVecEnv)
       "frame_stacking": 2, // Number of VecFrameStack stacks (set > 1 to use)

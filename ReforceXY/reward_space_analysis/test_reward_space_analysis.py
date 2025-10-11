@@ -27,7 +27,6 @@ try:
     from reward_space_analysis import (
         DEFAULT_MODEL_REWARD_PARAMETERS,
         Actions,
-        ForceActions,
         Positions,
         RewardContext,
         _get_exit_factor,
@@ -341,7 +340,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
             min_unrealized_profit=0.015,
             position=Positions.Long,
             action=Actions.Long_exit,
-            force_action=None,
         )
 
         breakdown = calculate_reward(
@@ -363,128 +361,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
             breakdown.exit_component, 0, "Profitable exit should have positive reward"
         )
 
-    def test_force_action_logic(self):
-        """Validate forced exits (take profit, stop loss, timeout) produce consistent exit rewards.
-
-        Algorithmic expectations:
-        - ForceActions override the provided action and trigger exit reward path.
-        - Exit reward sign should match PnL sign (exit_factor is positive under invariants).
-        - Take profit reward magnitude > stop loss reward magnitude for comparable |PnL|.
-        - Timeout uses current PnL (can be positive or negative); we assert sign consistency only.
-        """
-        profit_target = 0.06
-
-        # Take profit (positive pnl)
-        tp_context = RewardContext(
-            pnl=0.05,
-            trade_duration=50,
-            idle_duration=0,
-            max_trade_duration=100,
-            max_unrealized_profit=0.07,
-            min_unrealized_profit=0.01,
-            position=Positions.Long,
-            action=Actions.Neutral,  # action ignored due to force_action
-            force_action=ForceActions.Take_profit,
-        )
-        tp_breakdown = calculate_reward(
-            tp_context,
-            self.DEFAULT_PARAMS,
-            base_factor=self.TEST_BASE_FACTOR,
-            profit_target=profit_target,
-            risk_reward_ratio=self.TEST_RR_HIGH,
-            short_allowed=True,
-            action_masking=True,
-        )
-        self.assertGreater(
-            tp_breakdown.exit_component,
-            0.0,
-            "Take profit should yield positive exit reward",
-        )
-        # Exit reward should be the only active component
-        self.assertEqual(tp_breakdown.invalid_penalty, 0.0)
-        self.assertEqual(tp_breakdown.idle_penalty, 0.0)
-        self.assertEqual(tp_breakdown.holding_penalty, 0.0)
-        self.assertEqual(tp_breakdown.total, tp_breakdown.exit_component)
-        self.assertAlmostEqualFloat(
-            math.copysign(1, tp_breakdown.exit_component),
-            1.0,
-            msg="TP reward sign mismatch",
-        )
-
-        # Stop loss (negative pnl)
-        sl_context = RewardContext(
-            pnl=-0.03,
-            trade_duration=50,
-            idle_duration=0,
-            max_trade_duration=100,
-            max_unrealized_profit=0.01,
-            min_unrealized_profit=-0.05,
-            position=Positions.Long,
-            action=Actions.Neutral,
-            force_action=ForceActions.Stop_loss,
-        )
-        sl_breakdown = calculate_reward(
-            sl_context,
-            self.DEFAULT_PARAMS,
-            base_factor=self.TEST_BASE_FACTOR,
-            profit_target=profit_target,
-            risk_reward_ratio=self.TEST_RR_HIGH,
-            short_allowed=True,
-            action_masking=True,
-        )
-        self.assertLess(
-            sl_breakdown.exit_component,
-            0.0,
-            "Stop loss should yield negative exit reward",
-        )
-        self.assertEqual(sl_breakdown.invalid_penalty, 0.0)
-        self.assertEqual(sl_breakdown.idle_penalty, 0.0)
-        self.assertEqual(sl_breakdown.holding_penalty, 0.0)
-        self.assertEqual(sl_breakdown.total, sl_breakdown.exit_component)
-        self.assertAlmostEqualFloat(
-            math.copysign(1, sl_breakdown.exit_component),
-            -1.0,
-            msg="SL reward sign mismatch",
-        )
-
-        # Timeout (use small positive pnl)
-        to_context = RewardContext(
-            pnl=0.01,
-            trade_duration=120,  # beyond default max
-            idle_duration=0,
-            max_trade_duration=100,
-            max_unrealized_profit=0.02,
-            min_unrealized_profit=-0.01,
-            position=Positions.Long,
-            action=Actions.Neutral,
-            force_action=ForceActions.Timeout,
-        )
-        to_breakdown = calculate_reward(
-            to_context,
-            self.DEFAULT_PARAMS,
-            base_factor=self.TEST_BASE_FACTOR,
-            profit_target=profit_target,
-            risk_reward_ratio=self.TEST_RR_HIGH,
-            short_allowed=True,
-            action_masking=True,
-        )
-        self.assertGreaterEqual(
-            to_breakdown.exit_component,
-            0.0,
-            "Timeout reward should be non-negative with positive PnL",
-        )
-        self.assertEqual(to_breakdown.invalid_penalty, 0.0)
-        self.assertEqual(to_breakdown.idle_penalty, 0.0)
-        self.assertEqual(to_breakdown.holding_penalty, 0.0)
-        self.assertEqual(to_breakdown.total, to_breakdown.exit_component)
-
-        # Magnitude ordering: TP reward magnitude > SL reward magnitude (absolute values, given larger |pnl| for TP)
-        self.assertGreater(
-            abs(tp_breakdown.exit_component),
-            abs(sl_breakdown.exit_component),
-            "Take profit reward magnitude should exceed stop loss reward magnitude",
-        )
-
     def test_efficiency_zero_policy(self):
         """Ensure pnl == 0 with max_unrealized_profit == 0 does not get boosted.
 
@@ -501,7 +377,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
             min_unrealized_profit=-0.02,
             position=Positions.Long,
             action=Actions.Long_exit,
-            force_action=None,
         )
 
         params = self.DEFAULT_PARAMS.copy()
@@ -531,7 +406,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Neutral,
             action=Actions.Neutral,
-            force_action=None,
         )
 
         breakdown_small = calculate_reward(
@@ -566,13 +440,13 @@ class TestRewardAlignment(RewardSpaceTestBase):
         """Fallback & proportionality validation.
 
         Semantics:
-        - When max_idle_duration_candles <= 0, fallback must be 2 * max_trade_duration (updated rule).
+        - When max_idle_duration_candles is unset, fallback must be 2 * max_trade_duration.
         - Idle penalty scales ~ linearly with idle_duration (power=1), so doubling idle_duration doubles penalty magnitude.
         - We also infer the implicit denominator from a mid-range idle duration (>1x and <2x trade duration) to ensure the
           2x fallback.
         """
         params = self.DEFAULT_PARAMS.copy()
-        params["max_idle_duration_candles"] = 0  # force fallback
+        params["max_idle_duration_candles"] = None
         base_factor = 90.0
         profit_target = self.TEST_PROFIT_TARGET
         risk_reward_ratio = 1.0
@@ -587,7 +461,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Neutral,
             action=Actions.Neutral,
-            force_action=None,
         )
         ctx_b = dataclasses.replace(ctx_a, idle_duration=40)
 
@@ -674,7 +547,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Long,
             action=Actions.Long_exit,
-            force_action=None,
         )
 
         # Baseline with moderate base_factor
@@ -845,7 +717,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Neutral,
             action=Actions.Neutral,
-            force_action=None,
         )
         br = calculate_reward(
             context,
@@ -921,7 +792,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 min_unrealized_profit=0.0,
                 position=Positions.Long,
                 action=Actions.Long_exit,
-                force_action=None,
             )
             br = calculate_reward(
                 context,
@@ -994,7 +864,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 min_unrealized_profit=0.0,
                 position=Positions.Long,
                 action=Actions.Long_exit,
-                force_action=None,
             ),
             # Losing exit
             RewardContext(
@@ -1006,7 +875,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 min_unrealized_profit=-0.04,
                 position=Positions.Long,
                 action=Actions.Long_exit,
-                force_action=None,
             ),
             # Idle penalty
             RewardContext(
@@ -1018,7 +886,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 min_unrealized_profit=0.0,
                 position=Positions.Neutral,
                 action=Actions.Neutral,
-                force_action=None,
             ),
             # Holding penalty (maintained position)
             RewardContext(
@@ -1030,7 +897,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 min_unrealized_profit=-0.01,
                 position=Positions.Long,
                 action=Actions.Neutral,
-                force_action=None,
             ),
         ]
 
@@ -1116,7 +982,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 min_unrealized_profit=pnl if pnl < 0 else -0.01,
                 position=Positions.Long,
                 action=Actions.Long_exit,
-                force_action=None,
             )
             ctx_short = RewardContext(
                 pnl=pnl,
@@ -1127,7 +992,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 min_unrealized_profit=pnl if pnl < 0 else -0.01,
                 position=Positions.Short,
                 action=Actions.Short_exit,
-                force_action=None,
             )
             br_long = calculate_reward(
                 ctx_long,
@@ -1441,7 +1305,6 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             min_unrealized_profit=0.04,
             position=Positions.Long,
             action=Actions.Long_exit,
-            force_action=None,
         )
 
         params = self.DEFAULT_PARAMS.copy()
@@ -1731,30 +1594,16 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         """Test reward calculation scenarios."""
         # Test different reward scenarios
         test_cases = [
-            # (position, action, force_action, expected_reward_type)
-            (Positions.Neutral, Actions.Neutral, None, "idle_penalty"),
-            (Positions.Long, Actions.Long_exit, None, "exit_component"),
-            (Positions.Short, Actions.Short_exit, None, "exit_component"),
-            (
-                Positions.Long,
-                Actions.Neutral,
-                ForceActions.Take_profit,
-                "exit_component",
-            ),
-            (
-                Positions.Short,
-                Actions.Neutral,
-                ForceActions.Stop_loss,
-                "exit_component",
-            ),
+            # (position, action, expected_reward_type)
+            (Positions.Neutral, Actions.Neutral, "idle_penalty"),
+            (Positions.Long, Actions.Long_exit, "exit_component"),
+            (Positions.Short, Actions.Short_exit, "exit_component"),
         ]
 
-        for position, action, force_action, expected_type in test_cases:
-            with self.subTest(
-                position=position, action=action, force_action=force_action
-            ):
+        for position, action, expected_type in test_cases:
+            with self.subTest(position=position, action=action):
                 context = RewardContext(
-                    pnl=0.02 if force_action == ForceActions.Take_profit else -0.02,
+                    pnl=0.02 if expected_type == "exit_component" else 0.0,
                     trade_duration=50 if position != Positions.Neutral else 0,
                     idle_duration=10 if position == Positions.Neutral else 0,
                     max_trade_duration=100,
@@ -1762,7 +1611,6 @@ class TestStatisticalValidation(RewardSpaceTestBase):
                     min_unrealized_profit=-0.01,
                     position=position,
                     action=action,
-                    force_action=force_action,
                 )
 
                 breakdown = calculate_reward(
@@ -1815,7 +1663,6 @@ class TestBoundaryConditions(RewardSpaceTestBase):
             min_unrealized_profit=0.02,
             position=Positions.Long,
             action=Actions.Long_exit,
-            force_action=None,
         )
 
         breakdown = calculate_reward(
@@ -1851,7 +1698,6 @@ class TestBoundaryConditions(RewardSpaceTestBase):
                     min_unrealized_profit=0.01,
                     position=Positions.Long,
                     action=Actions.Long_exit,
-                    force_action=None,
                 )
 
                 breakdown = calculate_reward(
@@ -2033,7 +1879,6 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Neutral,
             action=Actions.Neutral,
-            force_action=None,
         )
 
         breakdown = calculate_reward(
@@ -2063,7 +1908,6 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Long,
             action=Actions.Neutral,
-            force_action=None,
         )
 
         breakdown = calculate_reward(
@@ -2105,7 +1949,6 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                     min_unrealized_profit=min(pnl - 0.01, -0.01),
                     position=position,
                     action=action,
-                    force_action=None,
                 )
 
                 breakdown = calculate_reward(
@@ -2140,7 +1983,6 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             min_unrealized_profit=0.01,
             position=Positions.Short,
             action=Actions.Long_exit,
-            force_action=None,  # Invalid: can't long_exit from short
         )
 
         breakdown = calculate_reward(
@@ -2186,7 +2028,6 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                     min_unrealized_profit=0.0,
                     position=Positions.Long,
                     action=Actions.Neutral,
-                    force_action=None,
                 )
 
                 breakdown = calculate_reward(
@@ -2246,7 +2087,6 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                 min_unrealized_profit=0.0,
                 position=Positions.Long,
                 action=Actions.Neutral,
-                force_action=None,
             )
 
             breakdown = calculate_reward(
@@ -2287,7 +2127,6 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Long,
             action=Actions.Long_exit,
-            force_action=None,
         )
         breakdown = calculate_reward(
             context,
@@ -2324,7 +2163,6 @@ class TestRewardRobustness(RewardSpaceTestBase):
         min_unrealized_profit: float = 0.01,
         position: Positions = Positions.Long,
         action: Actions = Actions.Long_exit,
-        force_action: ForceActions | None = None,
     ) -> RewardContext:
         return RewardContext(
             pnl=pnl,
@@ -2335,7 +2173,6 @@ class TestRewardRobustness(RewardSpaceTestBase):
             min_unrealized_profit=min_unrealized_profit,
             position=position,
             action=action,
-            force_action=force_action,
         )
 
     def test_decomposition_integrity(self):
@@ -2355,7 +2192,6 @@ class TestRewardRobustness(RewardSpaceTestBase):
                     min_unrealized_profit=0.0,
                     position=Positions.Neutral,
                     action=Actions.Neutral,
-                    force_action=None,
                 ),
                 active="idle_penalty",
             ),
@@ -2370,7 +2206,6 @@ class TestRewardRobustness(RewardSpaceTestBase):
                     min_unrealized_profit=0.0,
                     position=Positions.Long,
                     action=Actions.Neutral,
-                    force_action=None,
                 ),
                 active="holding_penalty",
             ),
@@ -2390,7 +2225,6 @@ class TestRewardRobustness(RewardSpaceTestBase):
                     min_unrealized_profit=0.0,
                     position=Positions.Short,
                     action=Actions.Long_exit,  # invalid
-                    force_action=None,
                 ),
                 active="invalid_penalty",
             ),
@@ -2696,7 +2530,6 @@ class TestParameterValidation(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Neutral,
             action=Actions.Neutral,
-            force_action=None,
         )
         ctx_b = dataclasses.replace(ctx_a, idle_duration=40)
         br_a = calculate_reward(
@@ -2738,7 +2571,6 @@ class TestParameterValidation(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Long,
             action=Actions.Neutral,
-            force_action=None,
         )
         ctx_h2 = dataclasses.replace(ctx_h1, trade_duration=140)
         # Compute baseline and comparison holding penalties
@@ -2788,7 +2620,6 @@ class TestParameterValidation(RewardSpaceTestBase):
             min_unrealized_profit=0.0,
             position=Positions.Long,
             action=Actions.Long_exit,
-            force_action=None,
         )
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
