@@ -887,7 +887,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 position=Positions.Neutral,
                 action=Actions.Neutral,
             ),
-            # Holding penalty (maintained position)
+            # Holding penalty
             RewardContext(
                 pnl=0.0,
                 trade_duration=80,
@@ -1097,7 +1097,6 @@ class TestPublicAPI(RewardSpaceTestBase):
                 "trade_duration": np.random.uniform(5, 150, 300),
                 "idle_duration": idle_duration,
                 "position": np.random.choice([0.0, 0.5, 1.0], 300),
-                "is_force_exit": np.random.choice([0.0, 1.0], 300, p=[0.85, 0.15]),
             }
         )
 
@@ -1397,7 +1396,6 @@ class TestStatisticalValidation(RewardSpaceTestBase):
                 "trade_duration": np.random.uniform(5, 150, 300),
                 "idle_duration": np.random.uniform(0, 100, 300),
                 "position": np.random.choice([0.0, 0.5, 1.0], 300),
-                "is_force_exit": np.random.choice([0.0, 1.0], 300, p=[0.8, 0.2]),
             }
         )
 
@@ -1802,7 +1800,6 @@ class TestHelperFunctions(RewardSpaceTestBase):
                     [np.random.uniform(5, 50, 50), np.zeros(150)]
                 ),
                 "position": np.random.choice([0.0, 0.5, 1.0], 200),
-                "is_force_exit": np.random.choice([0.0, 1.0], 200, p=[0.8, 0.2]),
             }
         )
 

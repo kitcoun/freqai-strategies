@@ -117,7 +117,7 @@ class ReforceXY(BaseReinforcementLearningModel):
     """
 
     _LOG_2 = math.log(2.0)
-    _action_masks_cache: Dict[Tuple[bool, int], NDArray[np.bool_]] = {}
+    _action_masks_cache: Dict[Tuple[bool, float], NDArray[np.bool_]] = {}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -191,7 +191,7 @@ class ReforceXY(BaseReinforcementLearningModel):
 
         cache_key = (
             can_short,
-            position.value,
+            float(position.value),
         )
         if cache_key in ReforceXY._action_masks_cache:
             return ReforceXY._action_masks_cache[cache_key]
@@ -1726,7 +1726,7 @@ class MyRLEnv(Base5ActionRLEnv):
         delta_pnl = pnl - pre_pnl
         info = {
             "tick": self._current_tick,
-            "position": self._position.value,
+            "position": float(self._position.value),
             "action": action,
             "pre_pnl": round(pre_pnl, 5),
             "pnl": round(pnl, 5),

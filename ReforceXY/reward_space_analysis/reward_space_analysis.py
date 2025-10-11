@@ -31,7 +31,7 @@ import random
 import warnings
 from enum import Enum, IntEnum
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union, Mapping
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -74,7 +74,7 @@ def _to_bool(value: Any) -> bool:
 
 
 def _get_param_float(
-    params: Mapping[str, RewardParamValue], key: str, default: RewardParamValue
+    params: RewardParams, key: str, default: RewardParamValue
 ) -> float:
     """Extract float parameter with type safety and default fallback."""
     value = params.get(key, default)
@@ -135,7 +135,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS: RewardParams = {
     # Idle penalty (env defaults)
     "idle_penalty_scale": 0.5,
     "idle_penalty_power": 1.025,
-    # Fallback semantics: 2 * max_trade_duration_candles
+    # Fallback: 2 * max_trade_duration_candles
     "max_idle_duration_candles": None,
     # Holding keys (env defaults)
     "holding_penalty_scale": 0.25,
@@ -299,7 +299,7 @@ def add_tunable_cli_args(parser: argparse.ArgumentParser) -> None:
         if key == "exit_attenuation_mode":
             parser.add_argument(
                 f"--{key}",
-                type=str,  # case preserved; validation + silent fallback occurs before factor computation
+                type=str,
                 choices=sorted(ALLOWED_EXIT_MODES),
                 default=None,
                 help=help_text,
@@ -755,7 +755,7 @@ def simulate_samples(
     rng = random.Random(seed)
     short_allowed = _is_short_allowed(trading_mode)
     action_masking = _to_bool(params.get("action_masking", True))
-    samples: list[dict[str, float]] = []
+    samples: list[Dict[str, float]] = []
     for _ in range(num_samples):
         if short_allowed:
             position_choices = [Positions.Neutral, Positions.Long, Positions.Short]

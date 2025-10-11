@@ -190,7 +190,7 @@ None - all parameters have sensible defaults.
 
 - Maximum trade duration in candles (from environment config)
 - Should match your actual trading environment setting
-- Drives idle grace: when `max_idle_duration_candles` ≤ 0 the fallback = `2 * max_trade_duration`
+- Drives idle grace: when `max_idle_duration_candles` fallback = `2 * max_trade_duration`
 
 ### Reward Configuration
 
