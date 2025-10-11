@@ -1232,7 +1232,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         if self.optuna_eval_callback.is_pruned:
             raise TrialPruned()
 
-        return self.optuna_eval_callback.last_mean_reward
+        return self.optuna_eval_callback.best_mean_reward
 
     def close_envs(self) -> None:
         """
