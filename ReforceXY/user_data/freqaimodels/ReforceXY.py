@@ -438,9 +438,6 @@ class ReforceXY(BaseReinforcementLearningModel):
         model_params["policy_kwargs"]["optimizer_class"] = get_optimizer_class(
             model_params.get("policy_kwargs", {}).get("optimizer_class", "adamw")
         )
-        if "RecurrentPPO" in self.model_type:
-            model_params["policy_kwargs"].setdefault("lstm_hidden_size", 256)
-            model_params["policy_kwargs"].setdefault("n_lstm_layers", 1)
 
         self._model_params_cache = model_params
         return copy.deepcopy(self._model_params_cache)
