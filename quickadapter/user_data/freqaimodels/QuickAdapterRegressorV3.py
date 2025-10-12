@@ -751,7 +751,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
         - For n_samples==1, returns [0.0].
         - Raises ValueError if matrix is not 2D, has 0 features, contains non-finite values,
           or if weights are invalid or incompatible with the metric.
-        - Memory usage: O(n²/2) for the condensed distance vector (vs O(n²) for full matrix).
+        - Memory usage: O(n²/2) for the condensed distance vector.
         - Time complexity: O(n² × d) where d is the number of features.
 
         Example:

@@ -100,6 +100,10 @@ Then build and start the container:
 docker compose up -d --build
 ```
 
+### Supported models
+
+PPO, MaskablePPO, RecurrentPPO, DQN, QRDQN
+
 ### Configuration tunables
 
 The documented list of model tunables is at the top of the [ReforceXY.py](./ReforceXY/user_data/freqaimodels/ReforceXY.py) file.
