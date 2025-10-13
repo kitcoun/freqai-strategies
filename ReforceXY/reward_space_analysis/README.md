@@ -13,6 +13,7 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 - ✅ Generate thousands of synthetic trading scenarios deterministically
 - ✅ Analyze reward distribution, feature importance & partial dependence
 - ✅ Built‑in invariant & statistical validation layers (fail‑fast)
+- ✅ PBRS (Potential-Based Reward Shaping) integration with canonical invariance
 - ✅ Export reproducible artifacts (parameter hash + execution manifest)
 - ✅ Compare synthetic vs real trading data (distribution shift metrics)
 - ✅ Parameter bounds validation & automatic sanitization
@@ -130,6 +131,12 @@ python reward_space_analysis.py \
     --num_samples 30000 \
     --params win_reward_factor=4.0 \
     --output aggressive_rewards
+
+# Test PBRS potential shaping
+python reward_space_analysis.py \
+    --num_samples 30000 \
+    --params hold_potential_enabled=true potential_gamma=0.9 exit_potential_mode=progressive_release \
+    --output pbrs_analysis
 ```
 
 **Compare:** Reward distributions between runs in `statistical_analysis.md`
@@ -262,10 +269,10 @@ _Idle penalty configuration:_
 - `idle_penalty_scale` (default: 0.5) - Scale of idle penalty
 - `idle_penalty_power` (default: 1.025) - Power applied to idle penalty scaling
 
-_Holding penalty configuration:_
+_Hold penalty configuration:_
 
-- `holding_penalty_scale` (default: 0.25) - Scale of holding penalty
-- `holding_penalty_power` (default: 1.025) - Power applied to holding penalty scaling
+- `hold_penalty_scale` (default: 0.25) - Scale of hold penalty
+- `hold_penalty_power` (default: 1.025) - Power applied to hold penalty scaling
 
 _Exit attenuation configuration:_
 
@@ -306,6 +313,28 @@ _Profit factor configuration:_
 
 - `win_reward_factor` (default: 2.0) - Asymptotic bonus multiplier for PnL above target. Raw `profit_target_factor` ∈ [1, 1 + win_reward_factor] (tanh bounds it); overall amplification may exceed this once multiplied by `efficiency_factor`.
 - `pnl_factor_beta` (default: 0.5) - Sensitivity of amplification around target
+
+_PBRS (Potential-Based Reward Shaping) configuration:_
+
+- `potential_gamma` (default: 0.95) - Discount factor γ for PBRS potential term (0 ≤ γ ≤ 1)
+- `potential_softsign_sharpness` (default: 1.0) - Sharpness parameter for softsign_sharp transform (smaller = sharper)
+- `exit_potential_mode` (default: canonical) - Exit potential mode: 'canonical' (Φ=0), 'progressive_release', 'spike_cancel', 'retain_previous'
+- `exit_potential_decay` (default: 0.5) - Decay factor for progressive_release exit mode (0 ≤ decay ≤ 1)
+- `hold_potential_enabled` (default: true) - Enable PBRS hold potential function Φ(s)
+- `hold_potential_scale` (default: 1.0) - Scale factor for hold potential function
+- `hold_potential_gain` (default: 1.0) - Gain factor applied before transforms in hold potential
+- `hold_potential_transform_pnl` (default: tanh) - Transform function for PnL: tanh, softsign, softsign_sharp, arctan, logistic, asinh_norm, clip
+- `hold_potential_transform_duration` (default: tanh) - Transform function for duration ratio
+- `entry_additive_enabled` (default: false) - Enable entry additive reward (non-PBRS component)
+- `entry_additive_scale` (default: 1.0) - Scale factor for entry additive reward
+- `entry_additive_gain` (default: 1.0) - Gain factor for entry additive reward
+- `entry_additive_transform_pnl` (default: tanh) - Transform function for PnL in entry additive
+- `entry_additive_transform_duration` (default: tanh) - Transform function for duration ratio in entry additive
+- `exit_additive_enabled` (default: false) - Enable exit additive reward (non-PBRS component)
+- `exit_additive_scale` (default: 1.0) - Scale factor for exit additive reward
+- `exit_additive_gain` (default: 1.0) - Gain factor for exit additive reward
+- `exit_additive_transform_pnl` (default: tanh) - Transform function for PnL in exit additive
+- `exit_additive_transform_duration` (default: tanh) - Transform function for duration ratio in exit additive
 
 _Invariant / safety controls:_
 
@@ -380,6 +409,12 @@ python reward_space_analysis.py \
     --params win_reward_factor=3.0 idle_penalty_scale=1.5 \
     --output sensitivity_test
 
+# PBRS potential shaping analysis
+python reward_space_analysis.py \
+    --num_samples 40000 \
+    --params hold_potential_enabled=true exit_potential_mode=spike_cancel potential_gamma=0.95 \
+    --output pbrs_test
+
 # Real vs synthetic comparison
 python reward_space_analysis.py \
     --num_samples 100000 \
@@ -400,12 +435,14 @@ The analysis generates the following output files:
 - **Global Statistics** - Reward distributions and component activation rates
 - **Sample Representativity** - Coverage of critical market scenarios
 - **Component Analysis** - Relationships between rewards and conditions
+- **PBRS Analysis** - Potential-based reward shaping component activation rates, statistics, and invariance validation
 - **Feature Importance** - Machine learning analysis of key drivers
 - **Statistical Validation** - Hypothesis tests, confidence intervals, normality + effect sizes
 - **Distribution Shift** - Real vs synthetic divergence (KL, JS, Wasserstein, KS)
 - **Diagnostics Validation Summary**
   - Pass/fail snapshot of all runtime checks
   - Consolidated pass/fail state of every validation layer (invariants, parameter bounds, bootstrap CIs, distribution metrics, diagnostics, hypothesis tests)
+  - PBRS invariance validation (canonical mode check: ∑shaping_rewards ≈ 0)
 
 ### Data Exports
 
@@ -465,11 +502,22 @@ python reward_space_analysis.py \
     --params exit_attenuation_mode=power exit_power_tau=0.5 efficiency_weight=0.8 \
     --output custom_test
 
-# Test aggressive holding penalties
+# Test aggressive hold penalties
 python reward_space_analysis.py \
     --num_samples 25000 \
-    --params holding_penalty_scale=0.5 \
-    --output aggressive_holding
+    --params hold_penalty_scale=0.5 \
+    --output aggressive_hold
+
+# Test PBRS configurations
+python reward_space_analysis.py \
+    --num_samples 25000 \
+    --params hold_potential_enabled=true entry_additive_enabled=true exit_additive_enabled=false exit_potential_mode=canonical \
+    --output pbrs_canonical
+
+python reward_space_analysis.py \
+    --num_samples 25000 \
+    --params hold_potential_transform_pnl=softsign_sharp potential_softsign_sharpness=0.5 \
+    --output pbrs_sharp_transforms
 ```
 
 ### Real Data Comparison
@@ -523,10 +571,11 @@ Always run the full suite after modifying reward logic or attenuation parameters
 | Statistical Validation | TestStatisticalValidation | Mathematical bounds, heteroscedasticity, invariants |
 | Boundary Conditions | TestBoundaryConditions | Extreme params & unknown mode fallback |
 | Helper Functions | TestHelperFunctions | Report writers, model analysis, utility conversions |
-| Private Functions (via public API) | TestPrivateFunctions | Idle / holding / invalid penalties, exit scenarios |
+| Private Functions (via public API) | TestPrivateFunctions | Idle / hold / invalid penalties, exit scenarios |
 | Robustness | TestRewardRobustness | Monotonic attenuation (where applicable), decomposition integrity, boundary regimes |
 | Parameter Validation | TestParameterValidation | Bounds clamping, warning threshold, penalty power scaling |
 | Continuity | TestContinuityPlateau | Plateau boundary continuity & small‑epsilon attenuation scaling |
+| PBRS Integration | TestPBRSIntegration | Potential-based reward shaping, transforms, exit modes, canonical invariance |
 
 ### Test Architecture
 
@@ -592,6 +641,8 @@ pytest -q test_reward_space_analysis.py::TestRewardAlignment
 - Review parameter overrides with `--params`
 - Check trading mode settings (spot vs margin/futures)
 - Verify `base_factor` matches your environment config
+- Check PBRS settings: `hold_potential_enabled`, `exit_potential_mode`, and transform functions
+- Review parameter adjustments in output logs for any automatic bound clamping
 
 ### Slow Execution
 
