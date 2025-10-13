@@ -303,6 +303,9 @@ class ReforceXY(BaseReinforcementLearningModel):
         train_df = data_dictionary.get("train_features")
         test_df = data_dictionary.get("test_features")
         env_dict = self.pack_env_dict(dk.pair)
+        env_dict["config"]["freqai"]["rl_config"]["model_reward_parameters"][
+            "potential_gamma"
+        ] = self.get_model_params().get("gamma")
         seed = self.get_model_params().get("seed", 42)
 
         if self.check_envs:
