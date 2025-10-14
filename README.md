@@ -1,5 +1,5 @@
 # FreqAI strategies
-
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jerome-benoit/freqai-strategies)
 ## Table of contents
 
 - [QuickAdapter](#quickadapter)
