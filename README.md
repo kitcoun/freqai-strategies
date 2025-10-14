@@ -36,10 +36,16 @@ docker compose up -d --build
 
 | Path | Default | Type / Range | Description |
 |------|---------|-------------|-------------|
+| _Protections_ |  |  |  |
 | estimated_trade_duration_candles | 48 | int >= 1 | Heuristic for StoplossGuard tuning. |
 | _Exit pricing_ |  |  |  |
 | exit_pricing.trade_price_target | `moving_average` | enum {`moving_average`,`interpolation`,`weighted_interpolation`} | Trade NATR computation method. |
 | exit_pricing.thresholds_calibration.decline_quantile | 0.90 | float (0,1) | PNL decline quantile threshold. |
+| _Reversal confirmation_ |  |  |  |
+| reversal_confirmation.lookback_period | 0 | int >= 0 | Prior confirming candles; 0 = none. |
+| reversal_confirmation.decay_ratio | 0.5 | float (0,1] | Geometric per-step relaxation factor. |
+| _Regressor model_ |  |  |  |
+| freqai.regressor | `xgboost` | enum {`xgboost`,`lightgbm`} | Machine learning regressor algorithm. |
 | _Extrema smoothing_ |  |  |  |
 | freqai.extrema_smoothing | `gaussian` | enum {`gaussian`,`kaiser`,`triang`,`smm`,`sma`} | Extrema smoothing kernel (smm=simple moving median, sma=simple moving average). |
 | freqai.extrema_smoothing_window | 5 | int >= 1 | Window size for extrema smoothing. |
@@ -65,9 +71,6 @@ docker compose up -d --build
 | freqai.prediction_thresholds_smoothing | `mean` | enum {`mean`,`isodata`,`li`,`minimum`,`otsu`,`triangle`,`yen`,`soft_extremum`} | Thresholding method for prediction thresholds smoothing. |
 | freqai.prediction_thresholds_alpha | 12.0 | float > 0 | Alpha for `soft_extremum`. |
 | freqai.outlier_threshold | 0.999 | float (0,1) | Quantile threshold for predictions outlier filtering. |
-| _Reversal confirmation_ |  |  |  |
-| reversal_confirmation.lookback_period | 0 | int >= 0 | Prior confirming candles; 0 = none. |
-| reversal_confirmation.decay_ratio | 0.5 | float (0,1] | Geometric per-step relaxation factor. |
 | _Optuna / HPO_ |  |  |  |
 | freqai.optuna_hyperopt.enabled | true | bool | Enables HPO. |
 | freqai.optuna_hyperopt.n_jobs | CPU threads / 4 | int >= 1 | Parallel HPO workers. |
