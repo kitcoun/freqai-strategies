@@ -18,9 +18,20 @@ import tempfile
 import unittest
 import warnings
 from pathlib import Path
+from typing import Iterable, Sequence
 
 import numpy as np
 import pandas as pd
+
+# Central PBRS parameter lists
+PBRS_INTEGRATION_PARAMS = [
+    "potential_gamma",
+    "hold_potential_enabled",
+    "hold_potential_scale",
+    "entry_additive_enabled",
+    "exit_additive_enabled",
+]
+PBRS_REQUIRED_PARAMS = PBRS_INTEGRATION_PARAMS + ["exit_potential_mode"]
 
 # Import functions to test
 try:
@@ -29,9 +40,17 @@ try:
         Actions,
         Positions,
         RewardContext,
+        _compute_entry_additive,
+        _compute_exit_additive,
+        _compute_exit_potential,
+        _compute_hold_potential,
+        _get_bool_param,
         _get_exit_factor,
-        _get_param_float,
+        _get_float_param,
         _get_pnl_factor,
+        _get_str_param,
+        apply_potential_shaping,
+        apply_transform,
         bootstrap_confidence_intervals,
         build_argument_parser,
         calculate_reward,
@@ -50,7 +69,13 @@ except ImportError as e:
 
 
 class RewardSpaceTestBase(unittest.TestCase):
-    """Base class with common test utilities."""
+    """Base class with common test utilities.
+
+    Central tolerance policy (avoid per-test commentary):
+    - Generic numeric equality: 1e-6
+    - Component decomposition / identity: 1e-9
+    - Monotonic attenuation allowance: +1e-9 drift
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -77,20 +102,107 @@ class RewardSpaceTestBase(unittest.TestCase):
 
     def assertAlmostEqualFloat(
         self,
-        first: float,
-        second: float,
+        first: float | int,
+        second: float | int,
         tolerance: float = 1e-6,
         msg: str | None = None,
     ) -> None:
         """Absolute tolerance compare with explicit failure and finite check."""
-        if not (np.isfinite(first) and np.isfinite(second)):
-            self.fail(msg or f"Non-finite comparison (a={first}, b={second})")
+        self.assertFinite(first, name="a")
+        self.assertFinite(second, name="b")
         diff = abs(first - second)
         if diff > tolerance:
             self.fail(
                 msg
                 or f"Difference {diff} exceeds tolerance {tolerance} (a={first}, b={second})"
             )
+
+    # --- Statistical bounds helpers (factorize redundancy) ---
+    def assertPValue(self, value: float | int, msg: str = "") -> None:
+        """Assert a p-value is finite and within [0,1]."""
+        self.assertFinite(value, name="p-value")
+        self.assertGreaterEqual(value, 0.0, msg or f"p-value < 0: {value}")
+        self.assertLessEqual(value, 1.0, msg or f"p-value > 1: {value}")
+
+    def assertDistanceMetric(
+        self,
+        value: float | int,
+        *,
+        non_negative: bool = True,
+        upper: float | None = None,
+        name: str = "metric",
+    ) -> None:
+        """Generic distance/divergence bounds: finite, optional non-negativity and optional upper bound."""
+        self.assertFinite(value, name=name)
+        if non_negative:
+            self.assertGreaterEqual(value, 0.0, f"{name} negative: {value}")
+        if upper is not None:
+            self.assertLessEqual(value, upper, f"{name} > {upper}: {value}")
+
+    def assertEffectSize(
+        self,
+        value: float | int,
+        *,
+        lower: float = -1.0,
+        upper: float = 1.0,
+        name: str = "effect size",
+    ) -> None:
+        """Assert effect size within symmetric interval and finite."""
+        self.assertFinite(value, name=name)
+        self.assertGreaterEqual(value, lower, f"{name} < {lower}: {value}")
+        self.assertLessEqual(value, upper, f"{name} > {upper}: {value}")
+
+    def assertFinite(self, value: float | int, name: str = "value") -> None:
+        """Assert scalar is finite."""
+        if not np.isfinite(value):  # low-level base check to avoid recursion
+            self.fail(f"{name} not finite: {value}")
+
+    def assertMonotonic(
+        self,
+        seq: Sequence[float | int] | Iterable[float | int],
+        *,
+        non_increasing: bool | None = None,
+        non_decreasing: bool | None = None,
+        tolerance: float = 0.0,
+        name: str = "sequence",
+    ) -> None:
+        """Assert a sequence is monotonic under specified direction.
+
+        Provide exactly one of non_increasing/non_decreasing=True.
+        tolerance allows tiny positive drift in expected monotone direction.
+        """
+        data = list(seq)
+        if len(data) < 2:
+            return
+        if (non_increasing and non_decreasing) or (
+            not non_increasing and not non_decreasing
+        ):
+            self.fail("Specify exactly one monotonic direction")
+        for a, b in zip(data, data[1:]):
+            if non_increasing:
+                if b > a + tolerance:
+                    self.fail(f"{name} not non-increasing at pair ({a}, {b})")
+            elif non_decreasing:
+                if b + tolerance < a:
+                    self.fail(f"{name} not non-decreasing at pair ({a}, {b})")
+
+    def assertWithin(
+        self,
+        value: float | int,
+        low: float | int,
+        high: float | int,
+        *,
+        name: str = "value",
+        inclusive: bool = True,
+    ) -> None:
+        """Assert that value is within [low, high] (inclusive) or (low, high) if inclusive=False."""
+        self.assertFinite(value, name=name)
+        if inclusive:
+            self.assertGreaterEqual(value, low, f"{name} < {low}")
+            self.assertLessEqual(value, high, f"{name} > {high}")
+        else:
+            self.assertGreater(value, low, f"{name} <= {low}")
+            self.assertLess(value, high, f"{name} >= {high}")
 
 
 class TestIntegration(RewardSpaceTestBase):
@@ -241,13 +353,19 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
         # Values should be finite and reasonable
         for metric_name, value in metrics.items():
             if "pnl" in metric_name:
-                self.assertTrue(np.isfinite(value), f"{metric_name} should be finite")
+                # All metrics must be finite; selected metrics must be non-negative
                 if any(
-                    suffix in metric_name for suffix in ["js_distance", "ks_statistic"]
+                    suffix in metric_name
+                    for suffix in [
+                        "js_distance",
+                        "ks_statistic",
+                        "wasserstein",
+                        "kl_divergence",
+                    ]
                 ):
-                    self.assertGreaterEqual(
-                        value, 0, f"{metric_name} should be non-negative"
-                    )
+                    self.assertDistanceMetric(value, name=metric_name)
+                else:
+                    self.assertFinite(value, name=metric_name)
 
     def test_distribution_shift_identity_null_metrics(self):
         """Identical distributions should yield (near) zero shift metrics."""
@@ -289,7 +407,7 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                     "Idle durations should be non-negative",
                 )
 
-                # Idle rewards should generally be negative (penalty for holding)
+                # Idle rewards should generally be negative (penalty for hold)
                 negative_rewards = (idle_rew < 0).sum()
                 total_rewards = len(idle_rew)
                 negative_ratio = negative_rewards / total_rewards
@@ -321,9 +439,7 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
             for suffix in expected_suffixes:
                 key = f"{prefix}{suffix}"
                 if key in diagnostics:
-                    self.assertTrue(
-                        np.isfinite(diagnostics[key]), f"{key} should be finite"
-                    )
+                    self.assertFinite(diagnostics[key], name=key)
 
 
 class TestRewardAlignment(RewardSpaceTestBase):
@@ -354,7 +470,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
 
         # Should return valid breakdown
         self.assertIsInstance(breakdown.total, (int, float))
-        self.assertTrue(np.isfinite(breakdown.total))
+        self.assertFinite(breakdown.total, name="breakdown.total")
 
         # Exit reward should be positive for profitable trade
         self.assertGreater(
@@ -384,7 +500,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
 
         pnl_factor = _get_pnl_factor(params, ctx, profit_target)
         # Expect no efficiency modulation: factor should be >= 0 and close to 1.0
-        self.assertTrue(np.isfinite(pnl_factor))
+        self.assertFinite(pnl_factor, name="pnl_factor")
         self.assertAlmostEqualFloat(pnl_factor, 1.0, tolerance=1e-6)
 
     def test_max_idle_duration_candles_logic(self):
@@ -435,6 +551,70 @@ class TestRewardAlignment(RewardSpaceTestBase):
             breakdown_small.idle_penalty,
             f"Expected less severe penalty with larger max_idle_duration_candles (large={breakdown_large.idle_penalty}, small={breakdown_small.idle_penalty})",
         )
+
+    def test_pbrs_progressive_release_decay_clamped(self):
+        """progressive_release with decay>1 must clamp to 1 so Φ' = 0 and Δ = -Φ_prev."""
+        params = self.DEFAULT_PARAMS.copy()
+        params.update(
+            {
+                "potential_gamma": 0.95,
+                "exit_potential_mode": "progressive_release",
+                "exit_potential_decay": 5.0,  # should clamp to 1.0
+                "hold_potential_enabled": True,
+                "entry_additive_enabled": False,
+                "exit_additive_enabled": False,
+            }
+        )
+        current_pnl = 0.02
+        current_dur = 0.5
+        prev_potential = _compute_hold_potential(current_pnl, current_dur, params)
+        total_reward, shaping_reward, next_potential = apply_potential_shaping(
+            base_reward=0.0,
+            current_pnl=current_pnl,
+            current_duration_ratio=current_dur,
+            next_pnl=0.02,
+            next_duration_ratio=0.6,
+            is_terminal=True,
+            last_potential=prev_potential,
+            params=params,
+        )
+        self.assertAlmostEqualFloat(next_potential, 0.0, tolerance=1e-9)
+        self.assertAlmostEqualFloat(shaping_reward, -prev_potential, tolerance=1e-9)
+        self.assertAlmostEqualFloat(total_reward, shaping_reward, tolerance=1e-9)
+
+    def test_pbrs_spike_cancel_invariance(self):
+        """spike_cancel terminal shaping should be ≈ 0 (γ*(Φ/γ) - Φ)."""
+        params = self.DEFAULT_PARAMS.copy()
+        params.update(
+            {
+                "potential_gamma": 0.9,
+                "exit_potential_mode": "spike_cancel",
+                "hold_potential_enabled": True,
+                "entry_additive_enabled": False,
+                "exit_additive_enabled": False,
+            }
+        )
+        current_pnl = 0.015
+        current_dur = 0.4
+        prev_potential = _compute_hold_potential(current_pnl, current_dur, params)
+        # Use helper accessor to avoid union type issues
+        gamma = _get_float_param(params, "potential_gamma", 0.95)
+        expected_next = (
+            prev_potential / gamma if gamma not in (0.0, None) else prev_potential
+        )
+        total_reward, shaping_reward, next_potential = apply_potential_shaping(
+            base_reward=0.0,
+            current_pnl=current_pnl,
+            current_duration_ratio=current_dur,
+            next_pnl=0.016,
+            next_duration_ratio=0.45,
+            is_terminal=True,
+            last_potential=prev_potential,
+            params=params,
+        )
+        self.assertAlmostEqualFloat(next_potential, expected_next, tolerance=1e-9)
+        self.assertAlmostEqualFloat(shaping_reward, 0.0, tolerance=1e-9)
+        self.assertAlmostEqualFloat(total_reward, 0.0, tolerance=1e-9)
 
     def test_idle_penalty_fallback_and_proportionality(self):
         """Fallback & proportionality validation.
@@ -499,7 +679,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
             msg=f"Idle penalty proportionality mismatch (ratio={ratio})",
         )
         # Additional mid-range inference check (idle_duration between 1x and 2x trade duration)
-        ctx_mid = dataclasses.replace(ctx_a, idle_duration=120, max_trade_duration=100)
+        ctx_mid = dataclasses.replace(
+            ctx_a, idle_duration=120, max_trade_duration=100
+        )  # Adjusted context for mid-range check
         br_mid = calculate_reward(
             ctx_mid,
             params,
@@ -510,19 +692,19 @@ class TestRewardAlignment(RewardSpaceTestBase):
             action_masking=True,
         )
         self.assertLess(br_mid.idle_penalty, 0.0)
-        idle_penalty_scale = _get_param_float(params, "idle_penalty_scale", 0.5)
-        idle_penalty_power = _get_param_float(params, "idle_penalty_power", 1.025)
+        idle_penalty_scale = _get_float_param(params, "idle_penalty_scale", 0.5)
+        idle_penalty_power = _get_float_param(params, "idle_penalty_power", 1.025)
         # Internal factor may come from params (overrides provided base_factor argument)
-        factor = _get_param_float(params, "base_factor", float(base_factor))
-        idle_factor = factor * (profit_target * risk_reward_ratio) / 3.0
+        factor = _get_float_param(params, "base_factor", float(base_factor))
+        idle_factor = factor * (profit_target * risk_reward_ratio) / 4.0
         observed_ratio = abs(br_mid.idle_penalty) / (idle_factor * idle_penalty_scale)
         if observed_ratio > 0:
             implied_D = 120 / (observed_ratio ** (1 / idle_penalty_power))
             self.assertAlmostEqualFloat(
                 implied_D,
-                200.0,
-                tolerance=12.0,  # modest tolerance for float ops / rounding
-                msg=f"Fallback denominator mismatch (implied={implied_D}, expected≈200, factor={factor})",
+                400.0,
+                tolerance=20.0,
+                msg=f"Fallback denominator mismatch (implied={implied_D}, expected≈400, factor={factor})",
             )
 
     def test_exit_factor_threshold_warning_non_capping(self):
@@ -534,7 +716,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         params = self.DEFAULT_PARAMS.copy()
         # Remove base_factor from params so that the function uses the provided argument (makes scaling observable)
         params.pop("base_factor", None)
-        exit_factor_threshold = _get_param_float(
+        exit_factor_threshold = _get_float_param(
             params, "exit_factor_threshold", 10_000.0
         )
 
@@ -607,9 +789,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 duration_ratio=0.3,
                 params=test_params,
             )
-            self.assertTrue(
-                np.isfinite(factor), f"Exit factor for {mode} should be finite"
-            )
+            self.assertFinite(factor, name=f"exit_factor[{mode}]")
             self.assertGreater(factor, 0, f"Exit factor for {mode} should be positive")
 
         # Plateau+linear variant sanity check (grace region at 0.5)
@@ -807,16 +987,17 @@ class TestRewardAlignment(RewardSpaceTestBase):
             ratios_observed.append(float(ratio))
 
         # Monotonic non-decreasing (allow tiny float noise)
-        for a, b in zip(ratios_observed, ratios_observed[1:]):
-            self.assertGreaterEqual(
-                b + 1e-12, a, f"Amplification not monotonic: {ratios_observed}"
-            )
+        self.assertMonotonic(
+            ratios_observed,
+            non_decreasing=True,
+            tolerance=1e-12,
+            name="pnl_amplification_ratio",
+        )
 
         asymptote = 1.0 + win_reward_factor
         final_ratio = ratios_observed[-1]
         # Expect to be very close to asymptote (tanh(0.5*(10-1)) ≈ 0.9997)
-        if not np.isfinite(final_ratio):
-            self.fail(f"Final ratio is not finite: {final_ratio}")
+        self.assertFinite(final_ratio, name="final_ratio")
         self.assertLess(
             abs(final_ratio - asymptote),
             1e-3,
@@ -831,8 +1012,8 @@ class TestRewardAlignment(RewardSpaceTestBase):
             expected_ratios.append(expected)
         # Compare each observed to expected within loose tolerance (model parity)
         for obs, exp in zip(ratios_observed, expected_ratios):
-            if not (np.isfinite(obs) and np.isfinite(exp)):
-                self.fail(f"Non-finite observed/expected ratio: obs={obs}, exp={exp}")
+            self.assertFinite(obs, name="observed_ratio")
+            self.assertFinite(exp, name="expected_ratio")
             self.assertLess(
                 abs(obs - exp),
                 5e-6,
@@ -840,10 +1021,11 @@ class TestRewardAlignment(RewardSpaceTestBase):
             )
 
     def test_scale_invariance_and_decomposition(self):
-        """Reward components should scale linearly with base_factor and total == sum of components.
+        """Core reward components scale ~ linearly with base_factor; total = core + shaping + additives.
 
         Contract:
-        R(base_factor * k) = k * R(base_factor) for each non-zero component.
+            For each non-zero core component C: C(base_factor * k) ≈ k * C(base_factor).
+            Decomposition uses total = (exit + idle + hold + invalid + shaping + entry_additive + exit_additive).
         """
         params = self.DEFAULT_PARAMS.copy()
         # Remove internal base_factor so the explicit argument is used
@@ -887,7 +1069,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 position=Positions.Neutral,
                 action=Actions.Neutral,
             ),
-            # Holding penalty
+            # Hold penalty
             RewardContext(
                 pnl=0.0,
                 trade_duration=80,
@@ -921,13 +1103,16 @@ class TestRewardAlignment(RewardSpaceTestBase):
                 action_masking=True,
             )
 
-            # Strict decomposition: total must equal sum of components
+            # Decomposition including shaping + additives (environment always applies PBRS pipeline)
             for br in (br1, br2):
                 comp_sum = (
                     br.exit_component
                     + br.idle_penalty
-                    + br.holding_penalty
+                    + br.hold_penalty
                     + br.invalid_penalty
+                    + br.shaping_reward
+                    + br.entry_additive
+                    + br.exit_additive
                 )
                 self.assertAlmostEqual(
                     br.total,
@@ -940,16 +1125,23 @@ class TestRewardAlignment(RewardSpaceTestBase):
             components1 = {
                 "exit_component": br1.exit_component,
                 "idle_penalty": br1.idle_penalty,
-                "holding_penalty": br1.holding_penalty,
+                "hold_penalty": br1.hold_penalty,
                 "invalid_penalty": br1.invalid_penalty,
-                "total": br1.total,
+                # Exclude shaping/additives from scale invariance check (some may have nonlinear dependence)
+                "total": br1.exit_component
+                + br1.idle_penalty
+                + br1.hold_penalty
+                + br1.invalid_penalty,
             }
             components2 = {
                 "exit_component": br2.exit_component,
                 "idle_penalty": br2.idle_penalty,
-                "holding_penalty": br2.holding_penalty,
+                "hold_penalty": br2.hold_penalty,
                 "invalid_penalty": br2.invalid_penalty,
-                "total": br2.total,
+                "total": br2.exit_component
+                + br2.idle_penalty
+                + br2.hold_penalty
+                + br2.invalid_penalty,
             }
             for key, v1 in components1.items():
                 v2 = components2[key]
@@ -1064,13 +1256,9 @@ class TestPublicAPI(RewardSpaceTestBase):
         self.assertIn("pnl", results)
 
         for metric, (mean, ci_low, ci_high) in results.items():
-            self.assertTrue(np.isfinite(mean), f"Mean for {metric} should be finite")
-            self.assertTrue(
-                np.isfinite(ci_low), f"CI low for {metric} should be finite"
-            )
-            self.assertTrue(
-                np.isfinite(ci_high), f"CI high for {metric} should be finite"
-            )
+            self.assertFinite(mean, name=f"mean[{metric}]")
+            self.assertFinite(ci_low, name=f"ci_low[{metric}]")
+            self.assertFinite(ci_high, name=f"ci_high[{metric}]")
             self.assertLess(
                 ci_low, ci_high, f"CI bounds for {metric} should be ordered"
             )
@@ -1089,7 +1277,7 @@ class TestPublicAPI(RewardSpaceTestBase):
             {
                 "reward_total": np.random.normal(0, 1, 300),
                 "reward_idle": np.where(idle_mask, np.random.normal(-1, 0.3, 300), 0.0),
-                "reward_holding": np.where(
+                "reward_hold": np.where(
                     ~idle_mask, np.random.normal(-0.5, 0.2, 300), 0.0
                 ),
                 "reward_exit": np.random.normal(0.8, 0.6, 300),
@@ -1208,49 +1396,31 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             # KL divergence must be >= 0
             kl_key = f"{feature}_kl_divergence"
             if kl_key in metrics:
-                self.assertGreaterEqual(
-                    metrics[kl_key], 0, f"KL divergence for {feature} must be >= 0"
-                )
+                self.assertDistanceMetric(metrics[kl_key], name=kl_key)
 
             # JS distance must be in [0, 1]
             js_key = f"{feature}_js_distance"
             if js_key in metrics:
-                js_val = metrics[js_key]
-                self.assertGreaterEqual(
-                    js_val, 0, f"JS distance for {feature} must be >= 0"
-                )
-                self.assertLessEqual(
-                    js_val, 1, f"JS distance for {feature} must be <= 1"
-                )
+                self.assertDistanceMetric(metrics[js_key], upper=1.0, name=js_key)
 
             # Wasserstein must be >= 0
             ws_key = f"{feature}_wasserstein"
             if ws_key in metrics:
-                self.assertGreaterEqual(
-                    metrics[ws_key],
-                    0,
-                    f"Wasserstein distance for {feature} must be >= 0",
-                )
+                self.assertDistanceMetric(metrics[ws_key], name=ws_key)
 
             # KS statistic must be in [0, 1]
             ks_stat_key = f"{feature}_ks_statistic"
             if ks_stat_key in metrics:
-                ks_val = metrics[ks_stat_key]
-                self.assertGreaterEqual(
-                    ks_val, 0, f"KS statistic for {feature} must be >= 0"
-                )
-                self.assertLessEqual(
-                    ks_val, 1, f"KS statistic for {feature} must be <= 1"
+                self.assertDistanceMetric(
+                    metrics[ks_stat_key], upper=1.0, name=ks_stat_key
                 )
 
             # KS p-value must be in [0, 1]
             ks_p_key = f"{feature}_ks_pvalue"
             if ks_p_key in metrics:
-                p_val = metrics[ks_p_key]
-                self.assertGreaterEqual(
-                    p_val, 0, f"KS p-value for {feature} must be >= 0"
+                self.assertPValue(
+                    metrics[ks_p_key], msg=f"KS p-value out of bounds for {feature}"
                 )
-                self.assertLessEqual(p_val, 1, f"KS p-value for {feature} must be <= 1")
 
     def test_heteroscedasticity_pnl_validation(self):
         """Test that PnL variance increases with trade duration (heteroscedasticity)."""
@@ -1390,7 +1560,7 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             {
                 "reward_total": np.random.normal(0, 1, 300),
                 "reward_idle": np.random.normal(-1, 0.5, 300),
-                "reward_holding": np.random.normal(-0.5, 0.3, 300),
+                "reward_hold": np.random.normal(-0.5, 0.3, 300),
                 "reward_exit": np.random.normal(1, 0.8, 300),
                 "pnl": np.random.normal(0.01, 0.02, 300),
                 "trade_duration": np.random.uniform(5, 150, 300),
@@ -1406,25 +1576,18 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             # Skewness can be any real number, but should be finite
             if f"{col}_skewness" in diagnostics:
                 skew = diagnostics[f"{col}_skewness"]
-                self.assertTrue(
-                    np.isfinite(skew), f"Skewness for {col} should be finite"
-                )
+                self.assertFinite(skew, name=f"skewness[{col}]")
 
             # Kurtosis should be finite (can be negative for platykurtic distributions)
             if f"{col}_kurtosis" in diagnostics:
                 kurt = diagnostics[f"{col}_kurtosis"]
-                self.assertTrue(
-                    np.isfinite(kurt), f"Kurtosis for {col} should be finite"
-                )
+                self.assertFinite(kurt, name=f"kurtosis[{col}]")
 
             # Shapiro p-value must be in [0, 1]
             if f"{col}_shapiro_pval" in diagnostics:
-                p_val = diagnostics[f"{col}_shapiro_pval"]
-                self.assertGreaterEqual(
-                    p_val, 0, f"Shapiro p-value for {col} must be >= 0"
-                )
-                self.assertLessEqual(
-                    p_val, 1, f"Shapiro p-value for {col} must be <= 1"
+                self.assertPValue(
+                    diagnostics[f"{col}_shapiro_pval"],
+                    msg=f"Shapiro p-value bounds for {col}",
                 )
 
         # Test hypothesis tests results bounds
@@ -1433,28 +1596,20 @@ class TestStatisticalValidation(RewardSpaceTestBase):
         for test_name, result in hypothesis_results.items():
             # All p-values must be in [0, 1]
             if "p_value" in result:
-                p_val = result["p_value"]
-                self.assertGreaterEqual(
-                    p_val, 0, f"p-value for {test_name} must be >= 0"
+                self.assertPValue(
+                    result["p_value"], msg=f"p-value bounds for {test_name}"
                 )
-                self.assertLessEqual(p_val, 1, f"p-value for {test_name} must be <= 1")
             # Effect size epsilon squared (ANOVA/Kruskal) must be finite and >= 0
             if "effect_size_epsilon_sq" in result:
                 eps2 = result["effect_size_epsilon_sq"]
-                self.assertTrue(
-                    np.isfinite(eps2),
-                    f"Effect size epsilon^2 for {test_name} should be finite",
-                )
+                self.assertFinite(eps2, name=f"epsilon_sq[{test_name}]")
                 self.assertGreaterEqual(
                     eps2, 0.0, f"Effect size epsilon^2 for {test_name} must be >= 0"
                 )
             # Rank-biserial correlation (Mann-Whitney) must be finite in [-1, 1]
             if "effect_size_rank_biserial" in result:
                 rb = result["effect_size_rank_biserial"]
-                self.assertTrue(
-                    np.isfinite(rb),
-                    f"Rank-biserial correlation for {test_name} should be finite",
-                )
+                self.assertFinite(rb, name=f"rank_biserial[{test_name}]")
                 self.assertGreaterEqual(
                     rb, -1.0, f"Rank-biserial correlation for {test_name} must be >= -1"
                 )
@@ -1464,7 +1619,8 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             # Generic correlation effect size (Spearman/Pearson) if present
             if "rho" in result:
                 rho = result["rho"]
-                if rho is not None and np.isfinite(rho):
+                if rho is not None:
+                    self.assertFinite(rho, name=f"rho[{test_name}]")
                     self.assertGreaterEqual(
                         rho, -1.0, f"Correlation rho for {test_name} must be >= -1"
                     )
@@ -1501,11 +1657,8 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             self.assertIn("significant_adj", res, f"Missing significant_adj in {name}")
             p_raw = res["p_value"]
             p_adj = res["p_value_adj"]
-            # Bounds & ordering
-            self.assertTrue(0 <= p_raw <= 1, f"Raw p-value out of bounds ({p_raw})")
-            self.assertTrue(
-                0 <= p_adj <= 1, f"Adjusted p-value out of bounds ({p_adj})"
-            )
+            self.assertPValue(p_raw, msg=f"Raw p-value out of bounds ({p_raw})")
+            self.assertPValue(p_adj, msg=f"Adjusted p-value out of bounds ({p_adj})")
             # BH should not reduce p-value (non-decreasing) after monotonic enforcement
             self.assertGreaterEqual(
                 p_adj,
@@ -1522,15 +1675,11 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             # Optional: if effect sizes present, basic bounds
             if "effect_size_epsilon_sq" in res:
                 eff = res["effect_size_epsilon_sq"]
-                self.assertTrue(
-                    np.isfinite(eff), f"Effect size finite check failed for {name}"
-                )
+                self.assertFinite(eff, name=f"effect_size[{name}]")
                 self.assertGreaterEqual(eff, 0, f"ε² should be >=0 for {name}")
             if "effect_size_rank_biserial" in res:
                 rb = res["effect_size_rank_biserial"]
-                self.assertTrue(
-                    np.isfinite(rb), f"Rank-biserial finite check failed for {name}"
-                )
+                self.assertFinite(rb, name=f"rank_biserial[{name}]")
                 self.assertGreaterEqual(rb, -1, f"Rank-biserial lower bound {name}")
                 self.assertLessEqual(rb, 1, f"Rank-biserial upper bound {name}")
 
@@ -1582,7 +1731,7 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             "reward_total",
             "reward_invalid",
             "reward_idle",
-            "reward_holding",
+            "reward_hold",
             "reward_exit",
         ]
         for col in required_columns:
@@ -1636,10 +1785,7 @@ class TestStatisticalValidation(RewardSpaceTestBase):
                     )
 
                 # Total should always be finite
-                self.assertTrue(
-                    np.isfinite(breakdown.total),
-                    f"Reward total should be finite for {position}/{action}",
-                )
+                self.assertFinite(breakdown.total, name="breakdown.total")
 
 
 class TestBoundaryConditions(RewardSpaceTestBase):
@@ -1673,10 +1819,7 @@ class TestBoundaryConditions(RewardSpaceTestBase):
             action_masking=True,
         )
 
-        self.assertTrue(
-            np.isfinite(breakdown.total),
-            "Reward should be finite even with extreme parameters",
-        )
+        self.assertFinite(breakdown.total, name="breakdown.total")
 
     def test_different_exit_attenuation_modes(self):
         """Test different exit attenuation modes (legacy, sqrt, linear, power, half_life)."""
@@ -1708,14 +1851,10 @@ class TestBoundaryConditions(RewardSpaceTestBase):
                     action_masking=True,
                 )
 
-                self.assertTrue(
-                    np.isfinite(breakdown.exit_component),
-                    f"Exit component should be finite for mode {mode}",
+                self.assertFinite(
+                    breakdown.exit_component, name="breakdown.exit_component"
                 )
-                self.assertTrue(
-                    np.isfinite(breakdown.total),
-                    f"Total reward should be finite for mode {mode}",
-                )
+                self.assertFinite(breakdown.total, name="breakdown.total")
 
 
 class TestHelperFunctions(RewardSpaceTestBase):
@@ -1788,7 +1927,7 @@ class TestHelperFunctions(RewardSpaceTestBase):
                 "reward_idle": np.concatenate(
                     [np.zeros(150), np.random.normal(-1, 0.5, 50)]
                 ),
-                "reward_holding": np.concatenate(
+                "reward_hold": np.concatenate(
                     [np.zeros(150), np.random.normal(-0.5, 0.3, 50)]
                 ),
                 "reward_exit": np.concatenate(
@@ -1889,13 +2028,20 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         )
 
         self.assertLess(breakdown.idle_penalty, 0, "Idle penalty should be negative")
-        self.assertEqual(
-            breakdown.total, breakdown.idle_penalty, "Total should equal idle penalty"
+        # Total now includes shaping/additives - require equality including those components.
+        self.assertAlmostEqualFloat(
+            breakdown.total,
+            breakdown.idle_penalty
+            + breakdown.shaping_reward
+            + breakdown.entry_additive
+            + breakdown.exit_additive,
+            tolerance=1e-9,
+            msg="Total should equal sum of components (idle + shaping/additives)",
         )
 
-    def test_holding_penalty_via_rewards(self):
-        """Test holding penalty calculation via reward calculation."""
-        # Create context that will trigger holding penalty
+    def test_hold_penalty_via_rewards(self):
+        """Test hold penalty calculation via reward calculation."""
+        # Create context that will trigger hold penalty
         context = RewardContext(
             pnl=0.01,
             trade_duration=150,
@@ -1917,13 +2063,15 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             action_masking=True,
         )
 
-        self.assertLess(
-            breakdown.holding_penalty, 0, "Holding penalty should be negative"
-        )
-        self.assertEqual(
+        self.assertLess(breakdown.hold_penalty, 0, "Hold penalty should be negative")
+        self.assertAlmostEqualFloat(
             breakdown.total,
-            breakdown.holding_penalty,
-            "Total should equal holding penalty",
+            breakdown.hold_penalty
+            + breakdown.shaping_reward
+            + breakdown.entry_additive
+            + breakdown.exit_additive,
+            tolerance=1e-9,
+            msg="Total should equal sum of components (hold + shaping/additives)",
         )
 
     def test_exit_reward_calculation(self):
@@ -1995,14 +2143,18 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         self.assertLess(
             breakdown.invalid_penalty, 0, "Invalid action should have negative penalty"
         )
-        self.assertEqual(
+        self.assertAlmostEqualFloat(
             breakdown.total,
-            breakdown.invalid_penalty,
-            "Total should equal invalid penalty",
+            breakdown.invalid_penalty
+            + breakdown.shaping_reward
+            + breakdown.entry_additive
+            + breakdown.exit_additive,
+            tolerance=1e-9,
+            msg="Total should equal invalid penalty plus shaping/additives",
         )
 
-    def test_holding_penalty_zero_before_max_duration(self):
-        """Test holding penalty logic: zero penalty before max_trade_duration."""
+    def test_hold_penalty_zero_before_max_duration(self):
+        """Test hold penalty logic: zero penalty before max_trade_duration."""
         max_duration = 128
 
         # Test cases: before, at, and after max_duration
@@ -2017,7 +2169,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         for trade_duration, description in test_cases:
             with self.subTest(duration=trade_duration, desc=description):
                 context = RewardContext(
-                    pnl=0.0,  # Neutral PnL to isolate holding penalty
+                    pnl=0.0,  # Neutral PnL to isolate hold penalty
                     trade_duration=trade_duration,
                     idle_duration=0,
                     max_trade_duration=max_duration,
@@ -2042,34 +2194,37 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                 if duration_ratio < 1.0:
                     # Before max_duration: should be exactly 0.0
                     self.assertEqual(
-                        breakdown.holding_penalty,
+                        breakdown.hold_penalty,
                         0.0,
-                        f"Holding penalty should be 0.0 {description} (ratio={duration_ratio:.2f})",
+                        f"Hold penalty should be 0.0 {description} (ratio={duration_ratio:.2f})",
                     )
                 elif duration_ratio == 1.0:
                     # At max_duration: (1.0-1.0)^power = 0, so should be 0.0
                     self.assertEqual(
-                        breakdown.holding_penalty,
+                        breakdown.hold_penalty,
                         0.0,
-                        f"Holding penalty should be 0.0 {description} (ratio={duration_ratio:.2f})",
+                        f"Hold penalty should be 0.0 {description} (ratio={duration_ratio:.2f})",
                     )
                 else:
                     # After max_duration: should be negative
                     self.assertLess(
-                        breakdown.holding_penalty,
+                        breakdown.hold_penalty,
                         0.0,
-                        f"Holding penalty should be negative {description} (ratio={duration_ratio:.2f})",
+                        f"Hold penalty should be negative {description} (ratio={duration_ratio:.2f})",
                     )
 
-                # Total should equal holding penalty (no other components active)
-                self.assertEqual(
+                self.assertAlmostEqualFloat(
                     breakdown.total,
-                    breakdown.holding_penalty,
-                    f"Total should equal holding penalty {description}",
+                    breakdown.hold_penalty
+                    + breakdown.shaping_reward
+                    + breakdown.entry_additive
+                    + breakdown.exit_additive,
+                    tolerance=1e-9,
+                    msg=f"Total mismatch including shaping {description}",
                 )
 
-    def test_holding_penalty_progressive_scaling(self):
-        """Test that holding penalty scales progressively after max_duration."""
+    def test_hold_penalty_progressive_scaling(self):
+        """Test that hold penalty scales progressively after max_duration."""
         max_duration = 100
         durations = [150, 200, 300]  # All > max_duration
         penalties: list[float] = []
@@ -2096,7 +2251,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                 action_masking=True,
             )
 
-            penalties.append(breakdown.holding_penalty)
+            penalties.append(breakdown.hold_penalty)
 
         # Penalties should be increasingly negative (monotonic decrease)
         for i in range(1, len(penalties)):
@@ -2134,19 +2289,17 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             short_allowed=True,
             action_masking=True,
         )
-        self.assertTrue(
-            np.isfinite(breakdown.exit_component), "Exit component must be finite"
-        )
+        self.assertFinite(breakdown.exit_component, name="exit_component")
 
 
 class TestRewardRobustness(RewardSpaceTestBase):
     """Tests implementing all prioritized robustness enhancements.
 
     Covers:
-    - Reward decomposition integrity (total == sum of active component exactly)
+    - Reward decomposition integrity (total == core components + shaping + additives)
     - Exit factor monotonic attenuation per mode where mathematically expected
     - Boundary parameter conditions (tau extremes, plateau grace edges, linear slope = 0)
-    - Non-linear power tests for idle & holding penalties (power != 1)
+    - Non-linear power tests for idle & hold penalties (power != 1)
     - Warning emission (exit_factor_threshold) without capping
     """
 
@@ -2192,7 +2345,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 ),
                 active="idle_penalty",
             ),
-            # Holding penalty only
+            # Hold penalty only
             dict(
                 ctx=RewardContext(
                     pnl=0.0,
@@ -2204,7 +2357,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
                     position=Positions.Long,
                     action=Actions.Neutral,
                 ),
-                active="holding_penalty",
+                active="hold_penalty",
             ),
             # Exit reward only (positive pnl)
             dict(
@@ -2242,7 +2395,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 components = [
                     br.invalid_penalty,
                     br.idle_penalty,
-                    br.holding_penalty,
+                    br.hold_penalty,
                     br.exit_component,
                 ]
                 non_zero = [
@@ -2255,9 +2408,12 @@ class TestRewardRobustness(RewardSpaceTestBase):
                 )
                 self.assertAlmostEqualFloat(
                     br.total,
-                    non_zero[0],
+                    non_zero[0]
+                    + br.shaping_reward
+                    + br.entry_additive
+                    + br.exit_additive,
                     tolerance=1e-9,
-                    msg=f"Total mismatch for {sc['active']}",
+                    msg=f"Total mismatch including shaping for {sc['active']}",
                 )
 
     def test_exit_factor_monotonic_attenuation(self):
@@ -2510,7 +2666,7 @@ class TestParameterValidation(RewardSpaceTestBase):
         self.assertIn("exit_power_tau", adjustments)
         self.assertIn("min=", str(adjustments["exit_power_tau"]["reason"]))
 
-    def test_idle_and_holding_penalty_power(self):
+    def test_idle_and_hold_penalty_power(self):
         """Test non-linear scaling when penalty powers != 1."""
         params = self.DEFAULT_PARAMS.copy()
         params["idle_penalty_power"] = 2.0
@@ -2557,8 +2713,8 @@ class TestParameterValidation(RewardSpaceTestBase):
             delta=0.8,
             msg=f"Idle penalty quadratic scaling mismatch (ratio={ratio_quadratic})",
         )
-        # Holding penalty with power 2: durations just above threshold
-        params["holding_penalty_power"] = 2.0
+        # Hold penalty with power 2: durations just above threshold
+        params["hold_penalty_power"] = 2.0
         ctx_h1 = RewardContext(
             pnl=0.0,
             trade_duration=130,
@@ -2570,7 +2726,7 @@ class TestParameterValidation(RewardSpaceTestBase):
             action=Actions.Neutral,
         )
         ctx_h2 = dataclasses.replace(ctx_h1, trade_duration=140)
-        # Compute baseline and comparison holding penalties
+        # Compute baseline and comparison hold penalties
         br_h1 = calculate_reward(
             ctx_h1,
             params,
@@ -2591,13 +2747,13 @@ class TestParameterValidation(RewardSpaceTestBase):
         )
         # Quadratic scaling: ((140-100)/(130-100))^2 = (40/30)^2 ≈ 1.777...
         hold_ratio = 0.0
-        if br_h1.holding_penalty != 0:
-            hold_ratio = br_h2.holding_penalty / br_h1.holding_penalty
+        if br_h1.hold_penalty != 0:
+            hold_ratio = br_h2.hold_penalty / br_h1.hold_penalty
         self.assertAlmostEqual(
             abs(hold_ratio),
             (40 / 30) ** 2,
             delta=0.4,
-            msg=f"Holding penalty quadratic scaling mismatch (ratio={hold_ratio})",
+            msg=f"Hold penalty quadratic scaling mismatch (ratio={hold_ratio})",
         )
 
     def test_exit_factor_threshold_warning_emission(self):
@@ -2860,6 +3016,226 @@ class TestLoadRealEpisodes(RewardSpaceTestBase):
         self.assertIsInstance(loaded_data, pd.DataFrame)
         self.assertEqual(len(loaded_data), 3)
         self.assertIn("pnl", loaded_data.columns)
+
+
+class TestPBRSIntegration(RewardSpaceTestBase):
+    """Tests for PBRS (Potential-Based Reward Shaping) integration."""
+
+    def test_tanh_transform(self):
+        """tanh transform: bounded in [-1,1], symmetric."""
+        self.assertAlmostEqualFloat(apply_transform("tanh", 0.0), 0.0)
+        self.assertAlmostEqualFloat(apply_transform("tanh", 1.0), math.tanh(1.0))
+        self.assertAlmostEqualFloat(apply_transform("tanh", -1.0), math.tanh(-1.0))
+        self.assertTrue(abs(apply_transform("tanh", 100.0)) <= 1.0)
+        self.assertTrue(abs(apply_transform("tanh", -100.0)) <= 1.0)
+
+    def test_softsign_transform(self):
+        """softsign transform: x/(1+|x|) in (-1,1)."""
+        self.assertAlmostEqualFloat(apply_transform("softsign", 0.0), 0.0)
+        self.assertAlmostEqualFloat(apply_transform("softsign", 1.0), 0.5)
+        self.assertAlmostEqualFloat(apply_transform("softsign", -1.0), -0.5)
+        self.assertTrue(abs(apply_transform("softsign", 100.0)) < 1.0)
+        self.assertTrue(abs(apply_transform("softsign", -100.0)) < 1.0)
+
+    def test_arctan_transform(self):
+        """arctan transform: normalized (2/pi)atan(x) bounded [-1,1]."""
+        # Environment uses normalized arctan: (2/pi)*atan(x)
+        self.assertAlmostEqualFloat(apply_transform("arctan", 0.0), 0.0)
+        self.assertAlmostEqualFloat(
+            apply_transform("arctan", 1.0),
+            (2.0 / math.pi) * math.atan(1.0),
+            tolerance=1e-10,
+        )
+        self.assertTrue(abs(apply_transform("arctan", 100.0)) <= 1.0)
+        self.assertTrue(abs(apply_transform("arctan", -100.0)) <= 1.0)
+
+    def test_logistic_transform(self):
+        """logistic transform: 2σ(x)-1 in (-1,1)."""
+        # Environment logistic returns 2σ(x)-1 centered at 0 in (-1,1)
+        self.assertAlmostEqualFloat(apply_transform("logistic", 0.0), 0.0)
+        self.assertTrue(apply_transform("logistic", 100.0) > 0.99)
+        self.assertTrue(apply_transform("logistic", -100.0) < -0.99)
+        self.assertTrue(-1 < apply_transform("logistic", 10.0) < 1)
+        self.assertTrue(-1 < apply_transform("logistic", -10.0) < 1)
+
+    def test_clip_transform(self):
+        """clip transform: clamp to [-1,1]."""
+        self.assertAlmostEqualFloat(apply_transform("clip", 0.0), 0.0)
+        self.assertAlmostEqualFloat(apply_transform("clip", 0.5), 0.5)
+        self.assertAlmostEqualFloat(apply_transform("clip", 2.0), 1.0)
+        self.assertAlmostEqualFloat(apply_transform("clip", -2.0), -1.0)
+
+    def test_invalid_transform(self):
+        """Test error handling for invalid transforms."""
+        # Environment falls back silently to tanh
+        self.assertAlmostEqualFloat(
+            apply_transform("invalid_transform", 1.0), math.tanh(1.0), tolerance=1e-9
+        )
+
+    def test_get_float_param(self):
+        """Test float parameter extraction."""
+        params = {"test_float": 1.5, "test_int": 2, "test_str": "hello"}
+        self.assertEqual(_get_float_param(params, "test_float", 0.0), 1.5)
+        self.assertEqual(_get_float_param(params, "test_int", 0.0), 2.0)
+        # Non parseable string -> NaN fallback in tolerant parser
+        val_str = _get_float_param(params, "test_str", 0.0)
+        if isinstance(val_str, float) and math.isnan(val_str):
+            pass
+        else:
+            self.fail("Expected NaN for non-numeric string in _get_float_param")
+        self.assertEqual(_get_float_param(params, "missing", 3.14), 3.14)
+
+    def test_get_str_param(self):
+        """Test string parameter extraction."""
+        params = {"test_str": "hello", "test_int": 2}
+        self.assertEqual(_get_str_param(params, "test_str", "default"), "hello")
+        self.assertEqual(_get_str_param(params, "test_int", "default"), "default")
+        self.assertEqual(_get_str_param(params, "missing", "default"), "default")
+
+    def test_get_bool_param(self):
+        """Test boolean parameter extraction."""
+        params = {
+            "test_true": True,
+            "test_false": False,
+            "test_int": 1,
+            "test_str": "yes",
+        }
+        self.assertTrue(_get_bool_param(params, "test_true", False))
+        self.assertFalse(_get_bool_param(params, "test_false", True))
+        # Environment coerces typical truthy numeric/string values
+        self.assertTrue(_get_bool_param(params, "test_int", False))
+        self.assertTrue(_get_bool_param(params, "test_str", False))
+        self.assertFalse(_get_bool_param(params, "missing", False))
+
+    def test_hold_potential_basic(self):
+        """Test basic hold potential calculation."""
+        params = {
+            "hold_potential_enabled": True,
+            "hold_potential_scale": 1.0,
+            "hold_potential_gain": 1.0,
+            "hold_potential_transform_pnl": "tanh",
+            "hold_potential_transform_duration": "tanh",
+        }
+        val = _compute_hold_potential(0.5, 0.3, params)
+        self.assertFinite(val, name="hold_potential")
+
+    def test_entry_additive_disabled(self):
+        """Test entry additive when disabled."""
+        params = {"entry_additive_enabled": False}
+        val = _compute_entry_additive(0.5, 0.3, params)
+        self.assertEqual(val, 0.0)
+
+    def test_exit_additive_disabled(self):
+        """Test exit additive when disabled."""
+        params = {"exit_additive_enabled": False}
+        val = _compute_exit_additive(0.5, 0.3, params)
+        self.assertEqual(val, 0.0)
+
+    def test_exit_potential_canonical(self):
+        """Test exit potential in canonical mode."""
+        params = {"exit_potential_mode": "canonical"}
+        val = _compute_exit_potential(0.5, 0.3, params, last_potential=1.0)
+        self.assertEqual(val, 0.0)
+
+    def test_exit_potential_progressive_release(self):
+        """Progressive release: Φ' = Φ * (1 - decay)."""
+        params = {
+            "exit_potential_mode": "progressive_release",
+            "exit_potential_decay": 0.8,
+        }
+        # Expected: Φ' = Φ * (1 - decay) = 1 * (1 - 0.8) = 0.2
+        val = _compute_exit_potential(0.5, 0.3, params, last_potential=1.0)
+        self.assertAlmostEqual(val, 0.2)
+
+    def test_exit_potential_spike_cancel(self):
+        """Spike cancel: Φ' = Φ / γ (inversion)."""
+        params = {"exit_potential_mode": "spike_cancel", "potential_gamma": 0.95}
+        val = _compute_exit_potential(0.5, 0.3, params, last_potential=1.0)
+        self.assertAlmostEqual(val, 1.0 / 0.95, places=7)
+
+    def test_exit_potential_retain_previous(self):
+        """Test exit potential in retain previous mode."""
+        params = {"exit_potential_mode": "retain_previous"}
+        val = _compute_exit_potential(0.5, 0.3, params, last_potential=1.0)
+        self.assertEqual(val, 1.0)
+
+    def test_pbrs_terminal_canonical(self):
+        """Test PBRS behavior in canonical mode with terminal state."""
+        params = {
+            "potential_gamma": 0.95,
+            "hold_potential_enabled": True,
+            "hold_potential_scale": 1.0,
+            "hold_potential_gain": 1.0,
+            "hold_potential_transform_pnl": "tanh",
+            "hold_potential_transform_duration": "tanh",
+            "exit_potential_mode": "canonical",
+            "entry_additive_enabled": False,
+            "exit_additive_enabled": False,
+        }
+
+        current_pnl = 0.5
+        current_duration_ratio = 0.3
+        expected_current_potential = _compute_hold_potential(
+            current_pnl, current_duration_ratio, params
+        )
+
+        total_reward, shaping_reward, next_potential = apply_potential_shaping(
+            base_reward=100.0,
+            current_pnl=current_pnl,
+            current_duration_ratio=current_duration_ratio,
+            next_pnl=0.0,
+            next_duration_ratio=0.0,
+            is_terminal=True,
+            last_potential=0.0,
+            params=params,
+        )
+
+        # Terminal potential should be 0 in canonical mode
+        self.assertEqual(next_potential, 0.0)
+        # Shaping reward should be negative (releasing potential)
+        self.assertTrue(shaping_reward < 0)
+        # Check exact formula: γΦ(s') - Φ(s) = 0.95 * 0 - expected_current_potential
+        expected_shaping = 0.95 * 0.0 - expected_current_potential
+        self.assertAlmostEqual(shaping_reward, expected_shaping, delta=1e-10)
+
+    def test_pbrs_invalid_gamma(self):
+        """Test PBRS with invalid gamma value."""
+        params = {"potential_gamma": 1.5, "hold_potential_enabled": True}
+        with self.assertRaises(ValueError):
+            apply_potential_shaping(
+                base_reward=0.0,
+                current_pnl=0.0,
+                current_duration_ratio=0.0,
+                next_pnl=0.0,
+                next_duration_ratio=0.0,
+                is_terminal=True,
+                last_potential=0.0,
+                params=params,
+            )
+
+    def test_calculate_reward_with_pbrs_integration(self):
+        """Test that PBRS parameters are properly integrated in defaults."""
+        # Test that PBRS parameters are in the default parameters
+        for param in PBRS_INTEGRATION_PARAMS:
+            self.assertIn(
+                param,
+                DEFAULT_MODEL_REWARD_PARAMETERS,
+                f"PBRS parameter {param} missing from defaults",
+            )
+
+        # Test basic PBRS function integration works
+        params = {"hold_potential_enabled": True, "hold_potential_scale": 1.0}
+        potential = _compute_hold_potential(0.1, 0.2, params)
+        self.assertFinite(potential, name="hold_potential")
+
+    def test_pbrs_default_parameters_completeness(self):
+        """Test that all required PBRS parameters have defaults."""
+        for param in PBRS_REQUIRED_PARAMS:
+            self.assertIn(
+                param,
+                DEFAULT_MODEL_REWARD_PARAMETERS,
+                f"Missing PBRS parameter: {param}",
+            )
 
 
 if __name__ == "__main__":
