@@ -65,6 +65,9 @@ docker compose up -d --build
 | freqai.prediction_thresholds_smoothing | `mean` | enum {`mean`,`isodata`,`li`,`minimum`,`otsu`,`triangle`,`yen`,`soft_extremum`} | Thresholding method for prediction thresholds smoothing. |
 | freqai.prediction_thresholds_alpha | 12.0 | float > 0 | Alpha for `soft_extremum`. |
 | freqai.outlier_threshold | 0.999 | float (0,1) | Quantile threshold for predictions outlier filtering. |
+| _Reversal confirmation_ |  |  |  |
+| reversal_confirmation.lookback_period | 0 | int >= 0 | Prior confirming candles; 0 = none. |
+| reversal_confirmation.decay_ratio | 0.5 | float (0,1] | Geometric per-step relaxation factor. |
 | _Optuna / HPO_ |  |  |  |
 | freqai.optuna_hyperopt.enabled | true | bool | Enables HPO. |
 | freqai.optuna_hyperopt.n_jobs | CPU threads / 4 | int >= 1 | Parallel HPO workers. |

@@ -95,6 +95,11 @@ class QuickAdapterV3(IStrategy):
         "decline_quantile": 0.90,
     }
 
+    default_reversal_confirmation: dict[str, int | float] = {
+        "lookback_period": 0,
+        "decay_ratio": 0.5,
+    }
+
     position_adjustment_enable = True
 
     # {stage: (natr_ratio_percent, stake_percent)}
@@ -249,7 +254,7 @@ class QuickAdapterV3(IStrategy):
         self._max_history_size = int(12 * 60 * 60 / process_throttle_secs)
         self._pnl_momentum_window_size = int(30 * 60 / process_throttle_secs)
         self._exit_thresholds_calibration: dict[str, float] = {
-            **self.default_exit_thresholds_calibration,
+            **QuickAdapterV3.default_exit_thresholds_calibration,
             **self.config.get("exit_pricing", {}).get("thresholds_calibration", {}),
         }
 
@@ -1149,27 +1154,76 @@ class QuickAdapterV3(IStrategy):
         side: str,
         order: Literal["entry", "exit"],
         rate: float,
+        lookback_period: int,
+        decay_ratio: float,
         min_natr_ratio_percent: float = 0.009,
         max_natr_ratio_percent: float = 0.035,
-        lookback_period: int = 2,
-        decay_ratio: float = 0.5,
     ) -> bool:
-        """
-        Confirm a reversal using a multi-candle lookback chain.
-        Requirements:
-        - Always: current rate must break the current candle threshold (candle -1) for the given side.
-        - If lookback_period > 0: for k = 1..lookback_period, close[-k] must have broken the threshold
-          computed on candle [-(k+1)].
-        Decay:
-        - A geometric decay is applied for each lookback step k:
-          min_natr_ratio_percent/max_natr_ratio_percent bounds are multiplied
-          by (decay_ratio ** k) and clamped to [0, 1] for the threshold computed on candle [-(k+1)].
-          Default decay_ratio=0.5.
-          Set decay_ratio=1.0 to disable decay and keep the current behavior.
-        Fallbacks:
-        - If thresholds or closes are unavailable for any k, only the current threshold condition is enforced.
-        Logging:
-        - When returning False, this method logs the failing condition with contextual values.
+        """Confirm a directional reversal using a volatility-adaptive current-candle
+        threshold and (optionally) a backward confirmation chain with geometric decay.
+
+        Overview
+        --------
+        1. Compute a deviation-based threshold on the latest candle (-1). The current
+           rate must strictly break it (long: rate > threshold; short: rate < threshold).
+        2. If lookback_period > 0, for each k = 1..lookback_period:
+             - Decay (min_natr_ratio_percent, max_natr_ratio_percent) by (decay_ratio ** k),
+               clamped to [0, 1].
+             - Recompute the threshold on candle index -(k+1).
+             - Require close[-k] to have strictly broken that historical threshold.
+        3. If an intermediate close or threshold is non-finite, chain evaluation aborts
+           and the function falls back to step 1 result only (permissive fallback).
+
+        Parameters
+        ----------
+        df : DataFrame
+            Must contain 'open', 'close' and the NATR label series used indirectly.
+        pair : str
+            Trading pair identifier.
+        side : {'long','short'}
+            Direction to confirm.
+        order : {'entry','exit'}
+            Context (affects log wording only).
+        rate : float
+            Candidate execution price; must break the current threshold.
+        lookback_period : int
+            Number of historical confirmation steps requested; truncated to history.
+        decay_ratio : float
+            Geometric decay factor per step (0 < decay_ratio <= 1); 1.0 disables decay.
+        min_natr_ratio_percent : float
+            Lower bound fraction (e.g. 0.009 = 0.9%).
+        max_natr_ratio_percent : float
+            Upper bound fraction (>= lower bound).
+
+        Returns
+        -------
+        bool
+            True iff the current threshold is broken AND (lookback chain succeeded OR
+            a permissive fallback occurred). False otherwise.
+
+        Fallback Semantics
+        ------------------
+        Missing / non-finite intermediate data ⇒ stop chain; return current candle result.
+        This may yield True on partial history, weakening strict multi-candle guarantees.
+
+        Rejection Conditions
+        --------------------
+        Empty dataframe, invalid side/order, negative lookback, decay_ratio outside (0,1],
+        failure to break current threshold, or failed historical step comparison.
+
+        Complexity
+        ----------
+        O(lookback_period) threshold computations.
+
+        Logging
+        -------
+        Logs rejection reasons (invalid decay_ratio, threshold not broken, failed step).
+        Fallback aborts are silent.
+
+        Limitations
+        -----------
+        No validation of min/max ordering beyond usage; no strict mode; partial data may
+        still confirm. Rate finiteness not explicitly validated.
         """
         if df.empty:
             return False
@@ -1178,9 +1232,31 @@ class QuickAdapterV3(IStrategy):
         if order not in {"entry", "exit"}:
             return False
 
-        lookback_period = max(0, min(int(lookback_period), len(df) - 1))
+        trade_direction = side
+
+        if not isinstance(lookback_period, int):
+            logger.info(
+                f"User denied {trade_direction} {order} for {pair}: invalid lookback_period type"
+            )
+            return False
+        if lookback_period < 0:
+            logger.info(
+                f"User denied {trade_direction} {order} for {pair}: negative lookback_period={lookback_period}"
+            )
+            return False
+        max_lookback_period = max(0, len(df) - 1)
+        if lookback_period > max_lookback_period:
+            lookback_period = max_lookback_period
+        if not isinstance(decay_ratio, (int, float)):
+            logger.info(
+                f"User denied {trade_direction} {order} for {pair}: invalid decay_ratio type"
+            )
+            return False
         if not (0.0 < decay_ratio <= 1.0):
-            decay_ratio = 1.0
+            logger.info(
+                f"User denied {trade_direction} {order} for {pair}: invalid decay_ratio {decay_ratio}, must be in (0, 1]"
+            )
+            return False
 
         current_threshold = self.calculate_candle_threshold(
             df,
@@ -1194,7 +1270,6 @@ class QuickAdapterV3(IStrategy):
             (side == "long" and rate > current_threshold)
             or (side == "short" and rate < current_threshold)
         )
-        trade_direction = side
         if order == "exit":
             if side == "long":
                 trade_direction = "short"
@@ -1206,7 +1281,7 @@ class QuickAdapterV3(IStrategy):
             )
             return False
 
-        if lookback_period <= 0:
+        if lookback_period == 0:
             return current_ok
 
         for k in range(1, lookback_period + 1):
@@ -1387,10 +1462,10 @@ class QuickAdapterV3(IStrategy):
                 return default_k
 
         k_decl_v = effective_k(
-            q_decl, n_eff_v, self.default_exit_thresholds["k_decl_v"]
+            q_decl, n_eff_v, QuickAdapterV3.default_exit_thresholds["k_decl_v"]
         )
         k_decl_a = effective_k(
-            q_decl, n_eff_a, self.default_exit_thresholds["k_decl_a"]
+            q_decl, n_eff_a, QuickAdapterV3.default_exit_thresholds["k_decl_a"]
         )
 
         if debug:
@@ -1464,12 +1539,21 @@ class QuickAdapterV3(IStrategy):
                 trade.set_custom_data("n_outliers", n_outliers)
                 trade.set_custom_data("last_outlier_date", last_candle_date.isoformat())
 
+        lookback_period: int = self.config.get("reversal_confirmation", {}).get(
+            "lookback_period",
+            QuickAdapterV3.default_reversal_confirmation["lookback_period"],
+        )
+        decay_ratio: float = self.config.get("reversal_confirmation", {}).get(
+            "decay_ratio", QuickAdapterV3.default_reversal_confirmation["decay_ratio"]
+        )
         if (
             trade.trade_direction == "short"
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) < last_candle.get("minima_threshold")
-            and self.reversal_confirmed(df, pair, "long", "exit", current_rate)
+            and self.reversal_confirmed(
+                df, pair, "long", "exit", current_rate, lookback_period, decay_ratio
+            )
         ):
             return "minima_detected_short"
         if (
@@ -1477,7 +1561,9 @@ class QuickAdapterV3(IStrategy):
             and last_candle.get("do_predict") == 1
             and last_candle.get("DI_catch") == 1
             and last_candle.get(EXTREMA_COLUMN) > last_candle.get("maxima_threshold")
-            and self.reversal_confirmed(df, pair, "short", "exit", current_rate)
+            and self.reversal_confirmed(
+                df, pair, "short", "exit", current_rate, lookback_period, decay_ratio
+            )
         ):
             return "maxima_detected_long"
 
@@ -1602,7 +1688,21 @@ class QuickAdapterV3(IStrategy):
         if df.empty:
             logger.info(f"User denied {side} entry for {pair}: dataframe is empty")
             return False
-        if self.reversal_confirmed(df, pair, side, "entry", rate):
+        if self.reversal_confirmed(
+            df,
+            pair,
+            side,
+            "entry",
+            rate,
+            self.config.get("reversal_confirmation", {}).get(
+                "lookback_period",
+                QuickAdapterV3.default_reversal_confirmation["lookback_period"],
+            ),
+            self.config.get("reversal_confirmation", {}).get(
+                "decay_ratio",
+                QuickAdapterV3.default_reversal_confirmation["decay_ratio"],
+            ),
+        ):
             return True
         return False
 
