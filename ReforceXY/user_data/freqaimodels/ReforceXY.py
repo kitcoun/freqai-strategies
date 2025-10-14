@@ -96,11 +96,10 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "plot_window": 2000,                // Environment history window used for tensorboard rollout plot
             },
             "rl_config_optuna": {
-                "enabled": false,                   // Enable optuna hyperopt
-                "per_pair": false,                  // Enable per pair hyperopt
-                "n_trials": 100,
-                "n_startup_trials": 15,
-                "timeout_hours": 0,
+                "enabled": false,                   // Enable hyperopt
+                "n_trials": 100,                    // Number of trials
+                "n_startup_trials": 15,             // Number of initial random trials for TPESampler
+                "timeout_hours": 0,                 // Maximum time in hours for hyperopt (0 = no timeout)
                 "continuous": false,                // If true, perform continuous optimization
                 "warm_start": false,                // If true, enqueue previous best params if exists
                 "seed": 42,                         // RNG seed
@@ -872,12 +871,12 @@ class ReforceXY(BaseReinforcementLearningModel):
         except Exception:
             pass
 
-    def get_storage(self, pair: Optional[str] = None) -> BaseStorage:
+    def get_storage(self, pair: str) -> BaseStorage:
         """
         Get the storage for Optuna
         """
         storage_dir = self.full_path
-        storage_filename = f"optuna-{pair.split('/')[0]}" if pair else "optuna"
+        storage_filename = f"optuna-{pair.split('/')[0]}"
         storage_backend = self.rl_config_optuna.get("storage", "sqlite")
         if storage_backend == "sqlite":
             storage = RDBStorage(
@@ -912,16 +911,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         Runs hyperparameter optimization using Optuna and returns the best hyperparameters found merged with the user defined parameters
         """
         identifier = self.freqai_info.get("identifier", "no_id_provided")
-        study_name = (
-            f"{identifier}-{dk.pair}"
-            if self.rl_config_optuna.get("per_pair", False)
-            else identifier
-        )
-        storage = (
-            self.get_storage(dk.pair)
-            if self.rl_config_optuna.get("per_pair", False)
-            else self.get_storage()
-        )
+        study_name = f"{identifier}-{dk.pair}"
+        storage = self.get_storage(dk.pair)
         continuous = self.rl_config_optuna.get("continuous", False)
         if continuous:
             ReforceXY.study_delete(study_name, storage)
@@ -952,9 +943,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             load_if_exists=not continuous,
         )
         if self.rl_config_optuna.get("warm_start", False):
-            best_trial_params = self.load_best_trial_params(
-                dk.pair if self.rl_config_optuna.get("per_pair", False) else None
-            )
+            best_trial_params = self.load_best_trial_params(dk.pair)
             if best_trial_params:
                 study.enqueue_trial(best_trial_params)
         hyperopt_failed = False
@@ -991,9 +980,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             hyperopt_failed = True
 
         if hyperopt_failed:
-            best_trial_params = self.load_best_trial_params(
-                dk.pair if self.rl_config_optuna.get("per_pair", False) else None
-            )
+            best_trial_params = self.load_best_trial_params(dk.pair)
             if best_trial_params is None:
                 logger.error(
                     f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no previously saved best trial params found"
@@ -1016,10 +1003,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         logger.info("Best trial params: %s", best_trial_params)
         logger.info("-------------------------------------------------------")
 
-        self.save_best_trial_params(
-            best_trial_params,
-            dk.pair if self.rl_config_optuna.get("per_pair", False) else None,
-        )
+        self.save_best_trial_params(best_trial_params, dk.pair)
 
         return deepmerge(
             self.get_model_params(),
@@ -1027,25 +1011,18 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
 
     def save_best_trial_params(
-        self, best_trial_params: Dict[str, Any], pair: Optional[str] = None
+        self, best_trial_params: Dict[str, Any], pair: str
     ) -> None:
         """
         Save the best trial hyperparameters found during hyperparameter optimization
         """
-        best_trial_params_filename = (
-            f"hyperopt-best-params-{pair.split('/')[0]}"
-            if pair
-            else "hyperopt-best-params"
-        )
+        best_trial_params_filename = f"hyperopt-best-params-{pair.split('/')[0]}"
         best_trial_params_path = Path(
             self.full_path / f"{best_trial_params_filename}.json"
         )
-        log_msg: str = (
-            f"{pair}: saving best params to {best_trial_params_path} JSON file"
-            if pair
-            else f"Saving best params to {best_trial_params_path} JSON file"
+        logger.info(
+            "%s: saving best params to %s JSON file", pair, best_trial_params_path
         )
-        logger.info(log_msg)
         try:
             with best_trial_params_path.open("w", encoding="utf-8") as write_file:
                 json.dump(best_trial_params, write_file, indent=4)
@@ -1056,27 +1033,20 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             raise
 
-    def load_best_trial_params(
-        self, pair: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+    def load_best_trial_params(self, pair: str) -> Optional[Dict[str, Any]]:
         """
         Load the best trial hyperparameters found and saved during hyperparameter optimization
         """
-        best_trial_params_filename = (
-            f"hyperopt-best-params-{pair.split('/')[0]}"
-            if pair
-            else "hyperopt-best-params"
-        )
+        best_trial_params_filename = f"hyperopt-best-params-{pair.split('/')[0]}"
         best_trial_params_path = Path(
             self.full_path / f"{best_trial_params_filename}.json"
         )
-        log_msg: str = (
-            f"{pair}: loading best params from {best_trial_params_path} JSON file"
-            if pair
-            else f"Loading best params from {best_trial_params_path} JSON file"
-        )
         if best_trial_params_path.is_file():
-            logger.info(log_msg)
+            logger.info(
+                "%s: loading best params from %s JSON file",
+                pair,
+                best_trial_params_path,
+            )
             with best_trial_params_path.open("r", encoding="utf-8") as read_file:
                 best_trial_params = json.load(read_file)
             return best_trial_params
@@ -1115,9 +1085,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         gamma: Optional[float] = None
         best_trial_params: Optional[Dict[str, Any]] = None
         if self.hyperopt:
-            best_trial_params = self.load_best_trial_params(
-                dk.pair if self.rl_config_optuna.get("per_pair", False) else None
-            )
+            best_trial_params = self.load_best_trial_params(dk.pair)
         if model_params and isinstance(model_params.get("gamma"), (int, float)):
             gamma = model_params.get("gamma")
         elif best_trial_params:

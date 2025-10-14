@@ -284,7 +284,7 @@ _Exit attenuation configuration:_
 - `exit_half_life` (default: 0.5) - Half-life parameter for the half_life kernel.
 - `exit_factor_threshold` (default: 10000.0) - Warning-only soft threshold (emits RuntimeWarning; no capping).
 
-Attenuation kernels:
+**Attenuation kernels**:
 
 Let r be the raw duration ratio and grace = `exit_plateau_grace`.
 
@@ -335,6 +335,18 @@ _PBRS (Potential-Based Reward Shaping) configuration:_
 - `exit_additive_gain` (default: 1.0) - Gain factor for exit additive reward
 - `exit_additive_transform_pnl` (default: tanh) - Transform function for PnL in exit additive
 - `exit_additive_transform_duration` (default: tanh) - Transform function for duration ratio in exit additive
+
+**Transform functions**:
+
+| Transform | Formula | Range | Characteristics | Use Case |
+|-----------|---------|-------|-----------------|----------|
+| `tanh` | tanh(x) | (-1, 1) | Smooth sigmoid, symmetric around 0 | Balanced PnL/duration transforms (default) |
+| `softsign` | x / (1 + \|x\|) | (-1, 1) | Smoother than tanh, linear near 0 | Less aggressive saturation |
+| `softsign_sharp` | x / (sharpness + \|x\|) | (-1, 1) | Tunable sharpness via `potential_softsign_sharpness` | Custom saturation control |
+| `arctan` | (2/π) × arctan(x) | (-1, 1) | Slower saturation than tanh | Wide dynamic range |
+| `logistic` | 2 / (1 + e^(-x)) - 1 | (-1, 1) | Equivalent to tanh(x/2), gentler curve | Mild non-linearity |
+| `asinh_norm` | asinh(x) / asinh(10) | (-1, 1) | Normalized asinh, handles large values | Extreme outlier robustness |
+| `clip` | clip(x, -1, 1) | [-1, 1] | Hard clipping at ±1 | Preserve linearity within bounds |
 
 _Invariant / safety controls:_
 
