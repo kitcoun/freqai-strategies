@@ -461,6 +461,7 @@ The analysis generates the following output files:
 3. **Reward Component Analysis** - Binned relationships (idle, hold, exit), correlation matrix (constant features removed), PBRS analysis (activation rates, component stats, invariance summary).
 4. **Feature Importance** - Random Forest importance + partial dependence.
 5. **Statistical Validation** - Hypothesis tests, bootstrap confidence intervals, normality diagnostics, optional distribution shift (5.4) when real episodes provided.
+
 **Summary** - 7-point concise synthesis:
 1. Reward distribution health (center, spread, tail asymmetry)
 2. Action & position coverage (usage %, invalid rate, masking efficacy)
