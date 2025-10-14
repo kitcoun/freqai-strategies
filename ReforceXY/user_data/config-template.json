@@ -158,7 +158,7 @@
       "model_type": "MaskablePPO",
       "policy_type": "MlpPolicy",
       "model_reward_parameters": {
-        "rr": 1,
+        "rr": 2,
         "profit_aim": 0.025,
         "win_reward_factor": 2
       },

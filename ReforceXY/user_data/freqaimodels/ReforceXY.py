@@ -1386,6 +1386,15 @@ class MyRLEnv(Base5ActionRLEnv):
             self._potential_gamma = 0.95
         else:
             self._potential_gamma = float(potential_gamma)
+        # Validate potential_gamma range (0 <= gamma <= 1)
+        if not (0.0 <= self._potential_gamma <= 1.0):
+            original_gamma = self._potential_gamma
+            self._potential_gamma = min(1.0, max(0.0, self._potential_gamma))
+            logger.warning(
+                "potential_gamma=%s is outside [0,1]; clamped to %s",
+                original_gamma,
+                self._potential_gamma,
+            )
         self._potential_softsign_sharpness: float = float(
             model_reward_parameters.get("potential_softsign_sharpness", 1.0)
         )
@@ -1478,6 +1487,13 @@ class MyRLEnv(Base5ActionRLEnv):
                     )
                 self._entry_additive_enabled = False
                 self._exit_additive_enabled = False
+
+        if MyRLEnv.is_unsupported_pbrs_config(
+            self._hold_potential_enabled, getattr(self, "add_state_info", False)
+        ):
+            logger.warning(
+                "PBRS: hold_potential_enabled=True & add_state_info=False is unsupported. PBRS invariance is not guaranteed"
+            )
 
     def _get_next_position(self, action: int) -> Positions:
         if action == Actions.Long_enter.value and self._position == Positions.Neutral:
@@ -1766,6 +1782,18 @@ class MyRLEnv(Base5ActionRLEnv):
         return self._exit_potential_mode == "canonical" and not (
             self._entry_additive_enabled or self._exit_additive_enabled
         )
+
+    @staticmethod
+    def is_unsupported_pbrs_config(
+        hold_potential_enabled: bool, add_state_info: bool
+    ) -> bool:
+        """Return True if PBRS potential relies on hidden (non-observed) state.
+
+        Case: hold_potential enabled while auxiliary state info (pnl, trade_duration) is excluded
+        from the observation space (add_state_info=False). In that situation, Φ(s) uses hidden
+        variables and PBRS becomes informative, voiding the strict policy invariance guarantee.
+        """
+        return hold_potential_enabled and not add_state_info
 
     def _apply_potential_shaping(
         self,
@@ -2175,15 +2203,23 @@ class MyRLEnv(Base5ActionRLEnv):
         model_reward_parameters = self.rl_config.get("model_reward_parameters", {})
 
         pnl_target_factor = 1.0
-        if pnl_target > 0.0 and pnl > pnl_target:
-            win_reward_factor = float(
-                model_reward_parameters.get("win_reward_factor", 2.0)
-            )
+        if pnl_target > 0.0:
             pnl_factor_beta = float(model_reward_parameters.get("pnl_factor_beta", 0.5))
             pnl_ratio = pnl / pnl_target
-            pnl_target_factor = 1.0 + win_reward_factor * math.tanh(
-                pnl_factor_beta * (pnl_ratio - 1.0)
-            )
+            if abs(pnl_ratio) > 1.0:
+                base_pnl_target_factor = math.tanh(
+                    pnl_factor_beta * (abs(pnl_ratio) - 1.0)
+                )
+                win_reward_factor = float(
+                    model_reward_parameters.get("win_reward_factor", 2.0)
+                )
+                if pnl_ratio > 1.0:
+                    pnl_target_factor = 1.0 + win_reward_factor * base_pnl_target_factor
+                elif pnl_ratio < -(1.0 / self.rr):
+                    loss_penalty_factor = win_reward_factor * self.rr
+                    pnl_target_factor = (
+                        1.0 + loss_penalty_factor * base_pnl_target_factor
+                    )
 
         efficiency_factor = 1.0
         efficiency_weight = float(model_reward_parameters.get("efficiency_weight", 1.0))

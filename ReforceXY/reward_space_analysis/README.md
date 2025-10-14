@@ -12,7 +12,7 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
 
 - ✅ Generate thousands of synthetic trading scenarios deterministically
 - ✅ Analyze reward distribution, feature importance & partial dependence
-- ✅ Built‑in invariant & statistical validation layers (fail‑fast)
+- ✅ Built-in invariant & statistical validation layers (fail-fast)
 - ✅ PBRS (Potential-Based Reward Shaping) integration with canonical invariance
 - ✅ Export reproducible artifacts (parameter hash + execution manifest)
 - ✅ Compare synthetic vs real trading data (distribution shift metrics)
@@ -278,10 +278,10 @@ _Exit attenuation configuration:_
 
 - `exit_attenuation_mode` (default: linear) - Selects attenuation kernel (see table below: legacy|sqrt|linear|power|half_life). Fallback to linear.
 - `exit_plateau` (default: true) - Enables plateau (no attenuation until `exit_plateau_grace`).
-- `exit_plateau_grace` (default: 1.0) - Duration ratio boundary of full‑strength region (may exceed 1.0).
+- `exit_plateau_grace` (default: 1.0) - Duration ratio boundary of full-strength region (may exceed 1.0).
 - `exit_linear_slope` (default: 1.0) - Slope parameter used only when mode = linear.
 - `exit_power_tau` (default: 0.5) - Tau ∈ (0,1]; internally mapped to alpha (see kernel table).
-- `exit_half_life` (default: 0.5) - Half‑life parameter for the half_life kernel.
+- `exit_half_life` (default: 0.5) - Half-life parameter for the half_life kernel.
 - `exit_factor_threshold` (default: 10000.0) - Warning-only soft threshold (emits RuntimeWarning; no capping).
 
 Attenuation kernels:
@@ -294,8 +294,8 @@ effective_r = r - grace    if exit_plateau and r >  grace
 effective_r = r            if not exit_plateau
 ```
 
-| Mode | Multiplier (applied to base_factor * pnl * pnl_factor * efficiency_factor) | Monotonic ↓ | Notes |
-|------|---------------------------------------------------------------------|-------------|-------|
+| Mode | Multiplier (applied to base_factor * pnl * pnl_factor * efficiency_factor) | Monotonic decreasing (Yes/No) | Notes |
+|------|---------------------------------------------------------------------|-------------------------------|-------|
 | legacy | step: ×1.5 if r* ≤ 1 else ×0.5 | No | Historical discontinuity retained (not smoothed) |
 | sqrt | 1 / sqrt(1 + r*) | Yes | Sub-linear decay |
 | linear | 1 / (1 + slope * r*) | Yes | slope = `exit_linear_slope` (≥0) |
@@ -357,12 +357,36 @@ _Invariant / safety controls:_
 - Use this if you want to generate multiple independent statistical analyses over the same synthetic dataset without re-simulating samples.
 - If omitted, falls back to `--seed` for full run determinism.
 
+**`--strict_diagnostics`** (flag, default: disabled)
+
+Fail-fast switch controlling handling of degenerate statistical situations:
+
+| Condition | Graceful (default) | Strict (`--strict_diagnostics`) |
+|-----------|--------------------|---------------------------------|
+| Zero-width bootstrap CI | Widen by epsilon (~1e-9) + warning | Abort (AssertionError) |
+| NaN skewness/kurtosis (constant distribution) | Replace with 0.0 + warning | Abort |
+| NaN Anderson statistic (constant distribution) | Replace with 0.0 + warning | Abort |
+| NaN Q-Q R² (constant distribution) | Replace with 1.0 + warning | Abort |
+
+Use strict mode in CI or research contexts requiring hard guarantees; keep default for exploratory analysis to avoid aborting entire runs on trivial constants.
+
+**`--bootstrap_resamples`** (int, default: 10000)
+
+- Number of bootstrap resamples used for confidence intervals (percentile method).
+- Lower values (< 500) yield coarse intervals; a warning (RewardDiagnosticsWarning) is emitted if below internal recommended minimum (currently 200) to help with very fast exploratory runs.
+- Increase for more stable interval endpoints (typical: 5000–20000). Runtime scales roughly linearly.
+
+**`--skip_partial_dependence`** (flag, default: disabled)
+
+- When set, skips computation and export of partial dependence CSV files, reducing runtime (often 30–60% faster for large sample sizes) at the cost of losing marginal response curve inspection.
+- Feature importance (RandomForest Gini importance + permutation importance) is still computed.
+
 ### Reproducibility Model
 
 | Component | Controlled By | Notes |
 |-----------|---------------|-------|
 | Sample simulation | `--seed` | Drives action sampling, PnL noise generation. |
-| Statistical tests / bootstrap | `--stats_seed` (fallback `--seed`) | Local RNG; isolation prevents side‑effects in user code. |
+| Statistical tests / bootstrap | `--stats_seed` (fallback `--seed`) | Local RNG; isolation prevents side-effects in user code. |
 | RandomForest & permutation importance | `--seed` | Ensures identical splits and tree construction. |
 | Partial dependence grids | Deterministic | Depends only on fitted model & data. |
 
@@ -432,17 +456,19 @@ The analysis generates the following output files:
 
 **`statistical_analysis.md`** - Comprehensive statistical analysis containing:
 
-- **Global Statistics** - Reward distributions and component activation rates
-- **Sample Representativity** - Coverage of critical market scenarios
-- **Component Analysis** - Relationships between rewards and conditions
-- **PBRS Analysis** - Potential-based reward shaping component activation rates, statistics, and invariance validation
-- **Feature Importance** - Machine learning analysis of key drivers
-- **Statistical Validation** - Hypothesis tests, confidence intervals, normality + effect sizes
-- **Distribution Shift** - Real vs synthetic divergence (KL, JS, Wasserstein, KS)
-- **Diagnostics Validation Summary**
-  - Pass/fail snapshot of all runtime checks
-  - Consolidated pass/fail state of every validation layer (invariants, parameter bounds, bootstrap CIs, distribution metrics, diagnostics, hypothesis tests)
-  - PBRS invariance validation (canonical mode check: ∑shaping_rewards ≈ 0)
+1. **Global Statistics** - Reward distribution, per-action stats, component activation & ranges.
+2. **Sample Representativity** - Position/action distributions, critical regime coverage, component activation recap.
+3. **Reward Component Analysis** - Binned relationships (idle, hold, exit), correlation matrix (constant features removed), PBRS analysis (activation rates, component stats, invariance summary).
+4. **Feature Importance** - Random Forest importance + partial dependence.
+5. **Statistical Validation** - Hypothesis tests, bootstrap confidence intervals, normality diagnostics, optional distribution shift (5.4) when real episodes provided.
+**Summary** - 7-point concise synthesis:
+1. Reward distribution health (center, spread, tail asymmetry)
+2. Action & position coverage (usage %, invalid rate, masking efficacy)
+3. Component contributions (activation rates + mean / |mean| ranking)
+4. Exit attenuation behavior (mode, continuity, effective decay characteristics)
+5. Feature signal quality (model R², leading predictors, stability notes)
+6. Statistical outcomes (significant correlations / tests, any multiple-testing adjustment applied, distribution shift if real data)
+7. PBRS invariance verdict (|Σ shaping| < 1e-6 => canonical; otherwise non-canonical with absolute deviation)
 
 ### Data Exports
 
@@ -451,41 +477,40 @@ The analysis generates the following output files:
 | `reward_samples.csv`       | Raw synthetic samples for custom analysis            |
 | `feature_importance.csv`   | Feature importance rankings from random forest model |
 | `partial_dependence_*.csv` | Partial dependence data for key features             |
-| `manifest.json`            | Run metadata (seed, params, top features, overrides) |
+| `manifest.json`            | Runtime manifest (simulation + reward params + hash) |
 
 ### Manifest Structure (`manifest.json`)
 
-Key fields:
+| Field | Type | Description |
+|-------|------|-------------|
+| `generated_at` | string (ISO 8601) | Timestamp of generation (not part of hash). |
+| `num_samples` | int | Number of synthetic samples generated. |
+| `seed` | int | Master random seed driving simulation determinism. |
+| `max_trade_duration` | int | Max trade duration used to scale durations. |
+| `profit_target_effective` | float | Profit target after risk/reward scaling. |
+| `pvalue_adjust_method` | string | Multiple testing correction mode (`none` or `benjamini_hochberg`). |
+| `parameter_adjustments` | object | Map of any automatic bound clamps (empty if none). |
+| `reward_params` | object | Full resolved reward parameter set (post-validation). |
+| `simulation_params` | object | All simulation inputs (num_samples, seed, volatility knobs, etc.). |
+| `params_hash` | string (sha256) | Hash over ALL `simulation_params` + ALL `reward_params` (lexicographically ordered). |
 
-| Field | Description |
-|-------|-------------|
-| `generated_at` | ISO timestamp of run |
-| `num_samples` | Number of synthetic samples generated |
-| `seed` | Random seed used (deterministic cascade) |
-| `profit_target_effective` | Profit target after risk/reward scaling |
-| `top_features` | Top 5 features by permutation importance |
-| `reward_param_overrides` | Subset of reward tunables explicitly supplied via CLI |
-| `params_hash` | SHA-256 hash combining simulation params + overrides (reproducibility) |
-| `params` | Echo of core simulation parameters (subset, for quick audit) |
-| `parameter_adjustments` | Any automatic bound clamps applied by `validate_reward_parameters` |
-
-Use `params_hash` to verify reproducibility across runs; identical seeds + identical overrides ⇒ identical hash.
+Reproducibility: two runs are input-identical iff their `params_hash` values match. Because defaults are included in the hash, modifying a default value (even if not overridden) changes the hash.
 
 ### Distribution Shift Metric Conventions
 
 | Metric | Definition | Notes |
 |--------|------------|-------|
 | `*_kl_divergence` | KL(synthetic‖real) = Σ p_synth log(p_synth / p_real) | Asymmetric; 0 iff identical histograms (after binning). |
-| `*_js_distance` | √(JS(p_synth, p_real)) | Symmetric, bounded [0,1]; distance form (sqrt of JS divergence). |
+| `*_js_distance` | d_JS(p_synth, p_real) = √( 0.5 KL(p_synth‖m) + 0.5 KL(p_real‖m) ), m = 0.5 (p_synth + p_real) | Symmetric, bounded [0,1]; square-root of JS divergence; stable vs KL when supports differ. |
 | `*_wasserstein` | 1D Earth Mover's Distance | Non-negative; same units as feature. |
 | `*_ks_statistic` | KS two-sample statistic | ∈ [0,1]; higher = greater divergence. |
 | `*_ks_pvalue` | KS test p-value | ∈ [0,1]; small ⇒ reject equality (at α). |
 
 Implementation details:
 - Histograms: 50 uniform bins spanning min/max across both samples.
-- Probabilities: counts + ε (1e‑10) then normalized ⇒ avoids log(0) and division by zero.
-- Degenerate (constant) distributions short‑circuit to zeros (divergences) / p-value 1.0.
-- JS distance is reported (not raw divergence) for bounded interpretability.
+- Probabilities: counts + ε (1e-10) then normalized ⇒ avoids log(0) and division by zero.
+- Degenerate distributions short-circuit to zeros / p-value 1.0.
+- JS distance instead of raw JS divergence for bounded interpretability and smooth interpolation.
 
 ---
 
@@ -531,7 +556,7 @@ python reward_space_analysis.py \
     --output real_vs_synthetic
 ```
 
-The report will include distribution shift metrics (KL divergence ≥ 0, JS distance ∈ [0,1], Wasserstein ≥ 0, KS statistic ∈ [0,1], KS p‑value ∈ [0,1]) showing how well synthetic samples represent real trading. Degenerate (constant) distributions are auto‑detected and produce zero divergence and KS p‑value = 1.0 to avoid spurious instability.
+The report will include distribution shift metrics (KL divergence ≥ 0, JS distance ∈ [0,1], Wasserstein ≥ 0, KS statistic ∈ [0,1], KS p-value ∈ [0,1]) showing how well synthetic samples represent real trading. Degenerate (constant) distributions are auto-detected and produce zero divergence and KS p-value = 1.0 to avoid spurious instability.
 
 ### Batch Analysis
 
@@ -571,11 +596,13 @@ Always run the full suite after modifying reward logic or attenuation parameters
 | Statistical Validation | TestStatisticalValidation | Mathematical bounds, heteroscedasticity, invariants |
 | Boundary Conditions | TestBoundaryConditions | Extreme params & unknown mode fallback |
 | Helper Functions | TestHelperFunctions | Report writers, model analysis, utility conversions |
-| Private Functions (via public API) | TestPrivateFunctions | Idle / hold / invalid penalties, exit scenarios |
+| Private Functions | TestPrivateFunctions | Idle / hold / invalid penalties, exit scenarios (accessed indirectly) |
 | Robustness | TestRewardRobustness | Monotonic attenuation (where applicable), decomposition integrity, boundary regimes |
 | Parameter Validation | TestParameterValidation | Bounds clamping, warning threshold, penalty power scaling |
-| Continuity | TestContinuityPlateau | Plateau boundary continuity & small‑epsilon attenuation scaling |
+| Continuity | TestContinuityPlateau | Plateau boundary continuity & small-epsilon attenuation scaling |
 | PBRS Integration | TestPBRSIntegration | Potential-based reward shaping, transforms, exit modes, canonical invariance |
+| Report Formatting | TestReportFormatting | Report section presence, ordering, PBRS invariance line, formatting integrity |
+| Load Real Episodes | TestLoadRealEpisodes | Real episodes ingestion, column validation, distribution shift preparation |
 
 ### Test Architecture
 
@@ -654,6 +681,8 @@ pytest -q test_reward_space_analysis.py::TestRewardAlignment
 - Use `--trading_mode spot` (fewer action combinations)
 - Close other memory-intensive applications
 - Use SSD storage for faster I/O
+- Use `--skip_partial_dependence` to skip marginal response curves
+- Temporarily lower `--bootstrap_resamples` (e.g. 1000) during iteration (expect wider CIs)
 
 ### Memory Errors
 
