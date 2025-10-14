@@ -176,6 +176,7 @@ ALLOWED_TRANSFORMS = {
 }
 ALLOWED_EXIT_POTENTIAL_MODES = {
     "canonical",
+    "non-canonical",
     "progressive_release",
     "spike_cancel",
     "retain_previous",
@@ -213,7 +214,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS: RewardParams = {
     # Discount factor γ for potential term (0 ≤ γ ≤ 1)
     "potential_gamma": POTENTIAL_GAMMA_DEFAULT,
     "potential_softsign_sharpness": 1.0,
-    # Exit potential modes: canonical | progressive_release | spike_cancel | retain_previous
+    # Exit potential modes: canonical | non-canonical | progressive_release | spike_cancel | retain_previous
     "exit_potential_mode": "canonical",
     "exit_potential_decay": 0.5,
     # Hold potential (PBRS function Φ)
@@ -259,7 +260,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     # PBRS parameters
     "potential_gamma": "Discount factor γ for PBRS potential-based reward shaping (0 ≤ γ ≤ 1).",
     "potential_softsign_sharpness": "Sharpness parameter for softsign_sharp transform (smaller = sharper).",
-    "exit_potential_mode": "Exit potential mode: 'canonical' (Φ=0), 'progressive_release', 'spike_cancel', 'retain_previous'.",
+    "exit_potential_mode": "Exit potential mode: 'canonical' (Φ=0 & additives disabled), 'non-canonical' (Φ=0 & additives allowed), 'progressive_release', 'spike_cancel', 'retain_previous'.",
     "exit_potential_decay": "Decay factor for progressive_release exit mode (0 ≤ decay ≤ 1).",
     "hold_potential_enabled": "Enable PBRS hold potential function Φ(s).",
     "hold_potential_scale": "Scale factor for hold potential function.",
@@ -2389,6 +2390,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         description="Synthetic stress-test of the ReforceXY reward shaping logic."
     )
     parser.add_argument(
+        "--skip-feature-analysis",
+        action="store_true",
+        help="Skip feature importance and model-based analysis for all scenarios.",
+    )
+    parser.add_argument(
         "--num_samples",
         type=int,
         default=20000,
@@ -2529,6 +2535,7 @@ def write_complete_statistical_analysis(
     strict_diagnostics: bool = False,
     bootstrap_resamples: int = 10000,
     skip_partial_dependence: bool = False,
+    skip_feature_analysis: bool = False,
 ) -> None:
     """Generate a single comprehensive statistical analysis report with enhanced tests."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2579,21 +2586,25 @@ def write_complete_statistical_analysis(
         df, profit_target, max_trade_duration
     )
 
-    # Model analysis
-    importance_df, analysis_stats, partial_deps, _model = _perform_feature_analysis(
-        df, seed, skip_partial_dependence=skip_partial_dependence
-    )
-
-    # Save feature importance CSV
-    importance_df.to_csv(output_dir / "feature_importance.csv", index=False)
-
-    # Save partial dependence CSVs
-    if not skip_partial_dependence:
-        for feature, pd_df in partial_deps.items():
-            pd_df.to_csv(
-                output_dir / f"partial_dependence_{feature}.csv",
-                index=False,
-            )
+    # Model analysis: skip if requested or not enough samples
+    importance_df = None
+    analysis_stats = None
+    partial_deps = {}
+    if skip_feature_analysis or len(df) < 4:
+        print("Skipping feature analysis: flag set or insufficient samples (<4).")
+    else:
+        importance_df, analysis_stats, partial_deps, _model = _perform_feature_analysis(
+            df, seed, skip_partial_dependence=skip_partial_dependence
+        )
+        # Save feature importance CSV
+        importance_df.to_csv(output_dir / "feature_importance.csv", index=False)
+        # Save partial dependence CSVs
+        if not skip_partial_dependence:
+            for feature, pd_df in partial_deps.items():
+                pd_df.to_csv(
+                    output_dir / f"partial_dependence_{feature}.csv",
+                    index=False,
+                )
 
     # Enhanced statistics
     test_seed = (
@@ -2859,24 +2870,56 @@ def write_complete_statistical_analysis(
             pbrs_stats_df.index.name = "component"
             f.write(_df_to_md(pbrs_stats_df, index_name="component", ndigits=6))
 
-            # PBRS invariance check (canonical mode)
+            # PBRS invariance check
             total_shaping = df["reward_shaping"].sum()
             entry_add_total = df.get("reward_entry_additive", pd.Series([0])).sum()
             exit_add_total = df.get("reward_exit_additive", pd.Series([0])).sum()
+
+            # Get configuration for proper invariance assessment
+            reward_params = (
+                df.attrs.get("reward_params", {}) if hasattr(df, "attrs") else {}
+            )
+            exit_potential_mode = reward_params.get("exit_potential_mode", "canonical")
+            entry_additive_enabled = reward_params.get("entry_additive_enabled", False)
+            exit_additive_enabled = reward_params.get("exit_additive_enabled", False)
+
+            # True invariance requires canonical mode AND no additives
+            is_theoretically_invariant = exit_potential_mode == "canonical" and not (
+                entry_additive_enabled or exit_additive_enabled
+            )
+            shaping_near_zero = abs(total_shaping) < PBRS_INVARIANCE_TOL
+
             # Prepare invariance summary markdown block
-            if abs(total_shaping) < PBRS_INVARIANCE_TOL:
-                invariance_status = "✅ Canonical"
-                invariance_note = "Total shaping ≈ 0 (canonical invariance)"
+            if is_theoretically_invariant:
+                if shaping_near_zero:
+                    invariance_status = "✅ Canonical"
+                    invariance_note = "Theoretical invariance preserved (canonical mode, no additives, Σ≈0)"
+                else:
+                    invariance_status = "⚠️ Canonical (with warning)"
+                    invariance_note = f"Canonical mode but unexpected shaping sum = {total_shaping:.6f}"
             else:
                 invariance_status = "❌ Non-canonical"
-                invariance_note = f"Total shaping = {total_shaping:.6f} (non-zero)"
+                reasons = []
+                if exit_potential_mode != "canonical":
+                    reasons.append(f"exit_potential_mode='{exit_potential_mode}'")
+                if entry_additive_enabled or exit_additive_enabled:
+                    additive_types = []
+                    if entry_additive_enabled:
+                        additive_types.append("entry")
+                    if exit_additive_enabled:
+                        additive_types.append("exit")
+                    reasons.append(f"additives={additive_types}")
+                invariance_note = f"Modified for flexibility: {', '.join(reasons)}"
 
             # Summarize PBRS invariance
             f.write("**PBRS Invariance Summary:**\n\n")
             f.write("| Field | Value |\n")
             f.write("|-------|-------|\n")
-            f.write(f"| Invariance | {invariance_status} |\n")
-            f.write(f"| Note | {invariance_note} |\n")
+            f.write(f"| Invariance Status | {invariance_status} |\n")
+            f.write(f"| Analysis Note | {invariance_note} |\n")
+            f.write(f"| Exit Potential Mode | {exit_potential_mode} |\n")
+            f.write(f"| Entry Additive Enabled | {entry_additive_enabled} |\n")
+            f.write(f"| Exit Additive Enabled | {exit_additive_enabled} |\n")
             f.write(f"| Σ Shaping Reward | {total_shaping:.6f} |\n")
             f.write(f"| Abs Σ Shaping Reward | {abs(total_shaping):.6e} |\n")
             f.write(f"| Σ Entry Additive | {entry_add_total:.6f} |\n")
@@ -2888,31 +2931,44 @@ def write_complete_statistical_analysis(
         # Section 4: Feature Importance Analysis
         f.write("---\n\n")
         f.write("## 4. Feature Importance\n\n")
-        f.write(
-            "Machine learning analysis to identify which features most influence total reward.\n\n"
-        )
-        f.write("**Model:** Random Forest Regressor (400 trees)  \n")
-        f.write(f"**R² Score:** {analysis_stats['r2_score']:.4f}\n\n")
-
-        f.write("### 4.1 Top 10 Features by Importance\n\n")
-        top_imp = importance_df.head(10).copy().reset_index(drop=True)
-        # Render as markdown without index column
-        header = "| feature | importance_mean | importance_std |\n"
-        sep = "|---------|------------------|----------------|\n"
-        rows = []
-        for _, r in top_imp.iterrows():
-            rows.append(
-                f"| {r['feature']} | {_fmt_val(r['importance_mean'], 6)} | {_fmt_val(r['importance_std'], 6)} |"
-            )
-        f.write(header + sep + "\n".join(rows) + "\n\n")
-        f.write("**Exported Data:**\n")
-        f.write("- Full feature importance: `feature_importance.csv`\n")
-        if not skip_partial_dependence:
-            f.write("- Partial dependence plots: `partial_dependence_*.csv`\n\n")
+        if skip_feature_analysis or len(df) < 4:
+            reason = []
+            if skip_feature_analysis:
+                reason.append("flag --skip-feature-analysis set")
+            if len(df) < 4:
+                reason.append("insufficient samples <4")
+            reason_str = "; ".join(reason) if reason else "skipped"
+            f.write(f"_Skipped ({reason_str})._\n\n")
+            if skip_partial_dependence:
+                f.write(
+                    "_Note: --skip_partial_dependence is redundant when feature analysis is skipped._\n\n"
+                )
         else:
             f.write(
-                "- Partial dependence plots: (skipped via --skip_partial_dependence)\n\n"
+                "Machine learning analysis to identify which features most influence total reward.\n\n"
             )
+            f.write("**Model:** Random Forest Regressor (400 trees)  \n")
+            f.write(f"**R² Score:** {analysis_stats['r2_score']:.4f}\n\n")
+
+            f.write("### 4.1 Top 10 Features by Importance\n\n")
+            top_imp = importance_df.head(10).copy().reset_index(drop=True)
+            # Render as markdown without index column
+            header = "| feature | importance_mean | importance_std |\n"
+            sep = "|---------|------------------|----------------|\n"
+            rows = []
+            for _, r in top_imp.iterrows():
+                rows.append(
+                    f"| {r['feature']} | {_fmt_val(r['importance_mean'], 6)} | {_fmt_val(r['importance_std'], 6)} |"
+                )
+            f.write(header + sep + "\n".join(rows) + "\n\n")
+            f.write("**Exported Data:**\n")
+            f.write("- Full feature importance: `feature_importance.csv`\n")
+            if not skip_partial_dependence:
+                f.write("- Partial dependence plots: `partial_dependence_*.csv`\n\n")
+            else:
+                f.write(
+                    "- Partial dependence plots: (skipped via --skip_partial_dependence)\n\n"
+                )
 
         # Section 5: Statistical Validation
         if hypothesis_tests:
@@ -3074,9 +3130,14 @@ def write_complete_statistical_analysis(
         f.write(
             "3. **Component Analysis** - Relationships between rewards and conditions (including PBRS)\n"
         )
-        f.write(
-            "4. **Feature Importance** - Machine learning analysis of key drivers\n"
-        )
+        if skip_feature_analysis or len(df) < 4:
+            f.write(
+                "4. **Feature Importance** - (skipped) Machine learning analysis of key drivers\n"
+            )
+        else:
+            f.write(
+                "4. **Feature Importance** - Machine learning analysis of key drivers\n"
+            )
         f.write(
             "5. **Statistical Validation** - Hypothesis tests and confidence intervals\n"
         )
@@ -3101,10 +3162,13 @@ def write_complete_statistical_analysis(
         f.write("\n")
         f.write("**Generated Files:**\n")
         f.write("- `reward_samples.csv` - Raw synthetic samples\n")
-        f.write("- `feature_importance.csv` - Complete feature importance rankings\n")
-        f.write(
-            "- `partial_dependence_*.csv` - Partial dependence data for visualization\n"
-        )
+        if not skip_feature_analysis and len(df) >= 4:
+            f.write(
+                "- `feature_importance.csv` - Complete feature importance rankings\n"
+            )
+            f.write(
+                "- `partial_dependence_*.csv` - Partial dependence data for visualization\n"
+            )
 
 
 def main() -> None:
@@ -3230,6 +3294,7 @@ def main() -> None:
         strict_diagnostics=bool(getattr(args, "strict_diagnostics", False)),
         bootstrap_resamples=getattr(args, "bootstrap_resamples", 10000),
         skip_partial_dependence=bool(getattr(args, "skip_partial_dependence", False)),
+        skip_feature_analysis=bool(getattr(args, "skip_feature_analysis", False)),
     )
     print(
         f"Complete statistical analysis saved to: {args.output / 'statistical_analysis.md'}"
@@ -3282,34 +3347,31 @@ def main() -> None:
 # === PBRS TRANSFORM FUNCTIONS ===
 
 
-def _apply_transform_tanh(value: float, scale: float = 1.0) -> float:
-    """tanh(scale*value) ∈ (-1,1)."""
-    return float(np.tanh(scale * value))
+def _apply_transform_tanh(value: float) -> float:
+    """tanh(value) ∈ (-1,1)."""
+    return float(np.tanh(value))
 
 
-def _apply_transform_softsign(value: float, scale: float = 1.0) -> float:
-    """softsign: x/(1+|x|) with x=scale*value."""
-    x = scale * value
+def _apply_transform_softsign(value: float) -> float:
+    """softsign: value/(1+|value|)."""
+    x = value
     return float(x / (1.0 + abs(x)))
 
 
-def _apply_transform_softsign_sharp(
-    value: float, scale: float = 1.0, sharpness: float = 1.0
-) -> float:
-    """softsign_sharp: x/(sharpness+|x|) with x=scale*value (smaller sharpness = steeper)."""
-    x = scale * value
-    return float(x / (sharpness + abs(x)))
+def _apply_transform_softsign_sharp(value: float, sharpness: float = 1.0) -> float:
+    """softsign_sharp: (sharpness*value)/(1+|sharpness*value|) - multiplicative sharpness."""
+    xs = sharpness * value
+    return float(xs / (1.0 + abs(xs)))
 
 
-def _apply_transform_arctan(value: float, scale: float = 1.0) -> float:
-    """arctan normalized: (2/pi)*atan(scale*value) ∈ (-1,1)."""
-    x = scale * value
-    return float((2.0 / math.pi) * math.atan(x))
+def _apply_transform_arctan(value: float) -> float:
+    """arctan normalized: (2/pi)*atan(value) ∈ (-1,1)."""
+    return float((2.0 / math.pi) * math.atan(value))
 
 
-def _apply_transform_logistic(value: float, scale: float = 1.0) -> float:
-    """Overflow‑safe logistic transform mapped to (-1,1): 2σ(kx)−1 where k=scale."""
-    x = scale * value
+def _apply_transform_logistic(value: float) -> float:
+    """Overflow‑safe logistic transform mapped to (-1,1): 2σ(x)−1."""
+    x = value
     try:
         if x >= 0:
             z = math.exp(-x)  # z in (0,1]
@@ -3321,15 +3383,14 @@ def _apply_transform_logistic(value: float, scale: float = 1.0) -> float:
         return 1.0 if x > 0 else -1.0
 
 
-def _apply_transform_asinh_norm(value: float, scale: float = 1.0) -> float:
-    """Normalized asinh: x / sqrt(1 + x²) producing range (-1,1)."""
-    scaled = scale * value
-    return float(scaled / math.hypot(1.0, scaled))
+def _apply_transform_asinh_norm(value: float) -> float:
+    """Normalized asinh: value / sqrt(1 + value²) producing range (-1,1)."""
+    return float(value / math.hypot(1.0, value))
 
 
-def _apply_transform_clip(value: float, scale: float = 1.0) -> float:
-    """clip(scale*value) to [-1,1]."""
-    return float(np.clip(scale * value, -1.0, 1.0))
+def _apply_transform_clip(value: float) -> float:
+    """clip(value) to [-1,1]."""
+    return float(np.clip(value, -1.0, 1.0))
 
 
 def apply_transform(transform_name: str, value: float, **kwargs: Any) -> float:
@@ -3350,8 +3411,7 @@ def apply_transform(transform_name: str, value: float, **kwargs: Any) -> float:
             RewardDiagnosticsWarning,
             stacklevel=2,
         )
-        return _apply_transform_tanh(value, **kwargs)
-
+        return _apply_transform_tanh(value)
     return transforms[transform_name](value, **kwargs)
 
 
@@ -3465,7 +3525,8 @@ def _compute_exit_potential(last_potential: float, params: RewardParams) -> floa
     """Compute next potential Φ(s') for closing/exit transitions.
 
     Semantics:
-    - canonical: Φ' = 0.0
+    - canonical: Φ' = 0.0 (preserves invariance, disables additives)
+    - non-canonical: Φ' = 0.0 (allows additives, breaks invariance)
     - progressive_release: Φ' = Φ * (1 - decay) with decay clamped to [0,1]
     - spike_cancel: Φ' = Φ / γ (neutralizes shaping spike ≈ 0 net effect) if γ>0 else Φ
     - retain_previous: Φ' = Φ
@@ -3474,7 +3535,7 @@ def _compute_exit_potential(last_potential: float, params: RewardParams) -> floa
     coerced to 0.0.
     """
     mode = _get_str_param(params, "exit_potential_mode", "canonical")
-    if mode == "canonical":
+    if mode == "canonical" or mode == "non-canonical":
         return _fail_safely("canonical_exit_potential")
 
     if mode == "progressive_release":
@@ -3503,10 +3564,10 @@ def _compute_exit_potential(last_potential: float, params: RewardParams) -> floa
         next_potential = last_potential * (1.0 - decay)
     elif mode == "spike_cancel":
         gamma = _get_potential_gamma(params)
-        if gamma > 0.0 and np.isfinite(gamma):
-            next_potential = last_potential / gamma
-        else:
+        if gamma <= 0.0 or not np.isfinite(gamma):
             next_potential = last_potential
+        else:
+            next_potential = last_potential / gamma
     elif mode == "retain_previous":
         next_potential = last_potential
     else:

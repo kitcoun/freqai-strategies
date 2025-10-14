@@ -318,7 +318,7 @@ _PBRS (Potential-Based Reward Shaping) configuration:_
 
 - `potential_gamma` (default: 0.95) - Discount factor γ for PBRS potential term (0 ≤ γ ≤ 1)
 - `potential_softsign_sharpness` (default: 1.0) - Sharpness parameter for softsign_sharp transform (smaller = sharper)
-- `exit_potential_mode` (default: canonical) - Exit potential mode: 'canonical' (Φ=0), 'progressive_release', 'spike_cancel', 'retain_previous'
+- `exit_potential_mode` (default: canonical) - Exit potential mode: 'canonical' (Φ=0, preserves invariance, disables additives), 'non-canonical' (Φ=0, allows additives, breaks invariance), 'progressive_release', 'spike_cancel', 'retain_previous'
 - `exit_potential_decay` (default: 0.5) - Decay factor for progressive_release exit mode (0 ≤ decay ≤ 1)
 - `hold_potential_enabled` (default: true) - Enable PBRS hold potential function Φ(s)
 - `hold_potential_scale` (default: 1.0) - Scale factor for hold potential function
@@ -342,10 +342,10 @@ _PBRS (Potential-Based Reward Shaping) configuration:_
 |-----------|---------|-------|-----------------|----------|
 | `tanh` | tanh(x) | (-1, 1) | Smooth sigmoid, symmetric around 0 | Balanced PnL/duration transforms (default) |
 | `softsign` | x / (1 + \|x\|) | (-1, 1) | Smoother than tanh, linear near 0 | Less aggressive saturation |
-| `softsign_sharp` | x / (sharpness + \|x\|) | (-1, 1) | Tunable sharpness via `potential_softsign_sharpness` | Custom saturation control |
+| `softsign_sharp` | (sharpness * x) / (1 + \|sharpness * x\|) | (-1, 1) | Tunable sharpness via `potential_softsign_sharpness` | Custom saturation control |
 | `arctan` | (2/π) × arctan(x) | (-1, 1) | Slower saturation than tanh | Wide dynamic range |
 | `logistic` | 2 / (1 + e^(-x)) - 1 | (-1, 1) | Equivalent to tanh(x/2), gentler curve | Mild non-linearity |
-| `asinh_norm` | asinh(x) / asinh(10) | (-1, 1) | Normalized asinh, handles large values | Extreme outlier robustness |
+| `asinh_norm` | x / √(1 + x²) | (-1, 1) | Normalized asinh-like transform | Extreme outlier robustness |
 | `clip` | clip(x, -1, 1) | [-1, 1] | Hard clipping at ±1 | Preserve linearity within bounds |
 
 _Invariant / safety controls:_
@@ -392,6 +392,27 @@ Use strict mode in CI or research contexts requiring hard guarantees; keep defau
 
 - When set, skips computation and export of partial dependence CSV files, reducing runtime (often 30–60% faster for large sample sizes) at the cost of losing marginal response curve inspection.
 - Feature importance (RandomForest Gini importance + permutation importance) is still computed.
+
+**`--skip-feature-analysis`** (flag, default: disabled)
+
+- Skips the entire model-based feature analysis block: no RandomForest training, no permutation importance, no feature_importance.csv, no partial_dependence_*.csv (regardless of `--skip_partial_dependence`).
+- Automatically suppresses any partial dependence computation even if `--skip_partial_dependence` is not provided (hard superset).
+- Useful for ultra-fast smoke / CI runs or very low sample exploratory checks (e.g. `--num_samples < 4`) where the model would not be statistically meaningful.
+
+Hierarchy / precedence of skip flags:
+
+| Scenario | `--skip-feature-analysis` | `--skip_partial_dependence` | Feature Importance | Partial Dependence | Report Section 4 |
+|----------|---------------------------|-----------------------------|--------------------|-------------------|------------------|
+| Default (no flags) | ✗ | ✗ | Yes | Yes | Full (R², top features, exported data) |
+| PD only skipped | ✗ | ✓ | Yes | No | Full (PD line shows skipped note) |
+| Feature analysis skipped | ✓ | ✗ | No | No | Marked “(skipped)” with reason(s) |
+| Both flags | ✓ | ✓ | No | No | Marked “(skipped)” + note PD redundant |
+
+Additional notes:
+
+- If `--num_samples < 4`, feature analysis is automatically skipped (insufficient rows to perform train/test split) and the summary marks the section as skipped with reason.
+- Providing `--skip_partial_dependence` together with `--skip-feature-analysis` is harmless; the report clarifies redundancy.
+- Skipping feature analysis reduces runtime and memory footprint significantly for large `--num_samples` (avoid building a 400-tree forest + permutation loops).
 
 ### Reproducibility Model
 
@@ -546,11 +567,17 @@ python reward_space_analysis.py \
     --params hold_penalty_scale=0.5 \
     --output aggressive_hold
 
-# Test PBRS configurations
+# Canonical PBRS (strict invariance, additives disabled)
 python reward_space_analysis.py \
     --num_samples 25000 \
     --params hold_potential_enabled=true entry_additive_enabled=true exit_additive_enabled=false exit_potential_mode=canonical \
     --output pbrs_canonical
+
+# Non-canonical PBRS (allows additives with Φ(terminal)=0, breaks invariance)
+python reward_space_analysis.py \
+    --num_samples 25000 \
+    --params hold_potential_enabled=true entry_additive_enabled=true exit_additive_enabled=true exit_potential_mode=non-canonical \
+    --output pbrs_non_canonical
 
 python reward_space_analysis.py \
     --num_samples 25000 \

@@ -3080,7 +3080,7 @@ class TestPBRSIntegration(RewardSpaceTestBase):
     """Tests for PBRS (Potential-Based Reward Shaping) integration."""
 
     def test_tanh_transform(self):
-        """tanh transform: bounded in [-1,1], symmetric."""
+        """tanh transform: bounded in (-1,1), symmetric."""
         self.assertAlmostEqualFloat(apply_transform("tanh", 0.0), 0.0)
         self.assertAlmostEqualFloat(apply_transform("tanh", 1.0), math.tanh(1.0))
         self.assertAlmostEqualFloat(apply_transform("tanh", -1.0), math.tanh(-1.0))
@@ -3095,9 +3095,46 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         self.assertTrue(abs(apply_transform("softsign", 100.0)) < 1.0)
         self.assertTrue(abs(apply_transform("softsign", -100.0)) < 1.0)
 
+    def test_softsign_sharp_transform(self):
+        """softsign_sharp transform: (s*x)/(1+|s*x|) in (-1,1) with sharpness s."""
+        # Baseline: s=1 should match softsign
+        self.assertAlmostEqualFloat(
+            apply_transform("softsign_sharp", 0.0, sharpness=1.0), 0.0
+        )
+        self.assertAlmostEqualFloat(
+            apply_transform("softsign_sharp", 1.0, sharpness=1.0),
+            apply_transform("softsign", 1.0),
+        )
+        # Higher sharpness => faster saturation
+        v_low = apply_transform("softsign_sharp", 0.5, sharpness=1.0)
+        v_high = apply_transform("softsign_sharp", 0.5, sharpness=4.0)
+        self.assertTrue(abs(v_high) > abs(v_low))
+        # Boundedness stress
+        self.assertTrue(
+            abs(apply_transform("softsign_sharp", 100.0, sharpness=10.0)) < 1.0
+        )
+        self.assertTrue(
+            abs(apply_transform("softsign_sharp", -100.0, sharpness=10.0)) < 1.0
+        )
+
+    def test_asinh_norm_transform(self):
+        """asinh_norm transform: x/sqrt(1+x^2) in (-1,1)."""
+        self.assertAlmostEqualFloat(apply_transform("asinh_norm", 0.0), 0.0)
+        # Symmetry
+        self.assertAlmostEqualFloat(
+            apply_transform("asinh_norm", 1.2345),
+            -apply_transform("asinh_norm", -1.2345),
+            tolerance=1e-12,
+        )
+        # Monotonicity (sampled)
+        vals = [apply_transform("asinh_norm", x) for x in [-5.0, -1.0, 0.0, 1.0, 5.0]]
+        self.assertTrue(all(vals[i] < vals[i + 1] for i in range(len(vals) - 1)))
+        # Bounded
+        self.assertTrue(abs(apply_transform("asinh_norm", 1e6)) < 1.0)
+        self.assertTrue(abs(apply_transform("asinh_norm", -1e6)) < 1.0)
+
     def test_arctan_transform(self):
-        """arctan transform: normalized (2/pi)atan(x) bounded [-1,1]."""
-        # Environment uses normalized arctan: (2/pi)*atan(x)
+        """arctan transform: normalized (2/pi)atan(x) bounded (-1,1)."""
         self.assertAlmostEqualFloat(apply_transform("arctan", 0.0), 0.0)
         self.assertAlmostEqualFloat(
             apply_transform("arctan", 1.0),
@@ -3115,6 +3152,38 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         self.assertTrue(apply_transform("logistic", -100.0) < -0.99)
         self.assertTrue(-1 < apply_transform("logistic", 10.0) < 1)
         self.assertTrue(-1 < apply_transform("logistic", -10.0) < 1)
+
+    def test_logistic_equivalence_tanh_half(self):
+        """logistic(x) must equal tanh(x/2) within tight tolerance across representative domain.
+
+        Uses identity: 2/(1+e^{-x}) - 1 = tanh(x/2).
+        """
+        samples = [
+            0.0,
+            1e-6,
+            -1e-6,
+            0.5,
+            -0.5,
+            1.0,
+            -1.0,
+            2.5,
+            -2.5,
+            5.0,
+            -5.0,
+            10.0,
+            -10.0,
+        ]
+        for x in samples:
+            with self.subTest(x=x):
+                v_log = apply_transform("logistic", x)
+                v_tanh = math.tanh(x / 2.0)
+                tol = 1e-12 if abs(x) <= 5 else 1e-10
+                self.assertAlmostEqualFloat(
+                    v_log,
+                    v_tanh,
+                    tolerance=tol,
+                    msg=f"Mismatch logistic vs tanh(x/2) at x={x}: {v_log} vs {v_tanh}",
+                )
 
     def test_clip_transform(self):
         """clip transform: clamp to [-1,1]."""
@@ -3356,6 +3425,71 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         # Shaping bounded (Φ in [-scale, scale] after transforms), conservatively check |shaping| <= 1
         self.assertLessEqual(abs(shaping), 1.0)
         self.assertTrue(np.isfinite(next_potential))
+
+    def test_pbrs_non_canonical_runtime_behavior(self):
+        """Non-canonical mode: Φ'=0 at terminal but additives remain enabled (should not be auto-disabled).
+
+        We construct a simple scenario:
+        - enable hold potential (so Φ(s) != 0)
+        - set exit_potential_mode = 'non-canonical'
+        - enable both entry & exit additives with small scales so they contribute deterministically
+        - take a terminal transition
+
+        Expectations:
+        - canonical auto-disabling does NOT occur (additives stay True)
+        - next_potential returned by _compute_exit_potential is exactly 0.0 (Φ'=0)
+        - shaping_reward = γ * 0 - Φ(s) = -Φ(s)
+        - total_reward = base + shaping + entry_add + exit_add (all finite)
+        - invariance would be broken (but we just assert mechanism, not report here)
+        """
+        params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
+        params.update(
+            {
+                "hold_potential_enabled": True,
+                "hold_potential_scale": 1.0,
+                "exit_potential_mode": "non-canonical",
+                "entry_additive_enabled": True,
+                "exit_additive_enabled": True,
+                # deterministic small values
+                "entry_additive_scale": 0.5,
+                "exit_additive_scale": 0.5,
+                "entry_additive_gain": 1.0,
+                "exit_additive_gain": 1.0,
+            }
+        )
+        base_reward = 0.123
+        current_pnl = 0.2
+        current_duration_ratio = 0.4
+        # terminal next state values (ignored for potential since Φ'=0 in non-canonical exit path)
+        next_pnl = 0.0
+        next_duration_ratio = 0.0
+        total, shaping, next_potential = apply_potential_shaping(
+            base_reward=base_reward,
+            current_pnl=current_pnl,
+            current_duration_ratio=current_duration_ratio,
+            next_pnl=next_pnl,
+            next_duration_ratio=next_duration_ratio,
+            is_terminal=True,
+            last_potential=0.789,  # arbitrary, should be ignored for Φ'
+            params=params,
+        )
+        # Additives should not have been disabled
+        self.assertTrue(params["entry_additive_enabled"])
+        self.assertTrue(params["exit_additive_enabled"])
+        # Next potential is forced to 0
+        self.assertAlmostEqual(next_potential, 0.0, places=12)
+        # Compute current potential independently to assert shaping = -Φ(s)
+        current_potential = _compute_hold_potential(
+            current_pnl,
+            current_duration_ratio,
+            {"hold_potential_enabled": True, "hold_potential_scale": 1.0},
+        )
+        # shaping should equal -current_potential within tolerance
+        self.assertAlmostEqual(shaping, -current_potential, delta=1e-9)
+        # Total reward includes additives: ensure total - base - shaping differs from 0 (i.e., additives present)
+        residual = total - base_reward - shaping
+        self.assertNotAlmostEqual(residual, 0.0, delta=1e-12)
+        self.assertTrue(np.isfinite(total))
 
 
 class TestReportFormatting(RewardSpaceTestBase):

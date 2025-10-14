@@ -79,6 +79,7 @@ def build_arg_matrix(
 ) -> List[ConfigTuple]:
     exit_potential_modes = [
         "canonical",
+        "non-canonical",
         "progressive_release",
         "retain_previous",
         "spike_cancel",
@@ -126,6 +127,7 @@ def run_scenario(
     strict: bool,
     bootstrap_resamples: int,
     timeout: int,
+    skip_feature_analysis: bool = False,
 ) -> ScenarioResult:
     (
         exit_potential_mode,
@@ -161,6 +163,8 @@ def run_scenario(
     ]
     # Forward bootstrap resamples explicitly
     cmd += ["--bootstrap_resamples", str(bootstrap_resamples)]
+    if skip_feature_analysis:
+        cmd.append("--skip-feature-analysis")
     if strict:
         cmd.append("--strict_diagnostics")
     start = time.perf_counter()
@@ -196,7 +200,15 @@ def run_scenario(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--samples", type=int, default=40, help="num synthetic samples per scenario"
+        "--samples",
+        type=int,
+        default=40,
+        help="num synthetic samples per scenario (minimum 4 for feature analysis)",
+    )
+    parser.add_argument(
+        "--skip-feature-analysis",
+        action="store_true",
+        help="Skip feature importance and model-based analysis for all scenarios.",
     )
     parser.add_argument(
         "--out-dir",
@@ -244,8 +256,8 @@ def main():
     # Basic validation
     if args.max_scenarios <= 0:
         parser.error("--max-scenarios must be > 0")
-    if args.samples <= 0:
-        parser.error("--samples must be > 0")
+    if args.samples < 4 and not args.skip_feature_analysis:
+        parser.error("--samples must be >= 4 unless --skip-feature-analysis is set")
     if args.strict_sample < 0:
         parser.error("--strict-sample must be >= 0")
     if args.bootstrap_resamples <= 0:
@@ -281,6 +293,7 @@ def main():
                 strict=strict_flag,
                 bootstrap_resamples=args.bootstrap_resamples,
                 timeout=args.per_scenario_timeout,
+                skip_feature_analysis=args.skip_feature_analysis,
             )
             results.append(res)
             status = res["status"]
