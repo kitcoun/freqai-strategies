@@ -72,7 +72,6 @@ except ImportError as e:
     sys.exit(1)
 
 
-# --- Helper factories (DRY for contexts and params) ---
 def base_params(**overrides) -> dict:
     """Return a fresh copy of DEFAULT_MODEL_REWARD_PARAMETERS with overrides applied.
 
@@ -1883,7 +1882,6 @@ class TestBoundaryConditions(RewardSpaceTestBase):
 
     def test_different_exit_attenuation_modes(self):
         """Test different exit attenuation modes (legacy, sqrt, linear, power, half_life)."""
-        # Use canonical constant (includes legacy) instead of hardcoded literals
         modes = ATTENUATION_MODES_WITH_LEGACY
 
         for mode in modes:
@@ -2681,7 +2679,6 @@ class TestRewardRobustness(RewardSpaceTestBase):
         """Exit factor must not be negative when pnl >= 0 (invariant clamp)."""
 
         params = self.DEFAULT_PARAMS.copy()
-        # Try multiple modes / extreme params
         # All canonical modes + legacy + synthetic plateau variant
         modes = list(ATTENUATION_MODES_WITH_LEGACY) + ["plateau_linear"]
         base_factor = self.TEST_BASE_FACTOR
@@ -3293,8 +3290,6 @@ class TestPBRSIntegration(RewardSpaceTestBase):
                 DEFAULT_MODEL_REWARD_PARAMETERS,
                 f"Missing PBRS parameter: {param}",
             )
-
-    # --- End of structural PBRS tests (legacy sum test removed) ---
 
     def test_pbrs_progressive_release_decay_clamped_zero_current(self):
         """progressive_release with decay>1 clamps to 1 (full release to 0).

@@ -2871,7 +2871,7 @@ def write_complete_statistical_analysis(
                 invariance_status = "❌ Non-canonical"
                 invariance_note = f"Total shaping = {total_shaping:.6f} (non-zero)"
 
-            # Summarize PBRS invariance (added explicit section)
+            # Summarize PBRS invariance
             f.write("**PBRS Invariance Summary:**\n\n")
             f.write("| Field | Value |\n")
             f.write("|-------|-------|\n")
@@ -3643,10 +3643,7 @@ def _compute_bi_component(
     transform_dur_key: str,
     non_finite_key: str,
 ) -> float:
-    """Generic helper for (pnl, duration) bi-component transforms.
-
-    Consolidates duplicated logic across hold potential & additives.
-    """
+    """Generic helper for (pnl, duration) bi-component transforms."""
     scale = _get_float_param(params, scale_key, 1.0)
     gain = _get_float_param(params, gain_key, 1.0)
     transform_pnl = _get_str_param(params, transform_pnl_key, "tanh")
