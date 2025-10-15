@@ -96,11 +96,10 @@ class ReforceXY(BaseReinforcementLearningModel):
                 "plot_window": 2000,                // Environment history window used for tensorboard rollout plot
             },
             "rl_config_optuna": {
-                "enabled": false,                   // Enable optuna hyperopt
-                "per_pair": false,                  // Enable per pair hyperopt
-                "n_trials": 100,
-                "n_startup_trials": 15,
-                "timeout_hours": 0,
+                "enabled": false,                   // Enable hyperopt
+                "n_trials": 100,                    // Number of trials
+                "n_startup_trials": 15,             // Number of initial random trials for TPESampler
+                "timeout_hours": 0,                 // Maximum time in hours for hyperopt (0 = no timeout)
                 "continuous": false,                // If true, perform continuous optimization
                 "warm_start": false,                // If true, enqueue previous best params if exists
                 "seed": 42,                         // RNG seed
@@ -872,12 +871,12 @@ class ReforceXY(BaseReinforcementLearningModel):
         except Exception:
             pass
 
-    def get_storage(self, pair: Optional[str] = None) -> BaseStorage:
+    def get_storage(self, pair: str) -> BaseStorage:
         """
         Get the storage for Optuna
         """
         storage_dir = self.full_path
-        storage_filename = f"optuna-{pair.split('/')[0]}" if pair else "optuna"
+        storage_filename = f"optuna-{pair.split('/')[0]}"
         storage_backend = self.rl_config_optuna.get("storage", "sqlite")
         if storage_backend == "sqlite":
             storage = RDBStorage(
@@ -912,16 +911,8 @@ class ReforceXY(BaseReinforcementLearningModel):
         Runs hyperparameter optimization using Optuna and returns the best hyperparameters found merged with the user defined parameters
         """
         identifier = self.freqai_info.get("identifier", "no_id_provided")
-        study_name = (
-            f"{identifier}-{dk.pair}"
-            if self.rl_config_optuna.get("per_pair", False)
-            else identifier
-        )
-        storage = (
-            self.get_storage(dk.pair)
-            if self.rl_config_optuna.get("per_pair", False)
-            else self.get_storage()
-        )
+        study_name = f"{identifier}-{dk.pair}"
+        storage = self.get_storage(dk.pair)
         continuous = self.rl_config_optuna.get("continuous", False)
         if continuous:
             ReforceXY.study_delete(study_name, storage)
@@ -952,9 +943,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             load_if_exists=not continuous,
         )
         if self.rl_config_optuna.get("warm_start", False):
-            best_trial_params = self.load_best_trial_params(
-                dk.pair if self.rl_config_optuna.get("per_pair", False) else None
-            )
+            best_trial_params = self.load_best_trial_params(dk.pair)
             if best_trial_params:
                 study.enqueue_trial(best_trial_params)
         hyperopt_failed = False
@@ -991,9 +980,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             hyperopt_failed = True
 
         if hyperopt_failed:
-            best_trial_params = self.load_best_trial_params(
-                dk.pair if self.rl_config_optuna.get("per_pair", False) else None
-            )
+            best_trial_params = self.load_best_trial_params(dk.pair)
             if best_trial_params is None:
                 logger.error(
                     f"Hyperopt {study_name} failed ({time_spent:.2f} secs): no previously saved best trial params found"
@@ -1016,10 +1003,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         logger.info("Best trial params: %s", best_trial_params)
         logger.info("-------------------------------------------------------")
 
-        self.save_best_trial_params(
-            best_trial_params,
-            dk.pair if self.rl_config_optuna.get("per_pair", False) else None,
-        )
+        self.save_best_trial_params(best_trial_params, dk.pair)
 
         return deepmerge(
             self.get_model_params(),
@@ -1027,25 +1011,18 @@ class ReforceXY(BaseReinforcementLearningModel):
         )
 
     def save_best_trial_params(
-        self, best_trial_params: Dict[str, Any], pair: Optional[str] = None
+        self, best_trial_params: Dict[str, Any], pair: str
     ) -> None:
         """
         Save the best trial hyperparameters found during hyperparameter optimization
         """
-        best_trial_params_filename = (
-            f"hyperopt-best-params-{pair.split('/')[0]}"
-            if pair
-            else "hyperopt-best-params"
-        )
+        best_trial_params_filename = f"hyperopt-best-params-{pair.split('/')[0]}"
         best_trial_params_path = Path(
             self.full_path / f"{best_trial_params_filename}.json"
         )
-        log_msg: str = (
-            f"{pair}: saving best params to {best_trial_params_path} JSON file"
-            if pair
-            else f"Saving best params to {best_trial_params_path} JSON file"
+        logger.info(
+            "%s: saving best params to %s JSON file", pair, best_trial_params_path
         )
-        logger.info(log_msg)
         try:
             with best_trial_params_path.open("w", encoding="utf-8") as write_file:
                 json.dump(best_trial_params, write_file, indent=4)
@@ -1056,27 +1033,20 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             raise
 
-    def load_best_trial_params(
-        self, pair: Optional[str] = None
-    ) -> Optional[Dict[str, Any]]:
+    def load_best_trial_params(self, pair: str) -> Optional[Dict[str, Any]]:
         """
         Load the best trial hyperparameters found and saved during hyperparameter optimization
         """
-        best_trial_params_filename = (
-            f"hyperopt-best-params-{pair.split('/')[0]}"
-            if pair
-            else "hyperopt-best-params"
-        )
+        best_trial_params_filename = f"hyperopt-best-params-{pair.split('/')[0]}"
         best_trial_params_path = Path(
             self.full_path / f"{best_trial_params_filename}.json"
         )
-        log_msg: str = (
-            f"{pair}: loading best params from {best_trial_params_path} JSON file"
-            if pair
-            else f"Loading best params from {best_trial_params_path} JSON file"
-        )
         if best_trial_params_path.is_file():
-            logger.info(log_msg)
+            logger.info(
+                "%s: loading best params from %s JSON file",
+                pair,
+                best_trial_params_path,
+            )
             with best_trial_params_path.open("r", encoding="utf-8") as read_file:
                 best_trial_params = json.load(read_file)
             return best_trial_params
@@ -1115,9 +1085,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         gamma: Optional[float] = None
         best_trial_params: Optional[Dict[str, Any]] = None
         if self.hyperopt:
-            best_trial_params = self.load_best_trial_params(
-                dk.pair if self.rl_config_optuna.get("per_pair", False) else None
-            )
+            best_trial_params = self.load_best_trial_params(dk.pair)
         if model_params and isinstance(model_params.get("gamma"), (int, float)):
             gamma = model_params.get("gamma")
         elif best_trial_params:
@@ -1386,6 +1354,15 @@ class MyRLEnv(Base5ActionRLEnv):
             self._potential_gamma = 0.95
         else:
             self._potential_gamma = float(potential_gamma)
+        # Validate potential_gamma range (0 <= gamma <= 1)
+        if not (0.0 <= self._potential_gamma <= 1.0):
+            original_gamma = self._potential_gamma
+            self._potential_gamma = min(1.0, max(0.0, self._potential_gamma))
+            logger.warning(
+                "potential_gamma=%s is outside [0,1]; clamped to %s",
+                original_gamma,
+                self._potential_gamma,
+            )
         self._potential_softsign_sharpness: float = float(
             model_reward_parameters.get("potential_softsign_sharpness", 1.0)
         )
@@ -1395,7 +1372,8 @@ class MyRLEnv(Base5ActionRLEnv):
         )
         # === EXIT POTENTIAL MODE ===
         # exit_potential_mode options:
-        #   'canonical'           -> Φ(s')=0 (baseline PBRS, preserves invariance)
+        #   'canonical'           -> Φ(s')=0 (preserves invariance, disables additives)
+        #   'non-canonical'       -> Φ(s')=0 (allows additives, breaks invariance)
         #   'progressive_release' -> Φ(s')=Φ(s)*(1-decay_factor)
         #   'spike_cancel'        -> Φ(s')=Φ(s)/γ (Δ ≈ 0, cancels shaping)
         #   'retain_previous'     -> Φ(s')=Φ(s)
@@ -1404,6 +1382,7 @@ class MyRLEnv(Base5ActionRLEnv):
         )
         _allowed_exit_modes = {
             "canonical",
+            "non-canonical",
             "progressive_release",
             "spike_cancel",
             "retain_previous",
@@ -1468,16 +1447,24 @@ class MyRLEnv(Base5ActionRLEnv):
         # === PBRS INVARIANCE CHECKS ===
         if self._exit_potential_mode == "canonical":
             if self._entry_additive_enabled or self._exit_additive_enabled:
-                if self._entry_additive_enabled:
-                    logger.info(
-                        "Disabling entry additive to preserve PBRS invariance (canonical mode)."
-                    )
-                if self._exit_additive_enabled:
-                    logger.info(
-                        "Disabling exit additive to preserve PBRS invariance (canonical mode)."
-                    )
+                logger.info(
+                    "Canonical mode: additive rewards disabled with Φ(terminal)=0. PBRS invariance is preserved. "
+                    "To use additive rewards, set exit_potential_mode='non-canonical'."
+                )
                 self._entry_additive_enabled = False
                 self._exit_additive_enabled = False
+        elif self._exit_potential_mode == "non-canonical":
+            if self._entry_additive_enabled or self._exit_additive_enabled:
+                logger.info(
+                    "Non-canonical mode: additive rewards enabled with Φ(terminal)=0. PBRS invariance is intentionally broken."
+                )
+
+        if MyRLEnv.is_unsupported_pbrs_config(
+            self._hold_potential_enabled, getattr(self, "add_state_info", False)
+        ):
+            logger.warning(
+                "PBRS: hold_potential_enabled=True & add_state_info=False is unsupported. PBRS invariance is not guaranteed"
+            )
 
     def _get_next_position(self, action: int) -> Positions:
         if action == Actions.Long_enter.value and self._position == Positions.Neutral:
@@ -1704,12 +1691,15 @@ class MyRLEnv(Base5ActionRLEnv):
             return (2.0 / math.pi) * math.atan(x)
 
         if name == "logistic":
-            if x >= 0:
-                z = math.exp(-x)  # z in (0,1]
-                return (1.0 - z) / (1.0 + z)
-            else:
-                z = math.exp(x)  # z in (0,1]
-                return (z - 1.0) / (z + 1.0)
+            try:
+                if x >= 0:
+                    z = math.exp(-x)  # z in (0,1]
+                    return (1.0 - z) / (1.0 + z)
+                else:
+                    z = math.exp(x)  # z in (0,1]
+                    return (z - 1.0) / (z + 1.0)
+            except OverflowError:
+                return 1.0 if x > 0 else -1.0
 
         if name == "asinh_norm":
             return x / math.hypot(1.0, x)
@@ -1726,7 +1716,7 @@ class MyRLEnv(Base5ActionRLEnv):
         See ``_apply_potential_shaping`` for complete PBRS documentation.
         """
         mode = self._exit_potential_mode
-        if mode == "canonical":
+        if mode == "canonical" or mode == "non-canonical":
             return 0.0
         if mode == "progressive_release":
             decay = self._exit_potential_decay
@@ -1766,6 +1756,18 @@ class MyRLEnv(Base5ActionRLEnv):
         return self._exit_potential_mode == "canonical" and not (
             self._entry_additive_enabled or self._exit_additive_enabled
         )
+
+    @staticmethod
+    def is_unsupported_pbrs_config(
+        hold_potential_enabled: bool, add_state_info: bool
+    ) -> bool:
+        """Return True if PBRS potential relies on hidden (non-observed) state.
+
+        Case: hold_potential enabled while auxiliary state info (pnl, trade_duration) is excluded
+        from the observation space (add_state_info=False). In that situation, Φ(s) uses hidden
+        variables and PBRS becomes informative, voiding the strict policy invariance guarantee.
+        """
+        return hold_potential_enabled and not add_state_info
 
     def _apply_potential_shaping(
         self,
@@ -1825,7 +1827,7 @@ class MyRLEnv(Base5ActionRLEnv):
         **Bounded Transform Functions** (range [-1,1]):
         - tanh: smooth saturation, tanh(x)
         - softsign: x/(1+|x|), gentler than tanh
-        - softsign_sharp: softsign(sharpness*x), tunable steepness
+        - softsign_sharp: (sharpness*x)/(1+|sharpness*x|), custom saturation control
         - arctan: (2/π)*arctan(x), linear near origin
         - logistic: 2σ(x)-1 where σ(x)=1/(1+e^(-x)), numerically stable implementation
         - asinh_norm: x/√(1+x²), normalized asinh-like
@@ -1948,9 +1950,13 @@ class MyRLEnv(Base5ActionRLEnv):
             else:
                 shaping_reward = 0.0
                 self._last_potential = 0.0
-            entry_additive = self._compute_entry_additive(
-                pnl=next_pnl, pnl_target=pnl_target, duration_ratio=next_duration_ratio
-            )
+            entry_additive = 0.0
+            if self._entry_additive_enabled and not self.is_pbrs_invariant_mode():
+                entry_additive = self._compute_entry_additive(
+                    pnl=next_pnl,
+                    pnl_target=pnl_target,
+                    duration_ratio=next_duration_ratio,
+                )
             self._last_shaping_reward = float(shaping_reward)
             self._total_shaping_reward += float(shaping_reward)
             return base_reward + shaping_reward + entry_additive
@@ -1968,7 +1974,10 @@ class MyRLEnv(Base5ActionRLEnv):
             self._total_shaping_reward += float(shaping_reward)
             return base_reward + shaping_reward
         elif is_exit:
-            if self._exit_potential_mode == "canonical":
+            if (
+                self._exit_potential_mode == "canonical"
+                or self._exit_potential_mode == "non-canonical"
+            ):
                 next_potential = 0.0
                 exit_shaping_reward = -prev_potential
             else:
@@ -2175,15 +2184,23 @@ class MyRLEnv(Base5ActionRLEnv):
         model_reward_parameters = self.rl_config.get("model_reward_parameters", {})
 
         pnl_target_factor = 1.0
-        if pnl_target > 0.0 and pnl > pnl_target:
-            win_reward_factor = float(
-                model_reward_parameters.get("win_reward_factor", 2.0)
-            )
+        if pnl_target > 0.0:
             pnl_factor_beta = float(model_reward_parameters.get("pnl_factor_beta", 0.5))
             pnl_ratio = pnl / pnl_target
-            pnl_target_factor = 1.0 + win_reward_factor * math.tanh(
-                pnl_factor_beta * (pnl_ratio - 1.0)
-            )
+            if abs(pnl_ratio) > 1.0:
+                base_pnl_target_factor = math.tanh(
+                    pnl_factor_beta * (abs(pnl_ratio) - 1.0)
+                )
+                win_reward_factor = float(
+                    model_reward_parameters.get("win_reward_factor", 2.0)
+                )
+                if pnl_ratio > 1.0:
+                    pnl_target_factor = 1.0 + win_reward_factor * base_pnl_target_factor
+                elif pnl_ratio < -(1.0 / self.rr):
+                    loss_penalty_factor = win_reward_factor * self.rr
+                    pnl_target_factor = (
+                        1.0 + loss_penalty_factor * base_pnl_target_factor
+                    )
 
         efficiency_factor = 1.0
         efficiency_weight = float(model_reward_parameters.get("efficiency_weight", 1.0))
