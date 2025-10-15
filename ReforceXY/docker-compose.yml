@@ -18,7 +18,7 @@ services:
       dockerfile: Dockerfile.reforcexy
       args:
         optuna_version: 4.5.0
-    restart: unless-stopped
+    # restart: unless-stopped
     container_name: freqtrade-ReforceXY
     environment:
       - TZ=Europe/Paris
