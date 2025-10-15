@@ -1,122 +1,87 @@
-# 📊 Reward Space Analysis - User Guide
+# Reward Space Analysis (ReforceXY)
 
-**Analyze and validate ReforceXY reward logic with synthetic data**
+Deterministic synthetic sampling with diagnostics for reward shaping, penalties, PBRS invariance.
 
----
+## Key Capabilities
 
-## 🎯 What is this?
-
-This tool helps you understand and validate how the ReforceXY reinforcement learning environment calculates rewards. It generates synthetic trading scenarios to analyze reward behavior across different market conditions.
-
-### Key Features
-
-- ✅ Generate thousands of synthetic trading scenarios deterministically
-- ✅ Analyze reward distribution, feature importance & partial dependence
-- ✅ Built-in invariant & statistical validation layers (fail-fast)
-- ✅ PBRS (Potential-Based Reward Shaping) integration with canonical invariance
-- ✅ Export reproducible artifacts (parameter hash + execution manifest)
-- ✅ Compare synthetic vs real trading data (distribution shift metrics)
-- ✅ Parameter bounds validation & automatic sanitization
-
----
-
-**New to this tool?** Start with [Common Use Cases](#-common-use-cases) then explore [CLI Parameters](#️-cli-parameters-reference).
+- Scalable synthetic scenario generation (reproducible)
+- Reward component decomposition & bounds checks
+- PBRS modes: canonical, non-canonical, progressive_release, spike_cancel, retain_previous
+- Feature importance & optional partial dependence
+- Statistical tests (hypothesis, bootstrap CIs, distribution diagnostics)
+- Real vs synthetic shift metrics
+- Manifest + parameter hash
 
 ## Table of contents
 
-- [What is this?](#-what-is-this)
-- [Key Features](#key-features)
-- [Common Use Cases](#-common-use-cases)
+- [Key Capabilities](#key-capabilities)
+- [Prerequisites](#prerequisites)
+- [Common Use Cases](#common-use-cases)
     - [1. Validate Reward Logic](#1-validate-reward-logic)
-    - [2. Analyze Parameter Sensitivity](#2-analyze-parameter-sensitivity)
-    - [3. Debug Reward Issues](#3-debug-reward-issues)
-    - [4. Compare Real vs Synthetic Data](#4-compare-real-vs-synthetic-data)
-- [Prerequisites](#-prerequisites)
-    - [System Requirements](#system-requirements)
-    - [Virtual environment setup](#virtual-environment-setup)
-- [CLI Parameters Reference](#️-cli-parameters-reference)
+    - [2. Parameter Sensitivity](#2-parameter-sensitivity)
+    - [3. Debug Anomalies](#3-debug-anomalies)
+    - [4. Real vs Synthetic](#4-real-vs-synthetic)
+- [CLI Parameters](#cli-parameters)
     - [Required Parameters](#required-parameters)
-    - [Core Simulation Parameters](#core-simulation-parameters)
+    - [Core Simulation](#core-simulation)
     - [Reward Configuration](#reward-configuration)
-    - [PnL / Volatility Controls](#pnl--volatility-controls)
+    - [PnL / Volatility](#pnl--volatility)
     - [Trading Environment](#trading-environment)
-    - [Output Configuration](#output-configuration)
-    - [Reproducibility Model](#reproducibility-model)
-    - [Direct Tunable Overrides vs `--params`](#direct-tunable-overrides-vs---params)
-- [Example Commands](#-example-commands)
-- [Understanding Results](#-understanding-results)
-    - [Main Report](#main-report)
+    - [Output & Overrides](#output--overrides)
+    - [Parameter Cheat Sheet](#parameter-cheat-sheet)
+    - [Exit Attenuation Kernels](#exit-attenuation-kernels)
+    - [Transform Functions](#transform-functions)
+    - [Skipping Feature Analysis](#skipping-feature-analysis)
+    - [Reproducibility](#reproducibility)
+    - [Overrides vs `--params`](#overrides-vs---params)
+- [Examples](#examples)
+- [Outputs](#outputs)
+    - [Main Report](#main-report-statistical_analysismd)
     - [Data Exports](#data-exports)
-    - [Manifest Structure (`manifest.json`)](#manifest-structure-manifestjson)
-    - [Distribution Shift Metric Conventions](#distribution-shift-metric-conventions)
-- [Advanced Usage](#-advanced-usage)
+    - [Manifest](#manifest-manifestjson)
+    - [Distribution Shift Metrics](#distribution-shift-metrics)
+- [Advanced Usage](#advanced-usage)
     - [Custom Parameter Testing](#custom-parameter-testing)
     - [Real Data Comparison](#real-data-comparison)
     - [Batch Analysis](#batch-analysis)
-- [Validation & Testing](#-validation--testing)
+- [Testing](#testing)
     - [Run Tests](#run-tests)
-    - [Code Coverage Analysis](#code-coverage-analysis)
+    - [Coverage](#coverage)
     - [When to Run Tests](#when-to-run-tests)
-    - [Run Specific Test Categories](#run-specific-test-categories)
-- [Troubleshooting](#-troubleshooting)
-    - [No Output Files Generated](#no-output-files-generated)
+    - [Focused Test Sets](#focused-test-sets)
+- [Troubleshooting](#troubleshooting)
+    - [No Output Files](#no-output-files)
     - [Unexpected Reward Values](#unexpected-reward-values)
     - [Slow Execution](#slow-execution)
     - [Memory Errors](#memory-errors)
 
-## 📦 Prerequisites
+## Prerequisites
 
-### System Requirements
-
-- Python 3.8+
-- 4GB RAM minimum (8GB recommended for large analyses)
-- No GPU required
-
-### Virtual environment setup
-
-Keep the tooling self-contained by creating a virtual environment directly inside `ReforceXY/reward_space_analysis` and installing packages against it:
+Requirements: Python 3.8+, ≥4GB RAM (CPU only). Recommended venv:
 
 ```shell
-# From the repository root
 cd ReforceXY/reward_space_analysis
 python -m venv .venv
 source .venv/bin/activate
-pip install pandas numpy scipy scikit-learn
+pip install pandas numpy scipy scikit-learn pytest
 ```
 
-Whenever you need to run analyses, activate the environment first and execute:
-
+Run:
 ```shell
-source .venv/bin/activate
-python reward_space_analysis.py --num_samples 20000 --output reward_space_outputs
+python reward_space_analysis.py --num_samples 20000 --output out
 ```
 
-> Deactivate the environment with `deactivate` when you're done.
-
-Unless otherwise noted, the command examples below assume your current working directory is `ReforceXY/reward_space_analysis` and the virtual environment is activated.
-
----
-
-## 💡 Common Use Cases
+## Common Use Cases
 
 ### 1. Validate Reward Logic
 
-**Goal:** Ensure rewards behave as expected in different scenarios
-
 ```shell
 python reward_space_analysis.py --num_samples 20000 --output reward_space_outputs
 ```
 
-**Check in `statistical_analysis.md`:**
+See `statistical_analysis.md` (1–3): positive exit averages (long & short), negative invalid penalties, monotonic idle reduction, zero invariance failures.
 
-- Long/Short exits should have positive average rewards
-- Invalid actions should have negative penalties (default: -2.0)
-- Idle periods should reduce rewards progressively
-- Validation layers report any invariant violations
-
-### 2. Analyze Parameter Sensitivity
-
-**Goal:** See how reward parameters affect trading behavior
+### 2. Parameter Sensitivity
 
 ```shell
 # Test different win reward factors
@@ -137,11 +102,9 @@ python reward_space_analysis.py \
     --output pbrs_analysis
 ```
 
-**Compare:** Reward distributions between runs in `statistical_analysis.md`
+Compare reward distribution & component share deltas across runs.
 
-### 3. Debug Reward Issues
-
-**Goal:** Identify why your RL agent behaves unexpectedly
+### 3. Debug Anomalies
 
 ```shell
 # Generate detailed analysis
@@ -150,16 +113,9 @@ python reward_space_analysis.py \
     --output debug_analysis
 ```
 
-**Look at:**
+Focus: feature importance, shaping activation, invariance drift, extremes.
 
-- `statistical_analysis.md` - Comprehensive report with:
-  - Feature importance and model diagnostics
-  - Statistical significance of relationships
-  - Hypothesis tests and confidence intervals
-
-### 4. Compare Real vs Synthetic Data
-
-**Goal:** Validate synthetic analysis against real trading
+### 4. Real vs Synthetic
 
 ```shell
 # First, collect real episodes (see Advanced Usage section)
@@ -172,117 +128,79 @@ python reward_space_analysis.py \
 
 ---
 
-## ⚙️ CLI Parameters Reference
+## CLI Parameters
 
 ### Required Parameters
 
-None - all parameters have sensible defaults.
+None (all have defaults).
 
-### Core Simulation Parameters
+### Core Simulation
 
-**`--num_samples`** (int, default: 20000)
+**`--num_samples`** (int, default: 20000) – Synthetic scenarios. More = better stats (slower). Recommended: 10k (quick), 50k (standard), 100k+ (deep).
 
-- Number of synthetic trading scenarios to generate
-- More samples = more accurate statistics but slower analysis
-- Recommended: 10,000 (quick test), 50,000 (standard), 100,000+ (detailed)
+**`--seed`** (int, default: 42) – Master seed (reuse for identical runs).
 
-**`--seed`** (int, default: 42)
-
-- Random seed for reproducibility
-- Use same seed to get identical results across runs
-
-**`--max_trade_duration`** (int, default: 128)
-
-- Maximum trade duration in candles (from environment config)
-- Should match your actual trading environment setting
-- Drives idle grace: when `max_idle_duration_candles` fallback = `2 * max_trade_duration`
+**`--max_trade_duration`** (int, default: 128) – Max trade duration (candles). Idle grace fallback: `max_idle_duration_candles = 4 * max_trade_duration`.
 
 ### Reward Configuration
 
-**`--base_factor`** (float, default: 100.0)
+**`--base_factor`** (float, default: 100.0) – Base reward scale (match environment).
 
-- Base reward scaling factor (from environment config)
-- Should match your environment's base_factor
+**`--profit_target`** (float, default: 0.03) – Target profit (e.g. 0.03=3%) for exit reward.
 
-**`--profit_target`** (float, default: 0.03)
+**`--risk_reward_ratio`** (float, default: 1.0) – Adjusts effective profit target.
 
-- Target profit threshold as decimal (e.g., 0.03 = 3%)
-- Used for exit reward
+**`--max_duration_ratio`** (float, default: 2.5) – Upper multiple for sampled trade/idle durations (higher = more variety).
 
-**`--risk_reward_ratio`** (float, default: 1.0)
+### PnL / Volatility
 
-- Risk/reward ratio multiplier
-- Affects profit target adjustment in reward calculations
+Controls synthetic PnL variance (heteroscedastic; grows with duration):
 
-**`--max_duration_ratio`** (float, default: 2.5)
+**`--pnl_base_std`** (float, default: 0.02) – Volatility floor.
 
-- Multiple of max_trade_duration used for sampling trade/idle durations
-- Higher = more variety in duration scenarios
-
-### PnL / Volatility Controls
-
-These parameters shape the synthetic PnL generation process and heteroscedasticity (variance increasing with duration):
-
-**`--pnl_base_std`** (float, default: 0.02)
-- Base standard deviation (volatility floor) for generated PnL before duration scaling.
-
-**`--pnl_duration_vol_scale`** (float, default: 0.5)
-- Multiplicative scaling of additional volatility proportional to (trade_duration / max_trade_duration).
-- Higher values = stronger heteroscedastic effect.
+**`--pnl_duration_vol_scale`** (float, default: 0.5) – Extra volatility × (duration/max_trade_duration). Higher ⇒ stronger.
 
 ### Trading Environment
 
-**`--trading_mode`** (choice: spot|margin|futures, default: spot)
+**`--trading_mode`** (spot|margin|futures, default: spot) – spot: no shorts; margin/futures: shorts enabled.
 
-- **spot**: Disables short selling
-- **margin**: Enables short positions
-- **futures**: Enables short positions
+**`--action_masking`** (bool, default: true) – Simulate action masking (match environment).
 
-**`--action_masking`** (choice: true|false|1|0|yes|no, default: true)
+### Output & Overrides
 
-- Enable/disable action masking simulation
-- Should match your environment configuration
+**`--output`** (path, default: reward_space_outputs) – Output directory (auto-created).
 
-### Output Configuration
+**`--params`** (k=v ...) – Override reward params. Example: `--params win_reward_factor=3.0 idle_penalty_scale=2.0`.
 
-**`--output`** (path, default: reward_space_outputs)
+All tunables mirror `DEFAULT_MODEL_REWARD_PARAMETERS`. Flags or `--params` (wins on conflicts).
 
-- Output directory for all generated files
-- Will be created if it doesn't exist
+### Parameter Cheat Sheet
 
-**`--params`** (key=value pairs)
+Core frequently tuned parameters:
 
-- Override any reward parameter from DEFAULT_MODEL_REWARD_PARAMETERS
-- Format: `--params key1=value1 key2=value2`
-- Example: `--params win_reward_factor=3.0 idle_penalty_scale=2.0`
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `win_reward_factor` | 2.0 | Profit overshoot multiplier |
+| `pnl_factor_beta` | 0.5 | PnL amplification beta |
+| `idle_penalty_scale` | 0.5 | Idle penalty scale |
+| `idle_penalty_power` | 1.025 | Idle penalty exponent (>1 slightly convex) |
+| `max_idle_duration_candles` | None | Idle duration cap; fallback 4× max trade duration |
+| `hold_penalty_scale` | 0.25 | Hold penalty scale |
+| `hold_penalty_power` | 1.025 | Hold penalty exponent |
+| `exit_attenuation_mode` | linear | Exit attenuation kernel |
+| `exit_plateau` | true | Flat region before attenuation starts |
+| `exit_plateau_grace` | 1.0 | Plateau duration ratio grace |
+| `exit_linear_slope` | 1.0 | Linear kernel slope |
+| `exit_power_tau` | 0.5 | Tau controlling power kernel decay (0,1] |
+| `exit_half_life` | 0.5 | Half-life for half_life kernel |
+| `potential_gamma` | 0.9 | PBRS discount γ |
+| `exit_potential_mode` | canonical | Exit potential mode |
+| `efficiency_weight` | 1.0 | Efficiency contribution weight |
+| `efficiency_center` | 0.5 | Efficiency pivot in [0,1] |
 
-**All tunable parameters (override with --params):**
+For full list & exact defaults see `reward_space_analysis.py` (`DEFAULT_MODEL_REWARD_PARAMETERS`).
 
-_Invalid action penalty:_
-
-- `invalid_action` (default: -2.0) - Penalty for invalid actions
-
-_Idle penalty configuration:_
-
-- `idle_penalty_scale` (default: 0.5) - Scale of idle penalty
-- `idle_penalty_power` (default: 1.025) - Power applied to idle penalty scaling
-
-_Hold penalty configuration:_
-
-- `hold_penalty_scale` (default: 0.25) - Scale of hold penalty
-- `hold_penalty_power` (default: 1.025) - Power applied to hold penalty scaling
-
-_Exit attenuation configuration:_
-
-- `exit_attenuation_mode` (default: linear) - Selects attenuation kernel (see table below: legacy|sqrt|linear|power|half_life). Fallback to linear.
-- `exit_plateau` (default: true) - Enables plateau (no attenuation until `exit_plateau_grace`).
-- `exit_plateau_grace` (default: 1.0) - Duration ratio boundary of full-strength region (may exceed 1.0).
-- `exit_linear_slope` (default: 1.0) - Slope parameter used only when mode = linear.
-- `exit_power_tau` (default: 0.5) - Tau ∈ (0,1]; internally mapped to alpha (see kernel table).
-- `exit_half_life` (default: 0.5) - Half-life parameter for the half_life kernel.
-- `exit_factor_threshold` (default: 10000.0) - Warning-only soft threshold (emits RuntimeWarning; no capping).
-
-**Attenuation kernels**:
+### Exit Attenuation Kernels
 
 Let r be the raw duration ratio and grace = `exit_plateau_grace`.
 
@@ -302,38 +220,7 @@ effective_r = r            if not exit_plateau
 
 Where r* = `effective_r` above.
 
-_Efficiency configuration:_
-
-- `efficiency_weight` (default: 1.0) - Weight for efficiency factor in exit reward
-- `efficiency_center` (default: 0.5) - Linear pivot in [0,1] for efficiency ratio. If efficiency_ratio > center ⇒ amplification (>1); if < center ⇒ attenuation (<1, floored at 0).
-
-_Profit factor configuration:_
-
-- `win_reward_factor` (default: 2.0) - Asymptotic bonus multiplier for PnL above target. Raw `profit_target_factor` ∈ [1, 1 + win_reward_factor] (tanh bounds it); overall amplification may exceed this once multiplied by `efficiency_factor`.
-- `pnl_factor_beta` (default: 0.5) - Sensitivity of amplification around target
-
-_PBRS (Potential-Based Reward Shaping) configuration:_
-
-- `potential_gamma` (default: 0.95) - Discount factor γ for PBRS potential term (0 ≤ γ ≤ 1)
-- `exit_potential_mode` (default: canonical) - Exit potential mode: 'canonical' (Φ=0, preserves invariance, disables additives), 'non-canonical' (Φ=0, allows additives, breaks invariance), 'progressive_release', 'spike_cancel', 'retain_previous'
-- `exit_potential_decay` (default: 0.5) - Decay factor for progressive_release exit mode (0 ≤ decay ≤ 1)
-- `hold_potential_enabled` (default: true) - Enable PBRS hold potential function Φ(s)
-- `hold_potential_scale` (default: 1.0) - Scale factor for hold potential function
-- `hold_potential_gain` (default: 1.0) - Gain factor applied before transforms in hold potential
-- `hold_potential_transform_pnl` (default: tanh) - Transform function for PnL: tanh, softsign, arctan, sigmoid, asinh, clip
-- `hold_potential_transform_duration` (default: tanh) - Transform function for duration ratio
-- `entry_additive_enabled` (default: false) - Enable entry additive reward (non-PBRS component)
-- `entry_additive_scale` (default: 1.0) - Scale factor for entry additive reward
-- `entry_additive_gain` (default: 1.0) - Gain factor for entry additive reward
-- `entry_additive_transform_pnl` (default: tanh) - Transform function for PnL in entry additive
-- `entry_additive_transform_duration` (default: tanh) - Transform function for duration ratio in entry additive
-- `exit_additive_enabled` (default: false) - Enable exit additive reward (non-PBRS component)
-- `exit_additive_scale` (default: 1.0) - Scale factor for exit additive reward
-- `exit_additive_gain` (default: 1.0) - Gain factor for exit additive reward
-- `exit_additive_transform_pnl` (default: tanh) - Transform function for PnL in exit additive
-- `exit_additive_transform_duration` (default: tanh) - Transform function for duration ratio in exit additive
-
-**Transform functions**:
+### Transform Functions
 
 | Transform | Formula | Range | Characteristics | Use Case |
 |-----------|---------|-------|-----------------|----------|
@@ -344,73 +231,26 @@ _PBRS (Potential-Based Reward Shaping) configuration:_
 | `asinh` | x / sqrt(1 + x^2) | (-1, 1) | Normalized asinh-like transform | Extreme outlier robustness |
 | `clip` | clip(x, -1, 1) | [-1, 1] | Hard clipping at ±1 | Preserve linearity within bounds |
 
-_Invariant / safety controls:_
+Invariant toggle: disable only for performance experiments (diagnostics become advisory).
 
-- `check_invariants` (default: true) - Enable/disable runtime invariant & safety validations (simulation invariants, mathematical bounds, distribution checks). Set to `false` only for performance experiments; not recommended for production validation.
+### Skipping Feature Analysis
 
-**`--real_episodes`** (path, optional)
+**`--skip_partial_dependence`**: skip PD curves (faster).
 
-- Path to real episode rewards pickle file for distribution comparison
-- Enables distribution shift analysis (KL(synthetic‖real), JS distance, Wasserstein distance, KS test)
-- Example: `path/to/episode_rewards.pkl`
-
-**`--pvalue_adjust`** (choice: none|benjamini_hochberg, default: none)
-
-- Apply multiple hypothesis testing correction (Benjamini–Hochberg) to p-values in statistical hypothesis tests.
-- When set to `benjamini_hochberg`, adjusted p-values and adjusted significance flags are added to the reports.
-
-**`--stats_seed`** (int, optional; default: inherit `--seed`)
-
-- Dedicated seed for statistical analyses (hypothesis tests, bootstrap confidence intervals, distribution diagnostics).
-- Use this if you want to generate multiple independent statistical analyses over the same synthetic dataset without re-simulating samples.
-- If omitted, falls back to `--seed` for full run determinism.
-
-**`--strict_diagnostics`** (flag, default: disabled)
-
-Fail-fast switch controlling handling of degenerate statistical situations:
-
-| Condition | Graceful (default) | Strict (`--strict_diagnostics`) |
-|-----------|--------------------|---------------------------------|
-| Zero-width bootstrap CI | Widen by epsilon (~1e-9) + warning | Abort (AssertionError) |
-| NaN skewness/kurtosis (constant distribution) | Replace with 0.0 + warning | Abort |
-| NaN Anderson statistic (constant distribution) | Replace with 0.0 + warning | Abort |
-| NaN Q-Q R² (constant distribution) | Replace with 1.0 + warning | Abort |
-
-Use strict mode in CI or research contexts requiring hard guarantees; keep default for exploratory analysis to avoid aborting entire runs on trivial constants.
-
-**`--bootstrap_resamples`** (int, default: 10000)
-
-- Number of bootstrap resamples used for confidence intervals (percentile method).
-- Lower values (< 500) yield coarse intervals; a warning (RewardDiagnosticsWarning) is emitted if below internal recommended minimum (currently 200) to help with very fast exploratory runs.
-- Increase for more stable interval endpoints (typical: 5000–20000). Runtime scales roughly linearly.
-
-**`--skip_partial_dependence`** (flag, default: disabled)
-
-- When set, skips computation and export of partial dependence CSV files, reducing runtime (often 30–60% faster for large sample sizes) at the cost of losing marginal response curve inspection.
-- Feature importance (RandomForest Gini importance + permutation importance) is still computed.
-
-**`--skip-feature-analysis`** (flag, default: disabled)
-
-- Skips the entire model-based feature analysis block: no RandomForest training, no permutation importance, no feature_importance.csv, no partial_dependence_*.csv (regardless of `--skip_partial_dependence`).
-- Automatically suppresses any partial dependence computation even if `--skip_partial_dependence` is not provided (hard superset).
-- Useful for ultra-fast smoke / CI runs or very low sample exploratory checks (e.g. `--num_samples < 4`) where the model would not be statistically meaningful.
+**`--skip_feature-analysis`**: skip model, importance, PD.
 
 Hierarchy / precedence of skip flags:
 
-| Scenario | `--skip-feature-analysis` | `--skip_partial_dependence` | Feature Importance | Partial Dependence | Report Section 4 |
+| Scenario | `--skip_feature-analysis` | `--skip_partial_dependence` | Feature Importance | Partial Dependence | Report Section 4 |
 |----------|---------------------------|-----------------------------|--------------------|-------------------|------------------|
 | Default (no flags) | ✗ | ✗ | Yes | Yes | Full (R², top features, exported data) |
 | PD only skipped | ✗ | ✓ | Yes | No | Full (PD line shows skipped note) |
 | Feature analysis skipped | ✓ | ✗ | No | No | Marked “(skipped)” with reason(s) |
 | Both flags | ✓ | ✓ | No | No | Marked “(skipped)” + note PD redundant |
 
-Additional notes:
+Auto-skip if `num_samples < 4`.
 
-- If `--num_samples < 4`, feature analysis is automatically skipped (insufficient rows to perform train/test split) and the summary marks the section as skipped with reason.
-- Providing `--skip_partial_dependence` together with `--skip-feature-analysis` is harmless; the report clarifies redundancy.
-- Skipping feature analysis reduces runtime and memory footprint significantly for large `--num_samples` (avoid building a 400-tree forest + permutation loops).
-
-### Reproducibility Model
+### Reproducibility
 
 | Component | Controlled By | Notes |
 |-----------|---------------|-------|
@@ -419,7 +259,7 @@ Additional notes:
 | RandomForest & permutation importance | `--seed` | Ensures identical splits and tree construction. |
 | Partial dependence grids | Deterministic | Depends only on fitted model & data. |
 
-Common patterns:
+Patterns:
 ```shell
 # Same synthetic data, two different statistical re-analysis runs
 python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9001 --output run_stats1
@@ -429,9 +269,9 @@ python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9002
 python reward_space_analysis.py --num_samples 50000 --seed 777
 ```
 
-### Direct Tunable Overrides vs `--params`
+### Overrides vs `--params`
 
-All reward parameters are also available as individual CLI flags. You may choose either style:
+Reward parameters also have individual flags:
 
 ```shell
 # Direct flag style
@@ -441,9 +281,9 @@ python reward_space_analysis.py --win_reward_factor 3.0 --idle_penalty_scale 2.0
 python reward_space_analysis.py --params win_reward_factor=3.0 idle_penalty_scale=2.0 --num_samples 15000
 ```
 
-If both a direct flag and the same key in `--params` are provided, the `--params` value takes highest precedence.
+`--params` wins on conflicts.
 
-## 📝 Example Commands
+## Examples
 
 ```shell
 # Quick test with defaults
@@ -477,28 +317,11 @@ python reward_space_analysis.py \
 
 ---
 
-## 📊 Understanding Results
+## Outputs
 
-The analysis generates the following output files:
+### Main Report (`statistical_analysis.md`)
 
-### Main Report
-
-**`statistical_analysis.md`** - Comprehensive statistical analysis containing:
-
-1. **Global Statistics** - Reward distribution, per-action stats, component activation & ranges.
-2. **Sample Representativity** - Position/action distributions, critical regime coverage, component activation recap.
-3. **Reward Component Analysis** - Binned relationships (idle, hold, exit), correlation matrix (constant features removed), PBRS analysis (activation rates, component stats, invariance summary).
-4. **Feature Importance** - Random Forest importance + partial dependence.
-5. **Statistical Validation** - Hypothesis tests, bootstrap confidence intervals, normality diagnostics, optional distribution shift (5.4) when real episodes provided.
-
-**Summary** - 7-point concise synthesis:
-1. Reward distribution health (center, spread, tail asymmetry)
-2. Action & position coverage (usage %, invalid rate, masking efficacy)
-3. Component contributions (activation rates + mean / |mean| ranking)
-4. Exit attenuation behavior (mode, continuity, effective decay characteristics)
-5. Feature signal quality (model R², leading predictors, stability notes)
-6. Statistical outcomes (significant correlations / tests, any multiple-testing adjustment applied, distribution shift if real data)
-7. PBRS invariance verdict (|Σ shaping| < 1e-6 => canonical; otherwise non-canonical with absolute deviation)
+Includes: global stats, representativity, component + PBRS analysis, feature importance/PD, statistical validation (tests, CIs, diagnostics), optional shift metrics, summary.
 
 ### Data Exports
 
@@ -509,7 +332,7 @@ The analysis generates the following output files:
 | `partial_dependence_*.csv` | Partial dependence data for key features             |
 | `manifest.json`            | Runtime manifest (simulation + reward params + hash) |
 
-### Manifest Structure (`manifest.json`)
+### Manifest (`manifest.json`)
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -524,9 +347,9 @@ The analysis generates the following output files:
 | `simulation_params` | object | All simulation inputs (num_samples, seed, volatility knobs, etc.). |
 | `params_hash` | string (sha256) | Hash over ALL `simulation_params` + ALL `reward_params` (lexicographically ordered). |
 
-Reproducibility: two runs are input-identical iff their `params_hash` values match. Because defaults are included in the hash, modifying a default value (even if not overridden) changes the hash.
+Two runs match iff `params_hash` identical (defaults included in hash scope).
 
-### Distribution Shift Metric Conventions
+### Distribution Shift Metrics
 
 | Metric | Definition | Notes |
 |--------|------------|-------|
@@ -536,19 +359,15 @@ Reproducibility: two runs are input-identical iff their `params_hash` values mat
 | `*_ks_statistic` | KS two-sample statistic | ∈ [0,1]; higher = greater divergence. |
 | `*_ks_pvalue` | KS test p-value | ∈ [0,1]; small ⇒ reject equality (at α). |
 
-Implementation details:
-- Histograms: 50 uniform bins spanning min/max across both samples.
-- Probabilities: counts + ε (1e-10) then normalized ⇒ avoids log(0) and division by zero.
-- Degenerate distributions short-circuit to zeros / p-value 1.0.
-- JS distance instead of raw JS divergence for bounded interpretability and smooth interpolation.
+Implementation: 50-bin hist; add ε=1e-10 before normalizing; constants ⇒ zero divergence, KS p=1.0.
 
 ---
 
-## 🔬 Advanced Usage
+## Advanced Usage
 
 ### Custom Parameter Testing
 
-Test different reward parameter configurations to understand their impact:
+Test reward parameter configurations:
 
 ```shell
 # Test power-based exit attenuation with custom tau
@@ -583,7 +402,7 @@ python reward_space_analysis.py \
 
 ### Real Data Comparison
 
-For production validation, compare synthetic analysis with real trading episodes:
+Compare with real trading episodes:
 
 ```shell
 python reward_space_analysis.py \
@@ -592,7 +411,7 @@ python reward_space_analysis.py \
     --output real_vs_synthetic
 ```
 
-The report will include distribution shift metrics (KL divergence ≥ 0, JS distance ∈ [0,1], Wasserstein ≥ 0, KS statistic ∈ [0,1], KS p-value ∈ [0,1]) showing how well synthetic samples represent real trading. Degenerate (constant) distributions are auto-detected and produce zero divergence and KS p-value = 1.0 to avoid spurious instability.
+Shift metrics: lower is better (except p-value: higher ⇒ cannot reject equality).
 
 ### Batch Analysis
 
@@ -608,7 +427,7 @@ done
 
 ---
 
-## 🧪 Validation & Testing
+## Testing
 
 ### Run Tests
 
@@ -619,7 +438,7 @@ pip install pytest packaging
 pytest -q
 ```
 
-### Code Coverage Analysis
+### Coverage
 
 ```shell
 pip install pytest-cov
@@ -635,7 +454,7 @@ pytest -q --cov=. --cov-report=html # open htmlcov/index.html
 - After updating dependencies or Python version
 - When contributing new features (aim for >80% coverage on new code)
 
-### Run Specific Test Categories
+### Focused Test Sets
 
 ```shell
 pytest -q test_reward_space_analysis.py::TestIntegration
@@ -646,52 +465,21 @@ pytest -q test_reward_space_analysis.py::TestRewardAlignment
 
 ---
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
-### No Output Files Generated
+### No Output Files
 
-**Symptom:** Script completes but no files in output directory
-
-**Solution:**
-
-- Check write permissions in output directory
-- Ensure sufficient disk space (min 100MB free)
-- Verify Python path is correct
+Check permissions, disk space, working directory.
 
 ### Unexpected Reward Values
 
-**Symptom:** Rewards don't match expected behavior
-
-**Solution:**
-
-- Run `test_reward_space_analysis.py` to validate logic
-- Review parameter overrides with `--params`
-- Check trading mode settings (spot vs margin/futures)
-- Verify `base_factor` matches your environment config
-- Check PBRS settings: `hold_potential_enabled`, `exit_potential_mode`, and transform functions
-- Review parameter adjustments in output logs for any automatic bound clamping
+Run tests; inspect overrides; confirm trading mode, PBRS settings, clamps.
 
 ### Slow Execution
 
-**Symptom:** Analysis takes excessive time to complete
-
-**Solution:**
-
-- Reduce `--num_samples` (start with 10,000)
-- Use `--trading_mode spot` (fewer action combinations)
-- Close other memory-intensive applications
-- Use SSD storage for faster I/O
-- Use `--skip_partial_dependence` to skip marginal response curves
-- Temporarily lower `--bootstrap_resamples` (e.g. 1000) during iteration (expect wider CIs)
+Lower samples; skip PD/feature analysis; reduce resamples; ensure SSD.
 
 ### Memory Errors
 
-**Symptom:** `MemoryError` or system freeze
-
-**Solution:**
-
-- Reduce sample size to 10,000-20,000
-- Use 64-bit Python installation
-- Add more RAM or configure swap file
-- Process data in batches for custom analyses
+Reduce samples; ensure 64‑bit Python; batch processing; add RAM/swap.
 

@@ -1,41 +1,12 @@
 #!/usr/bin/env python3
-"""Synthetic reward space analysis for the ReforceXY environment.
+"""Synthetic reward space analysis utilities for ReforceXY.
 
-Capabilities:
-- Hypothesis testing (Spearman, Kruskal-Wallis, Mann-Whitney).
-- Percentile bootstrap confidence intervals (BCa not yet implemented).
-- Distribution diagnostics (Shapiro, Anderson, skewness, kurtosis, Q-Q R²).
-- Distribution shift metrics (KL divergence, JS distance, Wasserstein, KS test) with
-    degenerate (constant) distribution safeguards.
-- Unified RandomForest feature importance + partial dependence.
-- Heteroscedastic PnL simulation (variance scales with duration).
-
-Exit attenuation mode normalization:
-- User supplied ``exit_attenuation_mode`` is taken as-is (case-sensitive) and validated
-    against the allowed set. Any invalid value (including casing mismatch) results in a
-    silent fallback to ``'linear'``.
-
-Architecture principles:
-- Single source of truth: ``DEFAULT_MODEL_REWARD_PARAMETERS`` (dynamic CLI generation).
-- Determinism: explicit seeding, parameter hashing for manifest traceability.
-- Extensibility: modular helpers (sampling, reward calculation, statistics, reporting).
+Features:
+* Sample generation + reward computation (incl. PBRS).
+* Statistical tests, bootstrap CIs, distribution & shift metrics.
+* Feature importance + optional partial dependence.
+* CLI producing report + manifest (hashed parameters for reproducibility).
 """
-
-# ---------------------------------------------------------------------------
-# Module Layout
-# ---------------------------------------------------------------------------
-# Actual order in this module (kept for conceptual proximity):
-# 1.  Imports & global constants
-# 2.  Enums & type aliases
-# 3.  Default parameter definitions & validation utilities
-# 4.  Core generic helpers (parsing, coercion, safety)
-# 5.  Dataclasses (RewardContext, RewardBreakdown)
-# 6.  Reward computation primitives (penalties, exit factor, pnl factor, calculate_reward)
-# 7.  Simulation utilities (sampling, invariants)
-# 8.  Statistical / analytical helpers (summary stats, binned stats, tests, diagnostics)
-# 9.  PBRS transforms, helpers & implementation (potential shaping logic)
-# 10. CLI construction & reporting (argument parser, report writer, report generator)
-# 11. main() entry point
 
 from __future__ import annotations
 
@@ -168,44 +139,44 @@ DEFAULT_MODEL_REWARD_PARAMETERS: RewardParams = {
 }
 
 DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
-    "invalid_action": "Penalty for invalid actions.",
-    "base_factor": "Base reward factor used inside the environment.",
-    "idle_penalty_power": "Power applied to idle penalty scaling.",
-    "idle_penalty_scale": "Scale of idle penalty.",
-    "max_idle_duration_candles": "Maximum idle duration candles before full idle penalty scaling.",
-    "hold_penalty_scale": "Scale of hold penalty.",
-    "hold_penalty_power": "Power applied to hold penalty scaling.",
-    "exit_attenuation_mode": "Attenuation kernel (legacy|sqrt|linear|power|half_life).",
-    "exit_plateau": "Enable plateau. If true, full strength until grace boundary then apply attenuation.",
-    "exit_plateau_grace": "Grace boundary duration ratio for plateau (full strength until this boundary).",
-    "exit_linear_slope": "Slope for linear exit attenuation.",
-    "exit_power_tau": "Tau in (0,1] to derive alpha for power mode.",
-    "exit_half_life": "Half-life for exponential decay exit mode.",
-    "efficiency_weight": "Weight for efficiency factor in exit reward.",
-    "efficiency_center": "Pivot (in [0,1]) for linear efficiency factor; efficiency_ratio above this increases factor, below decreases.",
-    "win_reward_factor": "Asymptotic bonus multiplier for pnl above target: approaches (1 + win_reward_factor); combined with efficiency_factor the final product can exceed this bound.",
-    "pnl_factor_beta": "Sensitivity of amplification around target.",
-    "check_invariants": "Boolean flag (true/false) to enable runtime invariant & safety checks.",
-    "exit_factor_threshold": "If |exit factor| exceeds this threshold, emit warning.",
+    "invalid_action": "Penalty for invalid actions",
+    "base_factor": "Base reward scale",
+    "idle_penalty_power": "Idle penalty exponent",
+    "idle_penalty_scale": "Idle penalty scale",
+    "max_idle_duration_candles": "Idle duration cap (candles)",
+    "hold_penalty_scale": "Hold penalty scale",
+    "hold_penalty_power": "Hold penalty exponent",
+    "exit_attenuation_mode": "Exit kernel (legacy|sqrt|linear|power|half_life)",
+    "exit_plateau": "Use plateau before attenuation",
+    "exit_plateau_grace": "Plateau grace duration ratio",
+    "exit_linear_slope": "Linear kernel slope",
+    "exit_power_tau": "Tau for power kernel (0,1]",
+    "exit_half_life": "Half-life for exp kernel",
+    "efficiency_weight": "Efficiency weight",
+    "efficiency_center": "Efficiency pivot in [0,1]",
+    "win_reward_factor": "Profit overshoot bonus factor",
+    "pnl_factor_beta": "PnL amplification sensitivity",
+    "check_invariants": "Enable runtime invariant checks",
+    "exit_factor_threshold": "Warn if |exit_factor| exceeds",
     # PBRS parameters
-    "potential_gamma": "Discount factor γ for PBRS potential-based reward shaping (0 ≤ γ ≤ 1).",
-    "exit_potential_mode": "Exit potential mode: 'canonical' (Φ=0 & additives disabled), 'non-canonical' (Φ=0 & additives allowed), 'progressive_release', 'spike_cancel', 'retain_previous'.",
-    "exit_potential_decay": "Decay factor for progressive_release exit mode (0 ≤ decay ≤ 1).",
-    "hold_potential_enabled": "Enable PBRS hold potential function Φ(s).",
-    "hold_potential_scale": "Scale factor for hold potential function.",
-    "hold_potential_gain": "Gain factor applied before transforms in hold potential.",
-    "hold_potential_transform_pnl": "Transform function for PnL in hold potential: tanh, softsign, arctan, sigmoid, asinh, clip.",
-    "hold_potential_transform_duration": "Transform function for duration ratio in hold potential.",
-    "entry_additive_enabled": "Enable entry additive reward (non-PBRS component).",
-    "entry_additive_scale": "Scale factor for entry additive reward.",
-    "entry_additive_gain": "Gain factor for entry additive reward.",
-    "entry_additive_transform_pnl": "Transform function for PnL in entry additive (tanh, softsign, arctan, sigmoid, asinh, clip).",
-    "entry_additive_transform_duration": "Transform function for duration ratio in entry additive.",
-    "exit_additive_enabled": "Enable exit additive reward (non-PBRS component).",
-    "exit_additive_scale": "Scale factor for exit additive reward.",
-    "exit_additive_gain": "Gain factor for exit additive reward.",
-    "exit_additive_transform_pnl": "Transform function for PnL in exit additive (tanh, softsign, arctan, sigmoid, asinh, clip).",
-    "exit_additive_transform_duration": "Transform function for duration ratio in exit additive.",
+    "potential_gamma": "PBRS discount γ (0–1)",
+    "exit_potential_mode": "Exit potential mode (canonical|non-canonical|progressive_release|spike_cancel|retain_previous)",
+    "exit_potential_decay": "Decay for progressive_release (0–1)",
+    "hold_potential_enabled": "Enable hold potential Φ",
+    "hold_potential_scale": "Hold potential scale",
+    "hold_potential_gain": "Hold potential gain",
+    "hold_potential_transform_pnl": "Hold PnL transform",
+    "hold_potential_transform_duration": "Hold duration transform",
+    "entry_additive_enabled": "Enable entry additive",
+    "entry_additive_scale": "Entry additive scale",
+    "entry_additive_gain": "Entry additive gain",
+    "entry_additive_transform_pnl": "Entry PnL transform",
+    "entry_additive_transform_duration": "Entry duration transform",
+    "exit_additive_enabled": "Enable exit additive",
+    "exit_additive_scale": "Exit additive scale",
+    "exit_additive_gain": "Exit additive gain",
+    "exit_additive_transform_pnl": "Exit PnL transform",
+    "exit_additive_transform_duration": "Exit duration transform",
 }
 
 
@@ -377,7 +348,7 @@ def _is_short_allowed(trading_mode: str) -> bool:
 # Internal safe fallback helper for numeric failures (centralizes semantics)
 def _fail_safely(reason: str) -> float:
     """Return 0.0 on recoverable numeric failure (reason available for future debug hooks)."""
-    # NOTE: presently silent to preserve legacy behavior; hook logging here if needed.
+    # Silent fallback; hook logging if diagnostic visibility required.
     _ = reason
     return 0.0
 
@@ -385,28 +356,10 @@ def _fail_safely(reason: str) -> float:
 def validate_reward_parameters(
     params: RewardParams,
 ) -> Tuple[RewardParams, Dict[str, Dict[str, Any]]]:
-    """Validate and clamp reward parameter values.
+    """Clamp parameters to bounds and coerce booleans.
 
-    This function enforces numeric bounds declared in ``_PARAMETER_BOUNDS``. Values
-    outside their allowed range are clamped and an entry is recorded in the
-    ``adjustments`` mapping describing the original value, the adjusted value and the
-    reason (which bound triggered the change). Non‑finite values are reset to the
-    minimum bound (or 0.0 if no explicit minimum is defined).
-
-    It does NOT perform schema validation of any DataFrame (legacy text removed).
-
-    Parameters
-    ----------
-    params : dict
-        Raw user supplied reward parameter overrides (already merged with defaults
-        upstream). The dict is not mutated in‑place; a sanitized copy is returned.
-
-    Returns
-    -------
-    sanitized_params : dict
-        Possibly adjusted copy of the provided parameters.
-    adjustments : dict[str, dict]
-        Mapping: param -> {original, adjusted, reason} for every modified entry.
+    Returns sanitized copy plus adjustments mapping (param -> original/adjusted/reason).
+    Non‑finite numerics fall back to min bound or 0.0.
     """
     sanitized = dict(params)
     adjustments: Dict[str, Dict[str, Any]] = {}
@@ -460,16 +413,7 @@ def validate_reward_parameters(
 
 
 def _normalize_and_validate_mode(params: RewardParams) -> None:
-    """Align normalization of ``exit_attenuation_mode`` with ReforceXY environment.
-
-    Behavior (mirrors in-env logic):
-    - Do not force lowercase or strip user formatting; use the value as provided.
-    - Supported modes (case-sensitive): {legacy, sqrt, linear, power, half_life}.
-    - If the value is not among supported keys, silently fallback to 'linear'
-      without emitting a warning (environment side performs a silent fallback).
-    - If the key is absent or value is ``None``: leave untouched (upstream defaults
-      will inject 'linear').
-    """
+    """Validate exit_attenuation_mode; silently fallback to 'linear' if invalid."""
     if "exit_attenuation_mode" not in params:
         return
 
@@ -593,51 +537,7 @@ def _get_exit_factor(
     duration_ratio: float,
     params: RewardParams,
 ) -> float:
-    """Compute exit factor controlling time attenuation of exit reward.
-
-    Purpose
-    -------
-    Produces a multiplicative factor applied to raw PnL at exit:
-        exit_reward = pnl * exit_factor
-    where:
-        exit_factor = time_kernel(base_factor, effective_duration_ratio) * pnl_factor
-
-    Parity
-    ------
-    Mirrors environment method ``ReforceXY._get_exit_factor`` for offline / synthetic analysis.
-
-    Algorithm
-    ---------
-    1. Validate finiteness & clamp negative duration to 0.
-    2. Apply optional plateau: effective_dr = 0 while duration_ratio <= grace else (dr - grace).
-    3. Select kernel: legacy | sqrt | linear | power | half_life (all monotonic except legacy discontinuity at dr=1).
-    4. Multiply by externally supplied ``pnl_factor`` (profit & efficiency modulation).
-    5. Invariants & safety: non-finite -> 0; prevent negative factor on non-negative pnl; warn on large magnitude.
-
-    Parameters
-    ----------
-    base_factor : float
-        Base scaling constant before temporal attenuation.
-    pnl : float
-        Realized (or unrealized at exit decision) profit/loss.
-    pnl_factor : float
-        PnL modulation factor (win amplification + efficiency) computed separately.
-    duration_ratio : float
-        trade_duration / max_trade_duration (pre-clamped upstream).
-    params : dict
-        Reward parameter mapping.
-
-    Returns
-    -------
-    float
-        Exit factor (>=0 unless pnl < 0 and invariants disabled).
-
-    Notes
-    -----
-    - Legacy kernel is discontinuous and maintained for backward compatibility only.
-    - Combine with ``_get_pnl_factor`` for full exit reward shaping (non-PBRS, path dependent).
-    - Plateau introduces a derivative kink at the grace boundary.
-    """
+    """Exit attenuation factor (kernel + optional plateau) * pnl_factor with invariants."""
     # Basic finiteness checks
     if (
         not np.isfinite(base_factor)
@@ -782,50 +682,7 @@ def _get_pnl_factor(
     profit_target: float,
     risk_reward_ratio: float,
 ) -> float:
-    """Compute PnL amplification factor (profit target over/under performance + efficiency).
-
-    Purpose
-    -------
-    Encapsulates profit overshoot bonus and controlled loss penalty plus an efficiency tilt
-    based on intra-trade utilization of observed profit range.
-
-    Parity
-    ------
-    Mirrors environment method ``MyRLEnv._get_pnl_factor``.
-
-    Algorithm
-    ---------
-    1. Compute pnl_ratio = pnl / profit_target (profit_target already includes RR upstream).
-    2. If |pnl_ratio| <= 1: pnl_target_factor = 1.0.
-    3. Else compute base = tanh(beta * (|pnl_ratio| - 1)).
-       a. Gain branch (pnl_ratio > 1): 1 + win_reward_factor * base
-       b. Loss branch (pnl_ratio < -1/rr): 1 + (win_reward_factor * rr) * base
-    4. Efficiency: derive efficiency_ratio within [0,1] from intra-trade min/max; add linear tilt
-       around efficiency_center scaled by efficiency_weight (sign-flipped for losses).
-    5. Return max(0, pnl_target_factor * efficiency_factor).
-
-    Parameters
-    ----------
-    params : dict
-        Reward parameter mapping.
-    context : RewardContext
-        Current PnL and intra-trade extrema.
-    profit_target : float
-        Profit objective (already RR-scaled when called from calculate_reward).
-    risk_reward_ratio : float
-        RR used to set asymmetric loss trigger threshold (pnl_ratio < -1/RR).
-
-    Returns
-    -------
-    float
-        Non-negative factor (0 if invalid inputs or degenerate target).
-
-    Notes
-    -----
-    - Symmetric tanh avoids unbounded amplification.
-    - Loss penalty magnitude scaled by RR to keep incentive structure consistent across setups.
-    - Efficiency tilt introduces path dependence (non-PBRS component).
-    """
+    """PnL factor: tanh overshoot/loss modulation + efficiency tilt (non-negative)."""
     pnl = context.pnl
     if (
         not np.isfinite(pnl)
@@ -1289,11 +1146,7 @@ def simulate_samples(
 
 
 def _validate_simulation_invariants(df: pd.DataFrame) -> None:
-    """Validate critical algorithmic invariants in simulated data.
-
-    This function ensures mathematical correctness and catches algorithmic bugs.
-    Failures here indicate fundamental implementation errors that must be fixed.
-    """
+    """Fail fast if simulation violates PnL or action invariants."""
     # INVARIANT 1: PnL Conservation - Total PnL must equal sum of exit PnL
     total_pnl = df["pnl"].sum()
     exit_action_mask = df["action"].isin([2.0, 4.0])
@@ -1417,37 +1270,7 @@ def _binned_stats(
     target: str,
     bins: Iterable[float],
 ) -> pd.DataFrame:
-    """Compute aggregated statistics of a target variable across value bins.
-
-    Purpose
-    -------
-    Provide consistent binned descriptive statistics (count, mean, std, min, max)
-    for exploratory diagnostics of reward component relationships.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Source dataframe containing at minimum the ``column`` and ``target`` fields.
-    column : str
-        Name of the column whose values are used to create bins.
-    target : str
-        Column whose statistics are aggregated per bin.
-    bins : Iterable[float]
-        Monotonic sequence of bin edges (len >= 2). Values outside the range are
-        clipped to the boundary edges prior to bin assignment.
-
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe indexed by stringified interval with columns:
-        ``count``, ``mean``, ``std``, ``min``, ``max``.
-
-    Notes
-    -----
-    - Duplicate bin edges are dropped via pandas ``cut(duplicates='drop')``.
-    - Non-finite or missing bins after clipping are excluded prior to grouping.
-    - This helper is deterministic and side-effect free.
-    """
+    """Return count/mean/std/min/max of target grouped by clipped bins of column."""
     bins_arr = np.asarray(list(bins), dtype=float)
     if bins_arr.ndim != 1 or bins_arr.size < 2:
         raise ValueError("bins must contain at least two edges")
@@ -1471,34 +1294,7 @@ def _binned_stats(
 def _compute_relationship_stats(
     df: pd.DataFrame, max_trade_duration: int
 ) -> Dict[str, Any]:
-    """Compute binned relationship statistics among core reward drivers.
-
-    Purpose
-    -------
-    Generate uniformly binned summaries for idle duration, trade duration and
-    realized PnL to facilitate downstream comparative or visual analyses.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input dataframe containing ``idle_duration``, ``trade_duration``, ``pnl`` and
-        corresponding reward component columns (``reward_idle``, ``reward_hold``,
-        ``reward_exit``).
-    max_trade_duration : int
-        Maximum configured trade duration used to scale bin ranges.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Dictionary with keys ``idle_stats``, ``hold_stats`` and ``exit_stats`` each
-        containing a binned statistics dataframe.
-
-    Notes
-    -----
-    - PnL bin upper bound is adjusted by a tiny epsilon when min ≈ max to avoid
-      degenerate intervals.
-    - All statistics are rounded to 6 decimal places for compactness.
-    """
+    """Return binned stats dict for idle, trade duration and pnl (uniform bins)."""
     idle_bins = np.linspace(0, max_trade_duration * 3.0, 13)
     trade_bins = np.linspace(0, max_trade_duration * 3.0, 13)
     pnl_min = float(df["pnl"].min())
@@ -2185,50 +1981,7 @@ def bootstrap_confidence_intervals(
     *,
     strict_diagnostics: bool = False,
 ) -> Dict[str, Tuple[float, float, float]]:
-    """Estimate confidence intervals for mean of selected metrics via bootstrap.
-
-    Graceful mode policy (``strict_diagnostics=False``):
-      - If the computed CI has zero or negative width (including inverted bounds),
-        it is automatically widened symmetrically around the sample mean by an
-        epsilon (``INTERNAL_GUARDS['degenerate_ci_epsilon']``) so the reporting
-        pipeline is not interrupted. A ``RewardDiagnosticsWarning`` is emitted to
-        make the adjustment transparent.
-    Strict mode policy (``strict_diagnostics=True``):
-      - The same anomalous condition triggers an immediate ``AssertionError``
-        (fail-fast) to surface upstream causes such as a constant column or a
-        prior data sanitization issue.
-    Rationale: This dual mode avoids silently masking structural problems while
-    still supporting uninterrupted exploratory / CLI smoke runs.
-
-    Purpose
-    -------
-    Provide non-parametric uncertainty estimates for the mean of reward-related
-    metrics, robust to unknown or asymmetric distributions.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Source dataframe containing metric columns.
-    metrics : List[str]
-        Names of numeric columns to evaluate; silently skipped if absent.
-    n_bootstrap : int, default 10000
-        Number of bootstrap resamples (with replacement).
-    confidence_level : float, default 0.95
-        Nominal coverage probability for the two-sided interval.
-    seed : int, default 42
-        Seed for local reproducible RNG (does not mutate global state).
-
-    Returns
-    -------
-    Dict[str, Tuple[float, float, float]]
-        Mapping metric -> (mean_estimate, ci_lower, ci_upper).
-
-    Notes
-    -----
-    - Metrics with < 10 non-null observations are skipped to avoid unstable CIs.
-    - Percentile method used; no bias correction or acceleration applied.
-    - Validation enforces finite, ordered, positive-width intervals.
-    """
+    """Bootstrap mean CIs (percentile) per metric; skips sparse; adjusts degenerate unless strict."""
     alpha = 1 - confidence_level
     lower_percentile = 100 * alpha / 2
     upper_percentile = 100 * (1 - alpha / 2)
@@ -2277,26 +2030,7 @@ def bootstrap_confidence_intervals(
 def _validate_bootstrap_results(
     results: Dict[str, Tuple[float, float, float]], *, strict_diagnostics: bool
 ) -> None:
-    """Validate structural and numerical integrity of bootstrap CI outputs.
-
-    Purpose
-    -------
-    Fail fast if any generated confidence interval violates expected invariants.
-
-    Parameters
-    ----------
-    results : Dict[str, Tuple[float, float, float]]
-        Mapping from metric name to (mean, ci_low, ci_high).
-
-    Returns
-    -------
-    None
-
-    Notes
-    -----
-    - Raises AssertionError on first violation (finite bounds, ordering, width > 0).
-    - Intentionally internal; external callers should rely on exceptions for flow.
-    """
+    """Validate each bootstrap CI: finite bounds, ordered, positive width (adjust or raise)."""
     for metric, (mean, ci_low, ci_high) in results.items():
         # CI bounds must be finite
         if not (np.isfinite(mean) and np.isfinite(ci_low) and np.isfinite(ci_high)):
@@ -2345,30 +2079,9 @@ def _validate_bootstrap_results(
 def distribution_diagnostics(
     df: pd.DataFrame, *, seed: int | None = None, strict_diagnostics: bool = False
 ) -> Dict[str, Any]:
-    """Compute distributional diagnostics for selected numeric columns.
+    """Return mapping col-> diagnostics (tests, moments, entropy, divergences).
 
-    Purpose
-    -------
-    Aggregate normality test statistics and moment-based shape descriptors to
-    support assessment of modelling assumptions or transformation needs.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Dataframe containing relevant numeric columns.
-    seed : int | None, optional
-        Reserved for potential future stochastic extensions; unused presently.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Mapping of column name -> diagnostic results (tests, moments, p-values).
-
-    Notes
-    -----
-    - Skips columns absent from the dataframe.
-    - Applies Shapiro-Wilk for n <= 5000 else D'Agostino's K2 due to cost.
-    - All numeric outputs are floats; non-finite intermediate results are ignored.
+    Skips missing columns; selects Shapiro-Wilk when n<=5000 else K2; ignores non-finite intermediates.
     """
     diagnostics = {}
     _ = seed  # placeholder to keep signature for future reproducibility extensions
@@ -2499,12 +2212,7 @@ def _validate_distribution_diagnostics(
                     raise AssertionError(f"Q-Q R^2 {key} must be in [0,1], got {value}")
 
 
-"""PBRS (Potential-Based Reward Shaping) transforms & helpers are defined below.
-
-They are lifted earlier in the file (before CLI parser / reporting) to keep all
-reward computation primitives and shaping logic grouped, reducing cognitive
-distance when auditing reward correctness.
-"""
+"""PBRS (Potential-Based Reward Shaping) transforms & helpers."""
 
 # === PBRS TRANSFORM FUNCTIONS ===
 
@@ -2673,18 +2381,7 @@ def _compute_exit_additive(
 
 
 def _compute_exit_potential(last_potential: float, params: RewardParams) -> float:
-    """Compute next potential Φ(s') for closing/exit transitions.
-
-    Semantics:
-    - canonical: Φ' = 0.0 (preserves invariance, disables additives)
-    - non-canonical: Φ' = 0.0 (allows additives, breaks invariance)
-    - progressive_release: Φ' = Φ * (1 - decay) with decay clamped to [0,1]
-    - spike_cancel: Φ' = Φ / γ (neutralizes shaping spike ≈ 0 net effect) if γ>0 else Φ
-    - retain_previous: Φ' = Φ
-
-    Invalid modes fall back to canonical. Any non-finite resulting potential is
-    coerced to 0.0.
-    """
+    """Exit potential per mode (canonical/non-canonical -> 0; others transform Φ)."""
     mode = _get_str_param(
         params,
         "exit_potential_mode",
@@ -2747,11 +2444,7 @@ def apply_potential_shaping(
     last_potential: float,
     params: RewardParams,
 ) -> tuple[float, float, float]:
-    """
-    Apply PBRS potential-based reward shaping following Ng et al. (1999).
-
-    Implements: R'(s,a,s') = R_base(s,a,s') + γΦ(s') - Φ(s)
-    """
+    """Compute shaped reward: base + γΦ' - Φ plus (entry/exit) additives (if enabled)."""
     params = _enforce_pbrs_invariance(params)
     gamma = _get_potential_gamma(params)
     current_potential = _compute_hold_potential(
@@ -2779,7 +2472,7 @@ def apply_potential_shaping(
 
 
 def _enforce_pbrs_invariance(params: RewardParams) -> RewardParams:
-    """Enforce PBRS invariance by auto-disabling additives in canonical mode."""
+    """Disable entry/exit additives once in canonical PBRS to preserve invariance."""
     mode = _get_str_param(
         params,
         "exit_potential_mode",
@@ -2846,7 +2539,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         description="Synthetic stress-test of the ReforceXY reward shaping logic."
     )
     parser.add_argument(
-        "--skip-feature-analysis",
+        "--skip_feature-analysis",
         action="store_true",
         help="Skip feature importance and model-based analysis for all scenarios.",
     )
@@ -3400,7 +3093,7 @@ def write_complete_statistical_analysis(
         if skip_feature_analysis or len(df) < 4:
             reason = []
             if skip_feature_analysis:
-                reason.append("flag --skip-feature-analysis set")
+                reason.append("flag --skip_feature-analysis set")
             if len(df) < 4:
                 reason.append("insufficient samples <4")
             reason_str = "; ".join(reason) if reason else "skipped"

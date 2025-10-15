@@ -91,7 +91,6 @@ class RewardSpaceTestBase(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures with reproducible random seed."""
-        # Unified seeding for numpy + random
         self.seed_all(self.SEED)
         self.temp_dir = tempfile.mkdtemp()
         self.output_path = Path(self.temp_dir)

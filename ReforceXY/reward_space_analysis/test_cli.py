@@ -164,7 +164,7 @@ def run_scenario(
     # Forward bootstrap resamples explicitly
     cmd += ["--bootstrap_resamples", str(bootstrap_resamples)]
     if skip_feature_analysis:
-        cmd.append("--skip-feature-analysis")
+        cmd.append("--skip_feature-analysis")
     if strict:
         cmd.append("--strict_diagnostics")
     start = time.perf_counter()
@@ -206,7 +206,7 @@ def main():
         help="num synthetic samples per scenario (minimum 4 for feature analysis)",
     )
     parser.add_argument(
-        "--skip-feature-analysis",
+        "--skip_feature-analysis",
         action="store_true",
         help="Skip feature importance and model-based analysis for all scenarios.",
     )
@@ -257,7 +257,7 @@ def main():
     if args.max_scenarios <= 0:
         parser.error("--max-scenarios must be > 0")
     if args.samples < 4 and not args.skip_feature_analysis:
-        parser.error("--samples must be >= 4 unless --skip-feature-analysis is set")
+        parser.error("--samples must be >= 4 unless --skip_feature-analysis is set")
     if args.strict_sample < 0:
         parser.error("--strict-sample must be >= 0")
     if args.bootstrap_resamples <= 0:
