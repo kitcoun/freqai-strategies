@@ -20,7 +20,7 @@ import tempfile
 import unittest
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Sequence, Union
+from typing import Iterable, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -83,33 +83,6 @@ def base_params(**overrides) -> dict:
     return params
 
 
-def make_ctx(
-    *,
-    pnl: float = 0.0,
-    trade_duration: int = 0,
-    idle_duration: int = 0,
-    max_trade_duration: int = 100,
-    max_unrealized_profit: float = 0.0,
-    min_unrealized_profit: float = 0.0,
-    position: Positions = Positions.Neutral,
-    action: Actions = Actions.Neutral,
-) -> RewardContext:
-    """Factory for RewardContext with neutral defaults.
-
-    Only fields explicitly varied in a test need to be specified; keeps test bodies concise.
-    """
-    return RewardContext(
-        pnl=pnl,
-        trade_duration=trade_duration,
-        idle_duration=idle_duration,
-        max_trade_duration=max_trade_duration,
-        max_unrealized_profit=max_unrealized_profit,
-        min_unrealized_profit=min_unrealized_profit,
-        position=position,
-        action=action,
-    )
-
-
 class RewardSpaceTestBase(unittest.TestCase):
     """Base class with common test utilities."""
 
@@ -145,7 +118,7 @@ class RewardSpaceTestBase(unittest.TestCase):
     TOL_NUMERIC_GUARD = EPS_BASE  # Division-by-zero guards / min denominators (alias)
     TOL_IDENTITY_STRICT = EPS_BASE  # Strict component identity (alias of EPS_BASE)
     TOL_IDENTITY_RELAXED = 1e-9  # Looser identity when cumulative fp drift acceptable
-    TOL_GENERIC_EQ = 1e-6  # Generic numeric equality (previous literal)
+    TOL_GENERIC_EQ = 1e-6  # Generic numeric equality
     TOL_NEGLIGIBLE = 1e-8  # Negligible statistical or shaping effects
     MIN_EXIT_POWER_TAU = (
         1e-6  # Lower bound for exit_power_tau parameter (validation semantics)
@@ -158,6 +131,30 @@ class RewardSpaceTestBase(unittest.TestCase):
     TOL_RELATIVE = 1e-9  # For relative comparisons scaled by magnitude
     CONTINUITY_EPS_SMALL = 1e-4  # Small epsilon step for continuity probing
     CONTINUITY_EPS_LARGE = 1e-3  # Larger epsilon step for ratio scaling tests
+
+    def make_ctx(
+        self,
+        *,
+        pnl: float = 0.0,
+        trade_duration: int = 0,
+        idle_duration: int = 0,
+        max_trade_duration: int = 100,
+        max_unrealized_profit: float = 0.0,
+        min_unrealized_profit: float = 0.0,
+        position: Positions = Positions.Neutral,
+        action: Actions = Actions.Neutral,
+    ) -> RewardContext:
+        """Create a RewardContext with neutral defaults."""
+        return RewardContext(
+            pnl=pnl,
+            trade_duration=trade_duration,
+            idle_duration=idle_duration,
+            max_trade_duration=max_trade_duration,
+            max_unrealized_profit=max_unrealized_profit,
+            min_unrealized_profit=min_unrealized_profit,
+            position=position,
+            action=action,
+        )
 
     def _canonical_sweep(
         self,
@@ -455,13 +452,6 @@ class RewardSpaceTestBase(unittest.TestCase):
         np.random.seed(seed)
         random.seed(seed)
 
-    # Central tolerance mapping (single source for potential future dynamic use)
-    TOLS = {
-        "strict": EPS_BASE,
-        "relaxed": 1e-9,
-        "generic": 1e-6,
-    }
-
 
 class TestIntegration(RewardSpaceTestBase):
     """CLI + file output integration tests."""
@@ -580,8 +570,8 @@ class TestIntegration(RewardSpaceTestBase):
 class TestStatistics(RewardSpaceTestBase):
     """Statistical tests: metrics, diagnostics, bootstrap, correlations."""
 
-    def _make_test_dataframe(self, n: int = 100) -> pd.DataFrame:
-        """Build synthetic dataframe."""
+    def _make_idle_variance_df(self, n: int = 100) -> pd.DataFrame:
+        """Synthetic dataframe focusing on idle_duration ↔ reward_idle correlation."""
         np.random.seed(self.SEED)
         idle_duration = np.random.exponential(10, n)
         reward_idle = -0.01 * idle_duration + np.random.normal(0, 0.001, n)
@@ -598,8 +588,8 @@ class TestStatistics(RewardSpaceTestBase):
 
     def test_stats_distribution_shift_metrics(self):
         """KL/JS/Wasserstein metrics."""
-        df1 = self._make_test_dataframe(100)
-        df2 = self._make_test_dataframe(100)
+        df1 = self._make_idle_variance_df(100)
+        df2 = self._make_idle_variance_df(100)
 
         # Shift second dataset
         df2["reward_total"] += 0.1
@@ -640,7 +630,7 @@ class TestStatistics(RewardSpaceTestBase):
 
     def test_stats_distribution_shift_identity_null_metrics(self):
         """Identity distributions -> near-zero shift metrics."""
-        df = self._make_test_dataframe(180)
+        df = self._make_idle_variance_df(180)
         metrics_id = compute_distribution_shift_metrics(df, df.copy())
         for name, val in metrics_id.items():
             if name.endswith(("_kl_divergence", "_js_distance", "_wasserstein")):
@@ -658,7 +648,7 @@ class TestStatistics(RewardSpaceTestBase):
 
     def test_stats_hypothesis_testing(self):
         """Light correlation sanity check."""
-        df = self._make_test_dataframe(200)
+        df = self._make_idle_variance_df(200)
 
         # Only if enough samples
         if len(df) > 30:
@@ -691,7 +681,7 @@ class TestStatistics(RewardSpaceTestBase):
 
     def test_stats_distribution_diagnostics(self):
         """Distribution diagnostics."""
-        df = self._make_test_dataframe(100)
+        df = self._make_idle_variance_df(100)
 
         diagnostics = distribution_diagnostics(df)
 
@@ -1123,7 +1113,7 @@ class TestRewardComponents(RewardSpaceTestBase):
                 self.assertFinite(breakdown.total, name="breakdown.total")
 
     def test_basic_reward_calculation(self):
-        context = make_ctx(
+        context = self.make_ctx(
             pnl=self.TEST_PROFIT_TARGET,
             trade_duration=10,
             max_trade_duration=100,
@@ -1145,7 +1135,7 @@ class TestRewardComponents(RewardSpaceTestBase):
         self.assertGreater(br.exit_component, 0)
 
     def test_efficiency_zero_policy(self):
-        ctx = make_ctx(
+        ctx = self.make_ctx(
             pnl=0.0,
             trade_duration=1,
             max_trade_duration=100,
@@ -1166,7 +1156,7 @@ class TestRewardComponents(RewardSpaceTestBase):
         params_small["max_idle_duration_candles"] = 50
         params_large["max_idle_duration_candles"] = 200
         base_factor = self.TEST_BASE_FACTOR
-        context = make_ctx(
+        context = self.make_ctx(
             pnl=0.0,
             trade_duration=0,
             idle_duration=40,
@@ -1253,7 +1243,7 @@ class TestRewardComponents(RewardSpaceTestBase):
 
     def test_idle_penalty_zero_when_profit_target_zero(self):
         """If profit_target=0 → idle_factor=0 → idle penalty must be exactly 0 for neutral idle state."""
-        context = make_ctx(
+        context = self.make_ctx(
             pnl=0.0,
             trade_duration=0,
             idle_duration=30,
@@ -1489,10 +1479,7 @@ class TestRewardComponents(RewardSpaceTestBase):
                 )
 
     def test_long_short_symmetry(self):
-        """Validate Long vs Short exit reward magnitude symmetry for identical PnL.
-
-        Hypothesis: No directional bias implies |R_long(pnl)| ≈ |R_short(pnl)|.
-        """
+        """Long vs Short exit reward magnitudes should match in absolute value for identical PnL (no directional bias)."""
         params = self.DEFAULT_PARAMS.copy()
         params.pop("base_factor", None)
         base_factor = 120.0
@@ -2048,7 +2035,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         breakdown = calculate_reward(
             context,
             params,
-            base_factor=1e7,  # exaggerated factor
+            base_factor=1e7,  # Large factor to stress scaling paths
             profit_target=self.TEST_PROFIT_TARGET,
             risk_reward_ratio=self.TEST_RR,
             short_allowed=True,
@@ -2060,43 +2047,8 @@ class TestPrivateFunctions(RewardSpaceTestBase):
 class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
     """Robustness & boundary assertions: invariants, attenuation maths, parameter edges, scaling, warnings."""
 
-    def _mk_context(
-        self,
-        pnl: float = 0.04,
-        trade_duration: int = 40,
-        idle_duration: int = 0,
-        max_trade_duration: int = 100,
-        max_unrealized_profit: float = 0.05,
-        min_unrealized_profit: float = 0.01,
-        position: Positions = Positions.Long,
-        action: Actions = Actions.Long_exit,
-    ) -> RewardContext:
-        return RewardContext(
-            pnl=pnl,
-            trade_duration=trade_duration,
-            idle_duration=idle_duration,
-            max_trade_duration=max_trade_duration,
-            max_unrealized_profit=max_unrealized_profit,
-            min_unrealized_profit=min_unrealized_profit,
-            position=position,
-            action=action,
-        )
-
-    def make_params(self, **overrides: Any) -> Dict[str, Any]:  # type: ignore[override]
-        """Factory for parameter dict used in robustness tests.
-
-        Returns a shallow copy of DEFAULT_PARAMS with optional overrides.
-        Type hints facilitate future mypy strict mode.
-        """
-        p: Dict[str, Any] = self.DEFAULT_PARAMS.copy()
-        p.update(overrides)
-        return p
-
     def test_decomposition_integrity(self):
-        """Assert reward_total equals exactly the single active component (mutual exclusivity).
-
-        We sample a grid of mutually exclusive scenarios and validate decomposition.
-        """
+        """reward_total must equal the single active core component under mutually exclusive scenarios (idle/hold/exit/invalid)."""
         scenarios = [
             # Idle penalty only
             dict(
@@ -2128,7 +2080,16 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
             ),
             # Exit reward only (positive pnl)
             dict(
-                ctx=self._mk_context(pnl=self.TEST_PROFIT_TARGET, trade_duration=60),
+                ctx=self.make_ctx(
+                    pnl=self.TEST_PROFIT_TARGET,
+                    trade_duration=60,
+                    idle_duration=0,
+                    max_trade_duration=100,
+                    max_unrealized_profit=0.05,
+                    min_unrealized_profit=0.01,
+                    position=Positions.Long,
+                    action=Actions.Long_exit,
+                ),
                 active="exit_component",
             ),
             # Invalid action only
@@ -2238,7 +2199,16 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
 
     def test_exit_factor_mathematical_formulas(self):
         """Mathematical correctness of exit factor calculations across modes."""
-        context = self._mk_context(pnl=0.05, trade_duration=50)
+        context = self.make_ctx(
+            pnl=0.05,
+            trade_duration=50,
+            idle_duration=0,
+            max_trade_duration=100,
+            max_unrealized_profit=0.05,
+            min_unrealized_profit=0.01,
+            position=Positions.Long,
+            action=Actions.Long_exit,
+        )
         params = self.DEFAULT_PARAMS.copy()
         duration_ratio = 50 / 100
         params["exit_attenuation_mode"] = "power"
@@ -2294,7 +2264,7 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
         base_factor = 90.0
         profit_target = self.TEST_PROFIT_TARGET
         risk_reward_ratio = 1.0
-        ctx_a = self._mk_context(
+        ctx_a = self.make_ctx(
             pnl=0.0,
             trade_duration=0,
             idle_duration=20,
@@ -2350,13 +2320,17 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
 
     def test_exit_factor_threshold_warning_and_non_capping(self):
         """Warning emission without capping when exit_factor_threshold exceeded."""
-        params = self.make_params(exit_factor_threshold=10.0)
+        params = base_params(exit_factor_threshold=10.0)
         params.pop("base_factor", None)
-        context = self._mk_context(
+        context = self.make_ctx(
             pnl=0.08,
             trade_duration=10,
+            idle_duration=0,
+            max_trade_duration=100,
             max_unrealized_profit=0.09,
             min_unrealized_profit=0.0,
+            position=Positions.Long,
+            action=Actions.Long_exit,
         )
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -2397,19 +2371,15 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
         )
 
     def test_negative_slope_sanitization(self):
-        """Negative exit_linear_slope is sanitized to 1.0 (default) producing identical factors.
-
-        We compare exit factors with an explicit negative slope vs explicit slope=1.0.
-        The sanitized version should match reference within strict tolerance.
-        """
+        """Negative exit_linear_slope is sanitized to 1.0; resulting exit factors must match slope=1.0 within tolerance."""
         base_factor = 100.0
         pnl = 0.03
         pnl_factor = 1.0
         duration_ratios = [0.0, 0.2, 0.5, 1.0, 1.5]
-        params_bad = self.make_params(
+        params_bad = base_params(
             exit_attenuation_mode="linear", exit_linear_slope=-5.0, exit_plateau=False
         )
-        params_ref = self.make_params(
+        params_ref = base_params(
             exit_attenuation_mode="linear", exit_linear_slope=1.0, exit_plateau=False
         )
         for dr in duration_ratios:
@@ -2423,11 +2393,7 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
             )
 
     def test_power_mode_alpha_formula(self):
-        """Power mode: alpha = -log(tau)/log(2); verify analytic attenuation.
-
-        For several tau values we evaluate the exit factor ratio between dr=0 and dr=1
-        and compare to expected 1/(1+1)^alpha = 2^{-alpha}.
-        """
+        """Power mode attenuation: ratio f(dr=1)/f(dr=0) must equal 1/(1+1)^alpha with alpha=-log(tau)/log(2)."""
         base_factor = 200.0
         pnl = 0.04
         pnl_factor = 1.0
@@ -2439,7 +2405,7 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
             1.0,
         ]  # include boundary 1.0 => alpha=0 per formula? actually -> -log(1)/log2 = 0
         for tau in taus:
-            params = self.make_params(
+            params = base_params(
                 exit_attenuation_mode="power", exit_power_tau=tau, exit_plateau=False
             )
             f0 = _get_exit_factor(base_factor, pnl, pnl_factor, 0.0, params)
@@ -2458,7 +2424,7 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
                 f"Alpha attenuation mismatch tau={tau} alpha={alpha} obs_ratio={observed_ratio} exp_ratio={expected_ratio}",
             )
 
-    # Fused from former TestBoundaryConditions
+    # Boundary condition tests (extremes / continuity / monotonicity)
     def test_extreme_parameter_values(self):
         extreme_params = self.DEFAULT_PARAMS.copy()
         extreme_params["win_reward_factor"] = 1000.0
