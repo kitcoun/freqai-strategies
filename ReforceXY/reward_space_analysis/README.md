@@ -322,7 +322,7 @@ _PBRS (Potential-Based Reward Shaping) configuration:_
 - `hold_potential_enabled` (default: true) - Enable PBRS hold potential function Φ(s)
 - `hold_potential_scale` (default: 1.0) - Scale factor for hold potential function
 - `hold_potential_gain` (default: 1.0) - Gain factor applied before transforms in hold potential
-- `hold_potential_transform_pnl` (default: tanh) - Transform function for PnL: tanh, softsign, arctan, sigmoid, asinh_norm, clip
+- `hold_potential_transform_pnl` (default: tanh) - Transform function for PnL: tanh, softsign, arctan, sigmoid, asinh, clip
 - `hold_potential_transform_duration` (default: tanh) - Transform function for duration ratio
 - `entry_additive_enabled` (default: false) - Enable entry additive reward (non-PBRS component)
 - `entry_additive_scale` (default: 1.0) - Scale factor for entry additive reward
@@ -343,7 +343,7 @@ _PBRS (Potential-Based Reward Shaping) configuration:_
 | `softsign` | x / (1 + |x|) | (-1, 1) | Smoother than tanh, linear near 0 | Less aggressive saturation |
 | `arctan` | (2/pi) * arctan(x) | (-1, 1) | Slower saturation than tanh | Wide dynamic range |
 | `sigmoid` | 2σ(x) - 1, σ(x) = 1/(1 + e^(-x)) | (-1, 1) | Sigmoid mapped to (-1, 1) | Standard sigmoid activation |
-| `asinh_norm` | x / sqrt(1 + x^2) | (-1, 1) | Normalized asinh-like transform | Extreme outlier robustness |
+| `asinh` | x / sqrt(1 + x^2) | (-1, 1) | Normalized asinh-like transform | Extreme outlier robustness |
 | `clip` | clip(x, -1, 1) | [-1, 1] | Hard clipping at ±1 | Preserve linearity within bounds |
 
 _Invariant / safety controls:_

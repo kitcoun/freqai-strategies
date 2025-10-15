@@ -1655,7 +1655,7 @@ class MyRLEnv(Base5ActionRLEnv):
         ----------
         name : str
             Transform function name: 'tanh', 'softsign', 'arctan', 'sigmoid',
-            'asinh_norm', or 'clip'
+            'asinh', or 'clip'
         x : float
             Input value to transform
 
@@ -1686,7 +1686,7 @@ class MyRLEnv(Base5ActionRLEnv):
             except OverflowError:
                 return 1.0 if x > 0 else -1.0
 
-        if name == "asinh_norm":
+        if name == "asinh":
             return x / math.hypot(1.0, x)
 
         if name == "clip":
@@ -1814,7 +1814,7 @@ class MyRLEnv(Base5ActionRLEnv):
         - softsign: x / (1 + |x|)
         - arctan: (2/pi) * arctan(x)
         - sigmoid: 2σ(x) - 1, σ(x) = 1/(1 + e^(-x))
-        - asinh_norm: x / sqrt(1 + x^2)
+        - asinh: x / sqrt(1 + x^2)
         - clip: clip(x, -1, 1)
 
         **Parameters**:

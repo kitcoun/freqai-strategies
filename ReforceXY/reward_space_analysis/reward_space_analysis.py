@@ -170,8 +170,8 @@ ALLOWED_TRANSFORMS = {
     "softsign",
     "arctan",
     "sigmoid",
-    "asinh_norm",
     "clip",
+    "asinh",
 }
 ALLOWED_EXIT_POTENTIAL_MODES = {
     "canonical",
@@ -262,17 +262,17 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "hold_potential_enabled": "Enable PBRS hold potential function Φ(s).",
     "hold_potential_scale": "Scale factor for hold potential function.",
     "hold_potential_gain": "Gain factor applied before transforms in hold potential.",
-    "hold_potential_transform_pnl": "Transform function for PnL in hold potential: tanh, softsign, arctan, sigmoid, asinh_norm, clip.",
+    "hold_potential_transform_pnl": "Transform function for PnL in hold potential: tanh, softsign, arctan, sigmoid, asinh, clip.",
     "hold_potential_transform_duration": "Transform function for duration ratio in hold potential.",
     "entry_additive_enabled": "Enable entry additive reward (non-PBRS component).",
     "entry_additive_scale": "Scale factor for entry additive reward.",
     "entry_additive_gain": "Gain factor for entry additive reward.",
-    "entry_additive_transform_pnl": "Transform function for PnL in entry additive.",
+    "entry_additive_transform_pnl": "Transform function for PnL in entry additive (tanh, softsign, arctan, sigmoid, asinh, clip).",
     "entry_additive_transform_duration": "Transform function for duration ratio in entry additive.",
     "exit_additive_enabled": "Enable exit additive reward (non-PBRS component).",
     "exit_additive_scale": "Scale factor for exit additive reward.",
     "exit_additive_gain": "Gain factor for exit additive reward.",
-    "exit_additive_transform_pnl": "Transform function for PnL in exit additive.",
+    "exit_additive_transform_pnl": "Transform function for PnL in exit additive (tanh, softsign, arctan, sigmoid, asinh, clip).",
     "exit_additive_transform_duration": "Transform function for duration ratio in exit additive.",
 }
 
@@ -3373,8 +3373,8 @@ def _apply_transform_sigmoid(value: float) -> float:
         return 1.0 if x > 0 else -1.0
 
 
-def _apply_transform_asinh_norm(value: float) -> float:
-    """asinh_norm: x / sqrt(1 + x^2) in (-1, 1)."""
+def _apply_transform_asinh(value: float) -> float:
+    """asinh: x / sqrt(1 + x^2) in (-1, 1)."""
     return float(value / math.hypot(1.0, value))
 
 
@@ -3390,7 +3390,7 @@ def apply_transform(transform_name: str, value: float, **kwargs: Any) -> float:
         "softsign": _apply_transform_softsign,
         "arctan": _apply_transform_arctan,
         "sigmoid": _apply_transform_sigmoid,
-        "asinh_norm": _apply_transform_asinh_norm,
+        "asinh": _apply_transform_asinh,
         "clip": _apply_transform_clip,
     }
 

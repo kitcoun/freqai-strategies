@@ -3095,21 +3095,21 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         self.assertTrue(abs(apply_transform("softsign", 100.0)) < 1.0)
         self.assertTrue(abs(apply_transform("softsign", -100.0)) < 1.0)
 
-    def test_asinh_norm_transform(self):
-        """asinh_norm transform: x / sqrt(1 + x^2) in (-1, 1)."""
-        self.assertAlmostEqualFloat(apply_transform("asinh_norm", 0.0), 0.0)
+    def test_asinh_transform(self):
+        """asinh transform: x / sqrt(1 + x^2) in (-1, 1)."""
+        self.assertAlmostEqualFloat(apply_transform("asinh", 0.0), 0.0)
         # Symmetry
         self.assertAlmostEqualFloat(
-            apply_transform("asinh_norm", 1.2345),
-            -apply_transform("asinh_norm", -1.2345),
+            apply_transform("asinh", 1.2345),
+            -apply_transform("asinh", -1.2345),
             tolerance=1e-12,
         )
         # Monotonicity
-        vals = [apply_transform("asinh_norm", x) for x in [-5.0, -1.0, 0.0, 1.0, 5.0]]
+        vals = [apply_transform("asinh", x) for x in [-5.0, -1.0, 0.0, 1.0, 5.0]]
         self.assertTrue(all(vals[i] < vals[i + 1] for i in range(len(vals) - 1)))
         # Bounded
-        self.assertTrue(abs(apply_transform("asinh_norm", 1e6)) < 1.0)
-        self.assertTrue(abs(apply_transform("asinh_norm", -1e6)) < 1.0)
+        self.assertTrue(abs(apply_transform("asinh", 1e6)) < 1.0)
+        self.assertTrue(abs(apply_transform("asinh", -1e6)) < 1.0)
 
     def test_arctan_transform(self):
         """arctan transform: (2/pi) * arctan(x) in (-1, 1)."""
