@@ -18,8 +18,8 @@ Key features
 
 Usage
 -----
-python test_cli.py --samples 50 --out-dir ../sample_run_output_smoke \
-        --shuffle-seed 123 --strict-sample 3 --bootstrap-resamples 200
+python test_cli.py --samples 50 --out_dir ../sample_run_output_smoke \
+    --shuffle_seed 123 --strict_sample 3 --bootstrap_resamples 200
 
 JSON Summary fields
 -------------------
@@ -144,7 +144,7 @@ def run_scenario(
         str(script),
         "--num_samples",
         str(base_samples),
-        "--output",
+        "--out_dir",
         str(scenario_dir),
         "--exit_potential_mode",
         exit_potential_mode,
@@ -164,7 +164,7 @@ def run_scenario(
     # Forward bootstrap resamples explicitly
     cmd += ["--bootstrap_resamples", str(bootstrap_resamples)]
     if skip_feature_analysis:
-        cmd.append("--skip_feature-analysis")
+        cmd.append("--skip_feature_analysis")
     if strict:
         cmd.append("--strict_diagnostics")
     start = time.perf_counter()
@@ -206,48 +206,48 @@ def main():
         help="num synthetic samples per scenario (minimum 4 for feature analysis)",
     )
     parser.add_argument(
-        "--skip_feature-analysis",
+        "--skip_feature_analysis",
         action="store_true",
         help="Skip feature importance and model-based analysis for all scenarios.",
     )
     parser.add_argument(
-        "--out-dir",
+        "--out_dir",
         type=str,
         default="sample_run_output_smoke",
         help="output parent directory",
     )
     parser.add_argument(
-        "--shuffle-seed",
+        "--shuffle_seed",
         type=int,
         default=None,
         help="If set, shuffle full scenario space before sampling a diverse subset",
     )
     parser.add_argument(
-        "--strict-sample",
+        "--strict_sample",
         type=int,
         default=0,
         help="Duplicate the first N scenarios executed again with --strict_diagnostics",
     )
     parser.add_argument(
-        "--max-scenarios",
+        "--max_scenarios",
         type=int,
         default=40,
         help="Maximum number of (non-strict) scenarios before strict duplication",
     )
     parser.add_argument(
-        "--bootstrap-resamples",
+        "--bootstrap_resamples",
         type=int,
         default=120,
         help="Number of bootstrap resamples to pass to child processes (speed/perf tradeoff)",
     )
     parser.add_argument(
-        "--per-scenario-timeout",
+        "--per_scenario_timeout",
         type=int,
         default=600,
         help="Timeout (seconds) per child process (default: 600)",
     )
     parser.add_argument(
-        "--store-full-logs",
+        "--store_full_logs",
         action="store_true",
         help="If set, store full stdout/stderr (may be large) instead of tail truncation.",
     )
@@ -255,13 +255,13 @@ def main():
 
     # Basic validation
     if args.max_scenarios <= 0:
-        parser.error("--max-scenarios must be > 0")
+        parser.error("--max_scenarios must be > 0")
     if args.samples < 4 and not args.skip_feature_analysis:
-        parser.error("--samples must be >= 4 unless --skip_feature-analysis is set")
+        parser.error("--samples must be >= 4 unless --skip_feature_analysis is set")
     if args.strict_sample < 0:
-        parser.error("--strict-sample must be >= 0")
+        parser.error("--strict_sample must be >= 0")
     if args.bootstrap_resamples <= 0:
-        parser.error("--bootstrap-resamples must be > 0")
+        parser.error("--bootstrap_resamples must be > 0")
 
     script = Path(__file__).parent / "reward_space_analysis.py"
     out_dir = Path(args.out_dir)

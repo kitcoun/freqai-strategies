@@ -2539,7 +2539,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         description="Synthetic stress-test of the ReforceXY reward shaping logic."
     )
     parser.add_argument(
-        "--skip_feature-analysis",
+        "--skip_feature_analysis",
         action="store_true",
         help="Skip feature importance and model-based analysis for all scenarios.",
     )
@@ -2623,7 +2623,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Enable action masking simulation (default: true).",
     )
     parser.add_argument(
-        "--output",
+        "--out_dir",
         type=Path,
         default=Path("reward_space_outputs"),
         help="Output directory for artifacts (default: reward_space_outputs).",
@@ -3093,7 +3093,7 @@ def write_complete_statistical_analysis(
         if skip_feature_analysis or len(df) < 4:
             reason = []
             if skip_feature_analysis:
-                reason.append("flag --skip_feature-analysis set")
+                reason.append("flag --skip_feature_analysis set")
             if len(df) < 4:
                 reason.append("insufficient samples <4")
             reason_str = "; ".join(reason) if reason else "skipped"
@@ -3425,8 +3425,8 @@ def main() -> None:
     # Attach resolved reward parameters for inline overrides rendering in report
     df.attrs["reward_params"] = dict(params)
 
-    args.output.mkdir(parents=True, exist_ok=True)
-    csv_path = args.output / "reward_samples.csv"
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = args.out_dir / "reward_samples.csv"
     df.to_csv(csv_path, index=False)
     sample_output_message = f"Samples saved to {csv_path}"
 
@@ -3441,26 +3441,26 @@ def main() -> None:
 
     write_complete_statistical_analysis(
         df,
-        args.output,
+        args.out_dir,
         max_trade_duration=args.max_trade_duration,
         profit_target=float(profit_target * risk_reward_ratio),
         seed=args.seed,
         real_df=real_df,
         adjust_method=args.pvalue_adjust,
-        stats_seed=args.stats_seed
-        if getattr(args, "stats_seed", None) is not None
-        else None,
+        stats_seed=(
+            args.stats_seed if getattr(args, "stats_seed", None) is not None else None
+        ),
         strict_diagnostics=bool(getattr(args, "strict_diagnostics", False)),
         bootstrap_resamples=getattr(args, "bootstrap_resamples", 10000),
         skip_partial_dependence=bool(getattr(args, "skip_partial_dependence", False)),
         skip_feature_analysis=bool(getattr(args, "skip_feature_analysis", False)),
     )
     print(
-        f"Complete statistical analysis saved to: {args.output / 'statistical_analysis.md'}"
+        f"Complete statistical analysis saved to: {args.out_dir / 'statistical_analysis.md'}"
     )
     # Generate manifest summarizing key metrics
     try:
-        manifest_path = args.output / "manifest.json"
+        manifest_path = args.out_dir / "manifest.json"
         resolved_reward_params = dict(params)  # already validated/normalized upstream
         manifest = {
             "generated_at": pd.Timestamp.now().isoformat(),
@@ -3500,7 +3500,7 @@ def main() -> None:
 
     print(f"Generated {len(df):,} synthetic samples.")
     print(sample_output_message)
-    print(f"Artifacts saved to: {args.output.resolve()}")
+    print(f"Artifacts saved to: {args.out_dir.resolve()}")
 
 
 if __name__ == "__main__":

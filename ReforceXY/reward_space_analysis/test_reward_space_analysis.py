@@ -461,7 +461,7 @@ class TestIntegration(RewardSpaceTestBase):
             str(self.TEST_SAMPLES),
             "--seed",
             str(self.SEED),
-            "--output",
+            "--out_dir",
             str(self.output_path),
         ]
 
@@ -497,7 +497,7 @@ class TestIntegration(RewardSpaceTestBase):
             str(self.TEST_SAMPLES),
             "--seed",
             str(self.SEED),
-            "--output",
+            "--out_dir",
             str(self.output_path / "run1"),
         ]
 
@@ -509,7 +509,7 @@ class TestIntegration(RewardSpaceTestBase):
             str(self.TEST_SAMPLES),
             "--seed",
             str(self.SEED),
-            "--output",
+            "--out_dir",
             str(self.output_path / "run2"),
         ]
 
@@ -1688,9 +1688,16 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
         self.assertIsNotNone(parser)
 
         # Test parsing with minimal arguments
-        args = parser.parse_args(["--num_samples", "100", "--output", "test_output"])
+        args = parser.parse_args(
+            [
+                "--num_samples",
+                "100",
+                "--out_dir",
+                "test_output",
+            ]
+        )
         self.assertEqual(args.num_samples, 100)
-        self.assertEqual(str(args.output), "test_output")
+        self.assertEqual(str(args.out_dir), "test_output")
 
     def test_complete_statistical_analysis_writer(self):
         """Test write_complete_statistical_analysis function."""
