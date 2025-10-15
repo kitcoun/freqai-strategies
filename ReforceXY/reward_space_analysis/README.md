@@ -6,7 +6,7 @@ Deterministic synthetic sampling with diagnostics for reward shaping, penalties,
 
 - Scalable synthetic scenario generation (reproducible)
 - Reward component decomposition & bounds checks
-- PBRS modes: canonical, non-canonical, progressive_release, spike_cancel, retain_previous
+- PBRS modes: canonical, non_canonical, progressive_release, spike_cancel, retain_previous
 - Feature importance & optional partial dependence
 - Statistical tests (hypothesis, bootstrap CIs, distribution diagnostics)
 - Real vs synthetic shift metrics
@@ -193,7 +193,7 @@ Core frequently tuned parameters:
 | `exit_linear_slope` | 1.0 | Linear kernel slope |
 | `exit_power_tau` | 0.5 | Tau controlling power kernel decay (0,1] |
 | `exit_half_life` | 0.5 | Half-life for half_life kernel |
-| `potential_gamma` | 0.9 | PBRS discount γ |
+| `potential_gamma` | 0.95 | PBRS discount γ |
 | `exit_potential_mode` | canonical | Exit potential mode |
 | `efficiency_weight` | 1.0 | Efficiency contribution weight |
 | `efficiency_center` | 0.5 | Efficiency pivot in [0,1] |
@@ -391,7 +391,7 @@ python reward_space_analysis.py \
 # Non-canonical PBRS (allows additives with Φ(terminal)=0, breaks invariance)
 python reward_space_analysis.py \
     --num_samples 25000 \
-    --params hold_potential_enabled=true entry_additive_enabled=true exit_additive_enabled=true exit_potential_mode=non-canonical \
+    --params hold_potential_enabled=true entry_additive_enabled=true exit_additive_enabled=true exit_potential_mode=non_canonical \
     --out_dir pbrs_non_canonical
 
 python reward_space_analysis.py \

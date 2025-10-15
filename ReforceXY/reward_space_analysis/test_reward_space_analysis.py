@@ -3398,13 +3398,13 @@ class TestReportFormatting(RewardSpaceTestBase):
 
     def test_additive_activation_deterministic_contribution(self):
         """Additives enabled increase total reward; shaping impact limited."""
-        # Use a non-canonical exit mode to avoid automatic invariance enforcement
+        # Use a non_canonical exit mode to avoid automatic invariance enforcement
         # disabling the additive components on first call (canonical path auto-disables).
         base = self.base_params(
             hold_potential_enabled=True,
             entry_additive_enabled=False,
             exit_additive_enabled=False,
-            exit_potential_mode="non-canonical",
+            exit_potential_mode="non_canonical",
         )
         with_add = base.copy()
         with_add.update(

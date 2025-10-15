@@ -78,7 +78,7 @@ ALLOWED_TRANSFORMS = {
 }
 ALLOWED_EXIT_POTENTIAL_MODES = {
     "canonical",
-    "non-canonical",
+    "non_canonical",
     "progressive_release",
     "spike_cancel",
     "retain_previous",
@@ -115,7 +115,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS: RewardParams = {
     # Potential-based reward shaping core parameters
     # Discount factor γ for potential term (0 ≤ γ ≤ 1)
     "potential_gamma": POTENTIAL_GAMMA_DEFAULT,
-    # Exit potential modes: canonical | non-canonical | progressive_release | spike_cancel | retain_previous
+    # Exit potential modes: canonical | non_canonical | progressive_release | spike_cancel | retain_previous
     "exit_potential_mode": "canonical",
     "exit_potential_decay": 0.5,
     # Hold potential (PBRS function Φ)
@@ -160,7 +160,7 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "exit_factor_threshold": "Warn if |exit_factor| exceeds",
     # PBRS parameters
     "potential_gamma": "PBRS discount γ (0–1)",
-    "exit_potential_mode": "Exit potential mode (canonical|non-canonical|progressive_release|spike_cancel|retain_previous)",
+    "exit_potential_mode": "Exit potential mode (canonical|non_canonical|progressive_release|spike_cancel|retain_previous)",
     "exit_potential_decay": "Decay for progressive_release (0–1)",
     "hold_potential_enabled": "Enable hold potential Φ",
     "hold_potential_scale": "Hold potential scale",
@@ -2381,13 +2381,13 @@ def _compute_exit_additive(
 
 
 def _compute_exit_potential(last_potential: float, params: RewardParams) -> float:
-    """Exit potential per mode (canonical/non-canonical -> 0; others transform Φ)."""
+    """Exit potential per mode (canonical/non_canonical -> 0; others transform Φ)."""
     mode = _get_str_param(
         params,
         "exit_potential_mode",
         str(DEFAULT_MODEL_REWARD_PARAMETERS.get("exit_potential_mode", "canonical")),
     )
-    if mode == "canonical" or mode == "non-canonical":
+    if mode == "canonical" or mode == "non_canonical":
         return _fail_safely("canonical_exit_potential")
 
     if mode == "progressive_release":

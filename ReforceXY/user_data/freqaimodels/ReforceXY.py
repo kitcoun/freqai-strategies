@@ -1363,7 +1363,7 @@ class MyRLEnv(Base5ActionRLEnv):
         # === EXIT POTENTIAL MODE ===
         # exit_potential_mode options:
         #   'canonical'           -> Φ(s')=0 (preserves invariance, disables additives)
-        #   'non-canonical'       -> Φ(s')=0 (allows additives, breaks invariance)
+        #   'non_canonical'       -> Φ(s')=0 (allows additives, breaks invariance)
         #   'progressive_release' -> Φ(s')=Φ(s)*(1-decay_factor)
         #   'spike_cancel'        -> Φ(s')=Φ(s)/γ (Δ ≈ 0, cancels shaping)
         #   'retain_previous'     -> Φ(s')=Φ(s)
@@ -1372,7 +1372,7 @@ class MyRLEnv(Base5ActionRLEnv):
         )
         _allowed_exit_modes = {
             "canonical",
-            "non-canonical",
+            "non_canonical",
             "progressive_release",
             "spike_cancel",
             "retain_previous",
@@ -1439,11 +1439,11 @@ class MyRLEnv(Base5ActionRLEnv):
             if self._entry_additive_enabled or self._exit_additive_enabled:
                 logger.info(
                     "Canonical mode: additive rewards disabled with Φ(terminal)=0. PBRS invariance is preserved. "
-                    "To use additive rewards, set exit_potential_mode='non-canonical'."
+                    "To use additive rewards, set exit_potential_mode='non_canonical'."
                 )
                 self._entry_additive_enabled = False
                 self._exit_additive_enabled = False
-        elif self._exit_potential_mode == "non-canonical":
+        elif self._exit_potential_mode == "non_canonical":
             if self._entry_additive_enabled or self._exit_additive_enabled:
                 logger.info(
                     "Non-canonical mode: additive rewards enabled with Φ(terminal)=0. PBRS invariance is intentionally broken."
@@ -1701,7 +1701,7 @@ class MyRLEnv(Base5ActionRLEnv):
         See ``_apply_potential_shaping`` for complete PBRS documentation.
         """
         mode = self._exit_potential_mode
-        if mode == "canonical" or mode == "non-canonical":
+        if mode == "canonical" or mode == "non_canonical":
             return 0.0
         if mode == "progressive_release":
             decay = self._exit_potential_decay
@@ -1959,7 +1959,7 @@ class MyRLEnv(Base5ActionRLEnv):
         elif is_exit:
             if (
                 self._exit_potential_mode == "canonical"
-                or self._exit_potential_mode == "non-canonical"
+                or self._exit_potential_mode == "non_canonical"
             ):
                 next_potential = 0.0
                 exit_shaping_reward = -prev_potential

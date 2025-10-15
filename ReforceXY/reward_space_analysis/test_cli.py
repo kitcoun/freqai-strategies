@@ -79,7 +79,7 @@ def build_arg_matrix(
 ) -> List[ConfigTuple]:
     exit_potential_modes = [
         "canonical",
-        "non-canonical",
+        "non_canonical",
         "progressive_release",
         "retain_previous",
         "spike_cancel",
