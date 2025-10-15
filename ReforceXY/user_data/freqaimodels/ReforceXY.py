@@ -1334,9 +1334,6 @@ class MyRLEnv(Base5ActionRLEnv):
         self.max_trade_duration_candles: int = self.rl_config.get(
             "max_trade_duration_candles", 128
         )
-        # === Constants ===
-        self.MIN_SOFTSIGN_SHARPNESS: float = 0.01
-        self.MAX_SOFTSIGN_SHARPNESS: float = 100.0
         # === INTERNAL STATE ===
         self._last_closed_position: Optional[Positions] = None
         self._last_closed_trade_tick: int = 0
@@ -1363,13 +1360,6 @@ class MyRLEnv(Base5ActionRLEnv):
                 original_gamma,
                 self._potential_gamma,
             )
-        self._potential_softsign_sharpness: float = float(
-            model_reward_parameters.get("potential_softsign_sharpness", 1.0)
-        )
-        self._potential_softsign_sharpness = max(
-            self.MIN_SOFTSIGN_SHARPNESS,
-            min(self.MAX_SOFTSIGN_SHARPNESS, self._potential_softsign_sharpness),
-        )
         # === EXIT POTENTIAL MODE ===
         # exit_potential_mode options:
         #   'canonical'           -> Φ(s')=0 (preserves invariance, disables additives)
@@ -1664,8 +1654,8 @@ class MyRLEnv(Base5ActionRLEnv):
         Parameters
         ----------
         name : str
-            Transform function name: 'tanh', 'softsign', 'softsign_sharp',
-            'arctan', 'logistic', 'asinh_norm', or 'clip'
+            Transform function name: 'tanh', 'softsign', 'arctan', 'sigmoid',
+            'asinh_norm', or 'clip'
         x : float
             Input value to transform
 
@@ -1681,23 +1671,18 @@ class MyRLEnv(Base5ActionRLEnv):
             ax = abs(x)
             return x / (1.0 + ax)
 
-        if name == "softsign_sharp":
-            s = self._potential_softsign_sharpness
-            xs = s * x
-            ax = abs(xs)
-            return xs / (1.0 + ax)
-
         if name == "arctan":
             return (2.0 / math.pi) * math.atan(x)
 
-        if name == "logistic":
+        if name == "sigmoid":
             try:
                 if x >= 0:
-                    z = math.exp(-x)  # z in (0,1]
-                    return (1.0 - z) / (1.0 + z)
+                    exp_neg_x = math.exp(-x)
+                    sigma_x = 1.0 / (1.0 + exp_neg_x)
                 else:
-                    z = math.exp(x)  # z in (0,1]
-                    return (z - 1.0) / (z + 1.0)
+                    exp_x = math.exp(x)
+                    sigma_x = exp_x / (exp_x + 1.0)
+                return 2.0 * sigma_x - 1.0
             except OverflowError:
                 return 1.0 if x > 0 else -1.0
 
@@ -1824,19 +1809,17 @@ class MyRLEnv(Base5ActionRLEnv):
         -----------------------
         Hold potential formula: Φ(s) = scale * 0.5 * [T_pnl(g*pnl_ratio) + T_dur(g*duration_ratio)]
 
-        **Bounded Transform Functions** (range [-1,1]):
-        - tanh: smooth saturation, tanh(x)
-        - softsign: x/(1+|x|), gentler than tanh
-        - softsign_sharp: (sharpness*x)/(1+|sharpness*x|), custom saturation control
-        - arctan: (2/π)*arctan(x), linear near origin
-        - logistic: 2σ(x)-1 where σ(x)=1/(1+e^(-x)), numerically stable implementation
-        - asinh_norm: x/√(1+x²), normalized asinh-like
-        - clip: hard clamp to [-1,1]
+        **Bounded Transform Functions** (each maps R -> (-1, 1) except clip which is [-1, 1]):
+        - tanh: tanh(x)
+        - softsign: x / (1 + |x|)
+        - arctan: (2/pi) * arctan(x)
+        - sigmoid: 2σ(x) - 1, σ(x) = 1/(1 + e^(-x))
+        - asinh_norm: x / sqrt(1 + x^2)
+        - clip: clip(x, -1, 1)
 
         **Parameters**:
         - gain g: sharpens (g>1) or softens (g<1) transform input
         - scale: multiplies final potential value
-        - sharpness: affects softsign_sharp transform (must be >0)
 
         Exit Potential Modes
         --------------------

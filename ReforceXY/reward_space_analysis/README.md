@@ -299,7 +299,7 @@ effective_r = r            if not exit_plateau
 | legacy | step: ×1.5 if r* ≤ 1 else ×0.5 | No | Historical discontinuity retained (not smoothed) |
 | sqrt | 1 / sqrt(1 + r*) | Yes | Sub-linear decay |
 | linear | 1 / (1 + slope * r*) | Yes | slope = `exit_linear_slope` (≥0) |
-| power | (1 + r*)^(-alpha) | Yes | alpha = -ln(tau)/ln(2), tau = `exit_power_tau` ∈ (0,1]; tau=1 ⇒ alpha=0 (flat) |
+| power | (1 + r*)^(-alpha) | Yes | alpha = -ln(tau)/ln(2), tau = `exit_power_tau` ∈ (0,1]; tau=1 ⇒ alpha=0 (flat); invalid tau ⇒ alpha=1 (default) |
 | half_life | 2^(- r* / hl) | Yes | hl = `exit_half_life`; r* = hl ⇒ factor × 0.5 |
 
 Where r* = `effective_r` above.
@@ -317,13 +317,12 @@ _Profit factor configuration:_
 _PBRS (Potential-Based Reward Shaping) configuration:_
 
 - `potential_gamma` (default: 0.95) - Discount factor γ for PBRS potential term (0 ≤ γ ≤ 1)
-- `potential_softsign_sharpness` (default: 1.0) - Sharpness parameter for softsign_sharp transform (smaller = sharper)
 - `exit_potential_mode` (default: canonical) - Exit potential mode: 'canonical' (Φ=0, preserves invariance, disables additives), 'non-canonical' (Φ=0, allows additives, breaks invariance), 'progressive_release', 'spike_cancel', 'retain_previous'
 - `exit_potential_decay` (default: 0.5) - Decay factor for progressive_release exit mode (0 ≤ decay ≤ 1)
 - `hold_potential_enabled` (default: true) - Enable PBRS hold potential function Φ(s)
 - `hold_potential_scale` (default: 1.0) - Scale factor for hold potential function
 - `hold_potential_gain` (default: 1.0) - Gain factor applied before transforms in hold potential
-- `hold_potential_transform_pnl` (default: tanh) - Transform function for PnL: tanh, softsign, softsign_sharp, arctan, logistic, asinh_norm, clip
+- `hold_potential_transform_pnl` (default: tanh) - Transform function for PnL: tanh, softsign, arctan, sigmoid, asinh_norm, clip
 - `hold_potential_transform_duration` (default: tanh) - Transform function for duration ratio
 - `entry_additive_enabled` (default: false) - Enable entry additive reward (non-PBRS component)
 - `entry_additive_scale` (default: 1.0) - Scale factor for entry additive reward
@@ -341,11 +340,10 @@ _PBRS (Potential-Based Reward Shaping) configuration:_
 | Transform | Formula | Range | Characteristics | Use Case |
 |-----------|---------|-------|-----------------|----------|
 | `tanh` | tanh(x) | (-1, 1) | Smooth sigmoid, symmetric around 0 | Balanced PnL/duration transforms (default) |
-| `softsign` | x / (1 + \|x\|) | (-1, 1) | Smoother than tanh, linear near 0 | Less aggressive saturation |
-| `softsign_sharp` | (sharpness * x) / (1 + \|sharpness * x\|) | (-1, 1) | Tunable sharpness via `potential_softsign_sharpness` | Custom saturation control |
-| `arctan` | (2/π) × arctan(x) | (-1, 1) | Slower saturation than tanh | Wide dynamic range |
-| `logistic` | 2 / (1 + e^(-x)) - 1 | (-1, 1) | Equivalent to tanh(x/2), gentler curve | Mild non-linearity |
-| `asinh_norm` | x / √(1 + x²) | (-1, 1) | Normalized asinh-like transform | Extreme outlier robustness |
+| `softsign` | x / (1 + |x|) | (-1, 1) | Smoother than tanh, linear near 0 | Less aggressive saturation |
+| `arctan` | (2/pi) * arctan(x) | (-1, 1) | Slower saturation than tanh | Wide dynamic range |
+| `sigmoid` | 2σ(x) - 1, σ(x) = 1/(1 + e^(-x)) | (-1, 1) | Sigmoid mapped to (-1, 1) | Standard sigmoid activation |
+| `asinh_norm` | x / sqrt(1 + x^2) | (-1, 1) | Normalized asinh-like transform | Extreme outlier robustness |
 | `clip` | clip(x, -1, 1) | [-1, 1] | Hard clipping at ±1 | Preserve linearity within bounds |
 
 _Invariant / safety controls:_
@@ -581,8 +579,8 @@ python reward_space_analysis.py \
 
 python reward_space_analysis.py \
     --num_samples 25000 \
-    --params hold_potential_transform_pnl=softsign_sharp potential_softsign_sharpness=0.5 \
-    --output pbrs_sharp_transforms
+    --params hold_potential_transform_pnl=sigmoid hold_potential_gain=2.0 \
+    --output pbrs_sigmoid_transforms
 ```
 
 ### Real Data Comparison

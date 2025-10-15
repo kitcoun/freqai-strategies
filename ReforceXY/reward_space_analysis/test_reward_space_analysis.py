@@ -3080,7 +3080,7 @@ class TestPBRSIntegration(RewardSpaceTestBase):
     """Tests for PBRS (Potential-Based Reward Shaping) integration."""
 
     def test_tanh_transform(self):
-        """tanh transform: bounded in (-1,1), symmetric."""
+        """tanh transform: tanh(x) in (-1, 1)."""
         self.assertAlmostEqualFloat(apply_transform("tanh", 0.0), 0.0)
         self.assertAlmostEqualFloat(apply_transform("tanh", 1.0), math.tanh(1.0))
         self.assertAlmostEqualFloat(apply_transform("tanh", -1.0), math.tanh(-1.0))
@@ -3088,37 +3088,15 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         self.assertTrue(abs(apply_transform("tanh", -100.0)) <= 1.0)
 
     def test_softsign_transform(self):
-        """softsign transform: x/(1+|x|) in (-1,1)."""
+        """softsign transform: x / (1 + |x|) in (-1, 1)."""
         self.assertAlmostEqualFloat(apply_transform("softsign", 0.0), 0.0)
         self.assertAlmostEqualFloat(apply_transform("softsign", 1.0), 0.5)
         self.assertAlmostEqualFloat(apply_transform("softsign", -1.0), -0.5)
         self.assertTrue(abs(apply_transform("softsign", 100.0)) < 1.0)
         self.assertTrue(abs(apply_transform("softsign", -100.0)) < 1.0)
 
-    def test_softsign_sharp_transform(self):
-        """softsign_sharp transform: (s*x)/(1+|s*x|) in (-1,1) with sharpness s."""
-        # Baseline: s=1 should match softsign
-        self.assertAlmostEqualFloat(
-            apply_transform("softsign_sharp", 0.0, sharpness=1.0), 0.0
-        )
-        self.assertAlmostEqualFloat(
-            apply_transform("softsign_sharp", 1.0, sharpness=1.0),
-            apply_transform("softsign", 1.0),
-        )
-        # Higher sharpness => faster saturation
-        v_low = apply_transform("softsign_sharp", 0.5, sharpness=1.0)
-        v_high = apply_transform("softsign_sharp", 0.5, sharpness=4.0)
-        self.assertTrue(abs(v_high) > abs(v_low))
-        # Boundedness stress
-        self.assertTrue(
-            abs(apply_transform("softsign_sharp", 100.0, sharpness=10.0)) < 1.0
-        )
-        self.assertTrue(
-            abs(apply_transform("softsign_sharp", -100.0, sharpness=10.0)) < 1.0
-        )
-
     def test_asinh_norm_transform(self):
-        """asinh_norm transform: x/sqrt(1+x^2) in (-1,1)."""
+        """asinh_norm transform: x / sqrt(1 + x^2) in (-1, 1)."""
         self.assertAlmostEqualFloat(apply_transform("asinh_norm", 0.0), 0.0)
         # Symmetry
         self.assertAlmostEqualFloat(
@@ -3126,7 +3104,7 @@ class TestPBRSIntegration(RewardSpaceTestBase):
             -apply_transform("asinh_norm", -1.2345),
             tolerance=1e-12,
         )
-        # Monotonicity (sampled)
+        # Monotonicity
         vals = [apply_transform("asinh_norm", x) for x in [-5.0, -1.0, 0.0, 1.0, 5.0]]
         self.assertTrue(all(vals[i] < vals[i + 1] for i in range(len(vals) - 1)))
         # Bounded
@@ -3134,7 +3112,7 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         self.assertTrue(abs(apply_transform("asinh_norm", -1e6)) < 1.0)
 
     def test_arctan_transform(self):
-        """arctan transform: normalized (2/pi)atan(x) bounded (-1,1)."""
+        """arctan transform: (2/pi) * arctan(x) in (-1, 1)."""
         self.assertAlmostEqualFloat(apply_transform("arctan", 0.0), 0.0)
         self.assertAlmostEqualFloat(
             apply_transform("arctan", 1.0),
@@ -3144,49 +3122,16 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         self.assertTrue(abs(apply_transform("arctan", 100.0)) <= 1.0)
         self.assertTrue(abs(apply_transform("arctan", -100.0)) <= 1.0)
 
-    def test_logistic_transform(self):
-        """logistic transform: 2σ(x)-1 in (-1,1)."""
-        # Environment logistic returns 2σ(x)-1 centered at 0 in (-1,1)
-        self.assertAlmostEqualFloat(apply_transform("logistic", 0.0), 0.0)
-        self.assertTrue(apply_transform("logistic", 100.0) > 0.99)
-        self.assertTrue(apply_transform("logistic", -100.0) < -0.99)
-        self.assertTrue(-1 < apply_transform("logistic", 10.0) < 1)
-        self.assertTrue(-1 < apply_transform("logistic", -10.0) < 1)
-
-    def test_logistic_equivalence_tanh_half(self):
-        """logistic(x) must equal tanh(x/2) within tight tolerance across representative domain.
-
-        Uses identity: 2/(1+e^{-x}) - 1 = tanh(x/2).
-        """
-        samples = [
-            0.0,
-            1e-6,
-            -1e-6,
-            0.5,
-            -0.5,
-            1.0,
-            -1.0,
-            2.5,
-            -2.5,
-            5.0,
-            -5.0,
-            10.0,
-            -10.0,
-        ]
-        for x in samples:
-            with self.subTest(x=x):
-                v_log = apply_transform("logistic", x)
-                v_tanh = math.tanh(x / 2.0)
-                tol = 1e-12 if abs(x) <= 5 else 1e-10
-                self.assertAlmostEqualFloat(
-                    v_log,
-                    v_tanh,
-                    tolerance=tol,
-                    msg=f"Mismatch logistic vs tanh(x/2) at x={x}: {v_log} vs {v_tanh}",
-                )
+    def test_sigmoid_transform(self):
+        """sigmoid transform: 2σ(x) - 1, σ(x) = 1/(1 + e^(-x)) in (-1, 1)."""
+        self.assertAlmostEqualFloat(apply_transform("sigmoid", 0.0), 0.0)
+        self.assertTrue(apply_transform("sigmoid", 100.0) > 0.99)
+        self.assertTrue(apply_transform("sigmoid", -100.0) < -0.99)
+        self.assertTrue(-1 < apply_transform("sigmoid", 10.0) < 1)
+        self.assertTrue(-1 < apply_transform("sigmoid", -10.0) < 1)
 
     def test_clip_transform(self):
-        """clip transform: clamp to [-1,1]."""
+        """clip transform: clip(x, -1, 1) in [-1, 1]."""
         self.assertAlmostEqualFloat(apply_transform("clip", 0.0), 0.0)
         self.assertAlmostEqualFloat(apply_transform("clip", 0.5), 0.5)
         self.assertAlmostEqualFloat(apply_transform("clip", 2.0), 1.0)

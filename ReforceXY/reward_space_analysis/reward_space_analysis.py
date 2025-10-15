@@ -168,9 +168,8 @@ def _fail_safely(reason: str) -> float:
 ALLOWED_TRANSFORMS = {
     "tanh",
     "softsign",
-    "softsign_sharp",
     "arctan",
-    "logistic",
+    "sigmoid",
     "asinh_norm",
     "clip",
 }
@@ -213,7 +212,6 @@ DEFAULT_MODEL_REWARD_PARAMETERS: RewardParams = {
     # Potential-based reward shaping core parameters
     # Discount factor γ for potential term (0 ≤ γ ≤ 1)
     "potential_gamma": POTENTIAL_GAMMA_DEFAULT,
-    "potential_softsign_sharpness": 1.0,
     # Exit potential modes: canonical | non-canonical | progressive_release | spike_cancel | retain_previous
     "exit_potential_mode": "canonical",
     "exit_potential_decay": 0.5,
@@ -259,13 +257,12 @@ DEFAULT_MODEL_REWARD_PARAMETERS_HELP: Dict[str, str] = {
     "exit_factor_threshold": "If |exit factor| exceeds this threshold, emit warning.",
     # PBRS parameters
     "potential_gamma": "Discount factor γ for PBRS potential-based reward shaping (0 ≤ γ ≤ 1).",
-    "potential_softsign_sharpness": "Sharpness parameter for softsign_sharp transform (smaller = sharper).",
     "exit_potential_mode": "Exit potential mode: 'canonical' (Φ=0 & additives disabled), 'non-canonical' (Φ=0 & additives allowed), 'progressive_release', 'spike_cancel', 'retain_previous'.",
     "exit_potential_decay": "Decay factor for progressive_release exit mode (0 ≤ decay ≤ 1).",
     "hold_potential_enabled": "Enable PBRS hold potential function Φ(s).",
     "hold_potential_scale": "Scale factor for hold potential function.",
     "hold_potential_gain": "Gain factor applied before transforms in hold potential.",
-    "hold_potential_transform_pnl": "Transform function for PnL in hold potential: tanh, softsign, softsign_sharp, arctan, logistic, asinh_norm, clip.",
+    "hold_potential_transform_pnl": "Transform function for PnL in hold potential: tanh, softsign, arctan, sigmoid, asinh_norm, clip.",
     "hold_potential_transform_duration": "Transform function for duration ratio in hold potential.",
     "entry_additive_enabled": "Enable entry additive reward (non-PBRS component).",
     "entry_additive_scale": "Scale factor for entry additive reward.",
@@ -303,8 +300,6 @@ _PARAMETER_BOUNDS: Dict[str, Dict[str, float]] = {
     "pnl_factor_beta": {"min": 1e-6},
     # PBRS parameter bounds
     "potential_gamma": {"min": 0.0, "max": 1.0},
-    # Softsign sharpness: only lower bound enforced (upper bound limited implicitly by transform stability)
-    "potential_softsign_sharpness": {"min": 1e-6},
     "exit_potential_decay": {"min": 0.0, "max": 1.0},
     "hold_potential_scale": {"min": 0.0},
     "hold_potential_gain": {"min": 0.0},
@@ -3348,48 +3343,43 @@ def main() -> None:
 
 
 def _apply_transform_tanh(value: float) -> float:
-    """tanh(value) ∈ (-1,1)."""
-    return float(np.tanh(value))
+    """tanh: tanh(x) in (-1, 1)."""
+    return float(math.tanh(value))
 
 
 def _apply_transform_softsign(value: float) -> float:
-    """softsign: value/(1+|value|)."""
+    """softsign: x / (1 + |x|) in (-1, 1)."""
     x = value
     return float(x / (1.0 + abs(x)))
 
 
-def _apply_transform_softsign_sharp(value: float, sharpness: float = 1.0) -> float:
-    """softsign_sharp: (sharpness*value)/(1+|sharpness*value|) - multiplicative sharpness."""
-    xs = sharpness * value
-    return float(xs / (1.0 + abs(xs)))
-
-
 def _apply_transform_arctan(value: float) -> float:
-    """arctan normalized: (2/pi)*atan(value) ∈ (-1,1)."""
+    """arctan: (2/pi) * arctan(x) in (-1, 1)."""
     return float((2.0 / math.pi) * math.atan(value))
 
 
-def _apply_transform_logistic(value: float) -> float:
-    """Overflow‑safe logistic transform mapped to (-1,1): 2σ(x)−1."""
+def _apply_transform_sigmoid(value: float) -> float:
+    """sigmoid: 2σ(x) - 1, σ(x) = 1/(1 + e^(-x)) in (-1, 1)."""
     x = value
     try:
         if x >= 0:
-            z = math.exp(-x)  # z in (0,1]
-            return float((1.0 - z) / (1.0 + z))
+            exp_neg_x = math.exp(-x)
+            sigma_x = 1.0 / (1.0 + exp_neg_x)
         else:
-            z = math.exp(x)  # z in (0,1]
-            return float((z - 1.0) / (z + 1.0))
+            exp_x = math.exp(x)
+            sigma_x = exp_x / (exp_x + 1.0)
+        return 2.0 * sigma_x - 1.0
     except OverflowError:
         return 1.0 if x > 0 else -1.0
 
 
 def _apply_transform_asinh_norm(value: float) -> float:
-    """Normalized asinh: value / sqrt(1 + value²) producing range (-1,1)."""
+    """asinh_norm: x / sqrt(1 + x^2) in (-1, 1)."""
     return float(value / math.hypot(1.0, value))
 
 
 def _apply_transform_clip(value: float) -> float:
-    """clip(value) to [-1,1]."""
+    """clip: clip(x, -1, 1) in [-1, 1]."""
     return float(np.clip(value, -1.0, 1.0))
 
 
@@ -3398,9 +3388,8 @@ def apply_transform(transform_name: str, value: float, **kwargs: Any) -> float:
     transforms = {
         "tanh": _apply_transform_tanh,
         "softsign": _apply_transform_softsign,
-        "softsign_sharp": _apply_transform_softsign_sharp,
         "arctan": _apply_transform_arctan,
-        "logistic": _apply_transform_logistic,
+        "sigmoid": _apply_transform_sigmoid,
         "asinh_norm": _apply_transform_asinh_norm,
         "clip": _apply_transform_clip,
     }
@@ -3709,18 +3698,9 @@ def _compute_bi_component(
     gain = _get_float_param(params, gain_key, 1.0)
     transform_pnl = _get_str_param(params, transform_pnl_key, "tanh")
     transform_duration = _get_str_param(params, transform_dur_key, "tanh")
-    sharpness = _get_float_param(params, "potential_softsign_sharpness", 1.0)
 
-    if transform_pnl == "softsign_sharp":
-        t_pnl = apply_transform(transform_pnl, gain * pnl, sharpness=sharpness)
-    else:
-        t_pnl = apply_transform(transform_pnl, gain * pnl)
-    if transform_duration == "softsign_sharp":
-        t_dur = apply_transform(
-            transform_duration, gain * duration_ratio, sharpness=sharpness
-        )
-    else:
-        t_dur = apply_transform(transform_duration, gain * duration_ratio)
+    t_pnl = apply_transform(transform_pnl, gain * pnl)
+    t_dur = apply_transform(transform_duration, gain * duration_ratio)
     value = scale * 0.5 * (t_pnl + t_dur)
     if not np.isfinite(value):
         return _fail_safely(non_finite_key)
