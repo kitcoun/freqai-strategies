@@ -225,7 +225,7 @@ Where r* = `effective_r` above.
 | Transform | Formula | Range | Characteristics | Use Case |
 |-----------|---------|-------|-----------------|----------|
 | `tanh` | tanh(x) | (-1, 1) | Smooth sigmoid, symmetric around 0 | Balanced PnL/duration transforms (default) |
-| `softsign` | x / (1 + |x|) | (-1, 1) | Smoother than tanh, linear near 0 | Less aggressive saturation |
+| `softsign` | x / (1 + \|x\|) | (-1, 1) | Smoother than tanh, linear near 0 | Less aggressive saturation |
 | `arctan` | (2/pi) * arctan(x) | (-1, 1) | Slower saturation than tanh | Wide dynamic range |
 | `sigmoid` | 2σ(x) - 1, σ(x) = 1/(1 + e^(-x)) | (-1, 1) | Sigmoid mapped to (-1, 1) | Standard sigmoid activation |
 | `asinh` | x / sqrt(1 + x^2) | (-1, 1) | Normalized asinh-like transform | Extreme outlier robustness |

@@ -799,6 +799,8 @@ class TestStatistics(RewardSpaceTestBase):
         (_, lo_l, hi_l) = list(res_large.values())[0]
         hw_small = (hi_s - lo_s) / 2.0
         hw_large = (hi_l - lo_l) / 2.0
+        self.assertFinite(hw_small, name="hw_small")
+        self.assertFinite(hw_large, name="hw_large")
         self.assertLess(hw_large, hw_small * 0.55)
 
     def test_stats_variance_vs_duration_spearman_sign(self):
@@ -813,6 +815,7 @@ class TestStatistics(RewardSpaceTestBase):
         ranks_dur = pd.Series(trade_duration).rank().to_numpy()
         ranks_var = pd.Series(np.abs(pnl)).rank().to_numpy()
         rho = np.corrcoef(ranks_dur, ranks_var)[0, 1]
+        self.assertFinite(rho, name="spearman_rho")
         self.assertGreater(rho, 0.1)
 
     def test_stats_scaling_invariance_distribution_metrics(self):
@@ -1012,7 +1015,7 @@ class TestStatistics(RewardSpaceTestBase):
                     diagnostics[f"{col}_shapiro_pval"],
                     msg=f"Shapiro p-value bounds for {col}",
                 )
-        hypothesis_results = statistical_hypothesis_tests(df, seed=42)
+        hypothesis_results = statistical_hypothesis_tests(df, seed=self.SEED)
         for test_name, result in hypothesis_results.items():
             if "p_value" in result:
                 self.assertPValue(
@@ -1083,7 +1086,7 @@ class TestRewardComponents(RewardSpaceTestBase):
         ]
         for position, action, expected_type in test_cases:
             with self.subTest(position=position, action=action):
-                context = RewardContext(
+                context = self.make_ctx(
                     pnl=0.02 if expected_type == "exit_component" else 0.0,
                     trade_duration=50 if position != Positions.Neutral else 0,
                     idle_duration=10 if position == Positions.Neutral else 0,
@@ -1277,7 +1280,7 @@ class TestRewardComponents(RewardSpaceTestBase):
         ratios_observed: list[float] = []
 
         for pnl in pnl_values:
-            context = RewardContext(
+            context = self.make_ctx(
                 pnl=pnl,
                 trade_duration=0,  # duration_ratio=0 -> attenuation = 1
                 idle_duration=0,
@@ -1345,7 +1348,7 @@ class TestRewardComponents(RewardSpaceTestBase):
 
         contexts: list[RewardContext] = [
             # Winning exit
-            RewardContext(
+            self.make_ctx(
                 pnl=0.025,
                 trade_duration=40,
                 idle_duration=0,
@@ -1356,7 +1359,7 @@ class TestRewardComponents(RewardSpaceTestBase):
                 action=Actions.Long_exit,
             ),
             # Losing exit
-            RewardContext(
+            self.make_ctx(
                 pnl=-self.TEST_PNL_STD,
                 trade_duration=60,
                 idle_duration=0,
@@ -1367,7 +1370,7 @@ class TestRewardComponents(RewardSpaceTestBase):
                 action=Actions.Long_exit,
             ),
             # Idle penalty
-            RewardContext(
+            self.make_ctx(
                 pnl=0.0,
                 trade_duration=0,
                 idle_duration=35,
@@ -1378,7 +1381,7 @@ class TestRewardComponents(RewardSpaceTestBase):
                 action=Actions.Neutral,
             ),
             # Hold penalty
-            RewardContext(
+            self.make_ctx(
                 pnl=0.0,
                 trade_duration=80,
                 idle_duration=0,
@@ -1470,7 +1473,7 @@ class TestRewardComponents(RewardSpaceTestBase):
         rr = self.TEST_RR_HIGH
         pnls = [0.018, -0.022]
         for pnl in pnls:
-            ctx_long = RewardContext(
+            ctx_long = self.make_ctx(
                 pnl=pnl,
                 trade_duration=55,
                 idle_duration=0,
@@ -1480,7 +1483,7 @@ class TestRewardComponents(RewardSpaceTestBase):
                 position=Positions.Long,
                 action=Actions.Long_exit,
             )
-            ctx_short = RewardContext(
+            ctx_short = self.make_ctx(
                 pnl=pnl,
                 trade_duration=55,
                 idle_duration=0,
@@ -1554,7 +1557,7 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
         any_exit = df[df["reward_exit"] != 0].head(1)
         if not any_exit.empty:
             row = any_exit.iloc[0]
-            ctx = RewardContext(
+            ctx = self.make_ctx(
                 pnl=float(row["pnl"]),
                 trade_duration=int(row["trade_duration"]),
                 idle_duration=int(row["idle_duration"]),
@@ -1579,7 +1582,7 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
         """simulate_samples coverage: spot should forbid shorts, margin should allow them."""
         df_spot = simulate_samples(
             num_samples=80,
-            seed=42,
+            seed=self.SEED,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
             base_factor=self.TEST_BASE_FACTOR,
@@ -1598,7 +1601,7 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
         )
         df_margin = simulate_samples(
             num_samples=80,
-            seed=42,
+            seed=self.SEED,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
             base_factor=self.TEST_BASE_FACTOR,
@@ -1630,7 +1633,7 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
         # Test via simulate_samples which uses action_masking parameter
         df1 = simulate_samples(
             num_samples=10,
-            seed=42,
+            seed=self.SEED,
             params={"action_masking": "true"},
             max_trade_duration=50,
             base_factor=self.TEST_BASE_FACTOR,
@@ -1645,7 +1648,7 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
 
         df2 = simulate_samples(
             num_samples=10,
-            seed=42,
+            seed=self.SEED,
             params={"action_masking": "false"},
             max_trade_duration=50,
             base_factor=self.TEST_BASE_FACTOR,
@@ -1663,7 +1666,7 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
         # Test futures mode (shorts allowed)
         df_futures = simulate_samples(
             num_samples=100,
-            seed=42,
+            seed=self.SEED,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=50,
             base_factor=self.TEST_BASE_FACTOR,
@@ -1705,7 +1708,7 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
         # Create comprehensive test data
         test_data = simulate_samples(
             num_samples=200,
-            seed=42,
+            seed=self.SEED,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
             base_factor=self.TEST_BASE_FACTOR,
@@ -1725,7 +1728,7 @@ class TestAPIAndHelpers(RewardSpaceTestBase):
                 output_path,
                 max_trade_duration=100,
                 profit_target=self.TEST_PROFIT_TARGET,
-                seed=42,
+                seed=self.SEED,
                 real_df=None,
             )
 
@@ -2154,7 +2157,7 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
         """Invariant: only exit actions have non-zero PnL (robustness category)."""
         df = simulate_samples(
             num_samples=200,
-            seed=42,
+            seed=self.SEED,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=50,
             base_factor=self.TEST_BASE_FACTOR,
