@@ -55,8 +55,6 @@ This tool helps you understand and validate how the ReforceXY reinforcement lear
     - [Batch Analysis](#batch-analysis)
 - [Validation & Testing](#-validation--testing)
     - [Run Tests](#run-tests)
-    - [Test Categories](#test-categories)
-    - [Test Architecture](#test-architecture)
     - [Code Coverage Analysis](#code-coverage-analysis)
     - [When to Run Tests](#when-to-run-tests)
     - [Run Specific Test Categories](#run-specific-test-categories)
@@ -621,33 +619,6 @@ pip install pytest packaging
 pytest -q
 ```
 
-Always run the full suite after modifying reward logic or attenuation parameters.
-
-### Test Categories
-
-| Category | Class | Focus |
-|----------|-------|-------|
-| Integration | TestIntegration | CLI, artifacts, manifest reproducibility |
-| Statistical Coherence | TestStatisticalCoherence | Distribution shift, diagnostics, hypothesis basics |
-| Reward Alignment | TestRewardAlignment | Component correctness & exit factors |
-| Public API | TestPublicAPI | Core API functions and interfaces |
-| Statistical Validation | TestStatisticalValidation | Mathematical bounds, heteroscedasticity, invariants |
-| Boundary Conditions | TestBoundaryConditions | Extreme params & unknown mode fallback |
-| Helper Functions | TestHelperFunctions | Report writers, model analysis, utility conversions |
-| Private Functions | TestPrivateFunctions | Idle / hold / invalid penalties, exit scenarios (accessed indirectly) |
-| Robustness | TestRewardRobustness | Monotonic attenuation (where applicable), decomposition integrity, boundary regimes |
-| Parameter Validation | TestParameterValidation | Bounds clamping, warning threshold, penalty power scaling |
-| Continuity | TestContinuityPlateau | Plateau boundary continuity & small-epsilon attenuation scaling |
-| PBRS Integration | TestPBRSIntegration | Potential-based reward shaping, transforms, exit modes, canonical invariance |
-| Report Formatting | TestReportFormatting | Report section presence, ordering, PBRS invariance line, formatting integrity |
-| Load Real Episodes | TestLoadRealEpisodes | Real episodes ingestion, column validation, distribution shift preparation |
-
-### Test Architecture
-
-- **Single test file**: `test_reward_space_analysis.py` (consolidates all testing)
-- **Base class**: `RewardSpaceTestBase` with shared configuration and utilities
-- **Reproducible**: Fixed seed (`seed = 42`) for consistent results
-
 ### Code Coverage Analysis
 
 ```shell
@@ -655,15 +626,6 @@ pip install pytest-cov
 pytest -q --cov=. --cov-report=term-missing
 pytest -q --cov=. --cov-report=html # open htmlcov/index.html
 ```
-
-**Coverage Focus Areas:**
-- ✅ **Core reward calculation logic** - Excellently covered (>95%)
-- ✅ **Statistical functions** - Comprehensively covered (>90%)
-- ✅ **Public API functions** - Thoroughly covered (>85%)
-- ✅ **Report generation functions** - Well covered via dedicated tests
-- ✅ **Utility functions** - Well covered via simulation tests
-- ⚠️ **CLI interface and main()** - Partially covered (sufficient via integration tests)
-- ⚠️ **Error handling paths** - Basic coverage (acceptable for robustness)
 
 ### When to Run Tests
 

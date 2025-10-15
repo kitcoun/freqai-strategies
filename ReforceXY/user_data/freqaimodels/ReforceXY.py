@@ -1974,11 +1974,10 @@ class MyRLEnv(Base5ActionRLEnv):
                     pnl, pnl_target, duration_ratio
                 )
 
-            exit_reward = exit_shaping_reward + exit_additive
             self._last_potential = next_potential
             self._last_shaping_reward = float(exit_shaping_reward)
             self._total_shaping_reward += float(exit_shaping_reward)
-            return base_reward + exit_reward
+            return base_reward + exit_shaping_reward + exit_additive
         else:
             # Neutral self-loop
             self._last_potential = 0.0

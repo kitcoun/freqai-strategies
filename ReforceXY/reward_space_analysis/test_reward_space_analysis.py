@@ -11,6 +11,7 @@ import dataclasses
 import json
 import math
 import pickle
+import random
 import re
 import shutil
 import subprocess
@@ -19,7 +20,7 @@ import tempfile
 import unittest
 import warnings
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Union
+from typing import Any, Dict, Iterable, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -110,13 +111,7 @@ def make_ctx(
 
 
 class RewardSpaceTestBase(unittest.TestCase):
-    """Base class with common test utilities.
-
-    Central tolerance policy (avoid per-test commentary):
-    - Generic numeric equality: 1e-6
-    - Component decomposition / identity: 1e-9
-    - Monotonic attenuation allowance: +1e-9 drift
-    """
+    """Base class with common test utilities."""
 
     @classmethod
     def setUpClass(cls):
@@ -137,6 +132,151 @@ class RewardSpaceTestBase(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.output_path = Path(self.temp_dir)
 
+    # PBRS structural test constants
+    PBRS_TERMINAL_TOL = 1e-12
+    PBRS_MAX_ABS_SHAPING = 5.0
+    PBRS_TERMINAL_PROB = 0.08
+    PBRS_SWEEP_ITER = 120
+
+    # Generic numeric tolerances (distinct from PBRS structural constants)
+    EPS_BASE = (
+        1e-12  # Base epsilon for strict identity & numeric guards (single source)
+    )
+    TOL_NUMERIC_GUARD = EPS_BASE  # Division-by-zero guards / min denominators (alias)
+    TOL_IDENTITY_STRICT = EPS_BASE  # Strict component identity (alias of EPS_BASE)
+    TOL_IDENTITY_RELAXED = 1e-9  # Looser identity when cumulative fp drift acceptable
+    TOL_GENERIC_EQ = 1e-6  # Generic numeric equality (previous literal)
+    TOL_NEGLIGIBLE = 1e-8  # Negligible statistical or shaping effects
+    MIN_EXIT_POWER_TAU = (
+        1e-6  # Lower bound for exit_power_tau parameter (validation semantics)
+    )
+    # Distribution shape invariance (skewness / excess kurtosis) tolerance under scaling
+    TOL_DISTRIB_SHAPE = 5e-2
+    # Theoretical upper bound for Jensen-Shannon distance: sqrt(log 2)
+    JS_DISTANCE_UPPER_BOUND = math.sqrt(math.log(2.0))
+    # Relative tolerance (scale-aware) and continuity perturbation magnitudes
+    TOL_RELATIVE = 1e-9  # For relative comparisons scaled by magnitude
+    CONTINUITY_EPS_SMALL = 1e-4  # Small epsilon step for continuity probing
+    CONTINUITY_EPS_LARGE = 1e-3  # Larger epsilon step for ratio scaling tests
+
+    def _canonical_sweep(
+        self,
+        params: dict,
+        *,
+        iterations: int | None = None,
+        terminal_prob: float | None = None,
+        seed: int = 123,
+    ) -> tuple[list[float], list[float]]:
+        """Run a lightweight canonical invariance sweep.
+
+        Returns (terminal_next_potentials, shaping_values).
+        """
+        iters = iterations or self.PBRS_SWEEP_ITER
+        term_p = terminal_prob or self.PBRS_TERMINAL_PROB
+        rng = np.random.default_rng(seed)
+        last_potential = 0.0
+        terminal_next: list[float] = []
+        shaping_vals: list[float] = []
+        current_pnl = 0.0
+        current_dur = 0.0
+        for _ in range(iters):
+            is_terminal = rng.uniform() < term_p
+            next_pnl = 0.0 if is_terminal else float(rng.normal(0, 0.2))
+            inc = rng.uniform(0, 0.12)
+            next_dur = 0.0 if is_terminal else float(min(1.0, current_dur + inc))
+            _tot, shap_val, next_pot = apply_potential_shaping(
+                base_reward=0.0,
+                current_pnl=current_pnl,
+                current_duration_ratio=current_dur,
+                next_pnl=next_pnl,
+                next_duration_ratio=next_dur,
+                is_terminal=is_terminal,
+                last_potential=last_potential,
+                params=params,
+            )
+            shaping_vals.append(shap_val)
+            if is_terminal:
+                terminal_next.append(next_pot)
+                last_potential = 0.0
+                current_pnl = 0.0
+                current_dur = 0.0
+            else:
+                last_potential = next_pot
+                current_pnl = next_pnl
+                current_dur = next_dur
+        return terminal_next, shaping_vals
+
+    def make_stats_df(
+        self,
+        *,
+        n: int,
+        reward_total_mean: float = 0.0,
+        reward_total_std: float = 1.0,
+        pnl_mean: float = 0.01,
+        pnl_std: float | None = None,
+        trade_duration_dist: str = "uniform",
+        idle_pattern: str = "mixed",
+        seed: int | None = None,
+    ) -> pd.DataFrame:
+        """Generate a synthetic statistical DataFrame.
+
+        Parameters
+        ----------
+        n : int
+            Row count.
+        reward_total_mean, reward_total_std : float
+            Normal parameters for reward_total.
+        pnl_mean : float
+            Mean PnL.
+        pnl_std : float | None
+            PnL std (defaults to TEST_PNL_STD when None).
+        trade_duration_dist : {'uniform','exponential'}
+            Distribution family for trade_duration.
+        idle_pattern : {'mixed','all_nonzero','all_zero'}
+            mixed: ~40% idle>0 (U(1,60)); all_nonzero: all idle>0 (U(5,60)); all_zero: idle=0.
+        seed : int | None
+            RNG seed.
+
+        Returns
+        -------
+        pd.DataFrame with columns: reward_total, reward_idle, reward_hold, reward_exit,
+        pnl, trade_duration, idle_duration, position. Guarantees: no NaN; reward_idle==0 where idle_duration==0.
+        """
+        if seed is not None:
+            np.random.seed(seed)
+        pnl_std_eff = self.TEST_PNL_STD if pnl_std is None else pnl_std
+        reward_total = np.random.normal(reward_total_mean, reward_total_std, n)
+        pnl = np.random.normal(pnl_mean, pnl_std_eff, n)
+        if trade_duration_dist == "exponential":
+            trade_duration = np.random.exponential(20, n)
+        else:
+            trade_duration = np.random.uniform(5, 150, n)
+        # Idle duration pattern
+        if idle_pattern == "mixed":
+            mask = np.random.rand(n) < 0.4
+            idle_duration = np.where(mask, np.random.uniform(1, 60, n), 0.0)
+        elif idle_pattern == "all_zero":
+            idle_duration = np.zeros(n)
+        else:  # all_nonzero
+            idle_duration = np.random.uniform(5, 60, n)
+        # Component rewards (basic synthetic shaping consistent with sign expectations)
+        reward_idle = np.where(idle_duration > 0, np.random.normal(-1, 0.3, n), 0.0)
+        reward_hold = np.random.normal(-0.5, 0.2, n)
+        reward_exit = np.random.normal(0.8, 0.6, n)
+        position = np.random.choice([0.0, 0.5, 1.0], n)
+        return pd.DataFrame(
+            {
+                "reward_total": reward_total,
+                "reward_idle": reward_idle,
+                "reward_hold": reward_hold,
+                "reward_exit": reward_exit,
+                "pnl": pnl,
+                "trade_duration": trade_duration,
+                "idle_duration": idle_duration,
+                "position": position,
+            }
+        )
+
     def tearDown(self):
         """Clean up temporary files."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
@@ -145,25 +285,55 @@ class RewardSpaceTestBase(unittest.TestCase):
         self,
         first: Union[float, int],
         second: Union[float, int],
-        tolerance: float = 1e-6,
+        tolerance: Optional[float] = None,
+        rtol: Optional[float] = None,
         msg: Union[str, None] = None,
     ) -> None:
-        """Absolute tolerance compare with explicit failure and finite check."""
+        """Compare floats with absolute and optional relative tolerance.
+
+        precedence:
+          1. absolute tolerance (|a-b| <= tolerance)
+          2. relative tolerance (|a-b| <= rtol * max(|a|, |b|)) if provided
+        Both may be supplied; failure only if both criteria fail (when rtol given).
+        """
         self.assertFinite(first, name="a")
         self.assertFinite(second, name="b")
+        if tolerance is None:
+            tolerance = self.TOL_GENERIC_EQ
         diff = abs(first - second)
-        if diff > tolerance:
-            self.fail(
-                msg
-                or f"Difference {diff} exceeds tolerance {tolerance} (a={first}, b={second})"
-            )
+        # Absolute criterion
+        if diff <= tolerance:
+            return
+        # Relative criterion (optional)
+        if rtol is not None:
+            scale = max(abs(first), abs(second), 1e-15)
+            if diff <= rtol * scale:
+                return
+        self.fail(
+            msg
+            or f"Difference {diff} exceeds tolerance {tolerance} and relative tolerance {rtol} (a={first}, b={second})"
+        )
 
-    # --- Statistical bounds helpers (factorize redundancy) ---
     def assertPValue(self, value: Union[float, int], msg: str = "") -> None:
         """Assert a p-value is finite and within [0,1]."""
         self.assertFinite(value, name="p-value")
         self.assertGreaterEqual(value, 0.0, msg or f"p-value < 0: {value}")
         self.assertLessEqual(value, 1.0, msg or f"p-value > 1: {value}")
+
+    def assertPlacesEqual(
+        self,
+        a: Union[float, int],
+        b: Union[float, int],
+        places: int,
+        msg: str | None = None,
+    ) -> None:
+        """Bridge for legacy places-based approximate equality.
+
+        Converts decimal places to an absolute tolerance 10**-places and delegates to
+        assertAlmostEqualFloat to keep a single numeric comparison implementation.
+        """
+        tol = 10.0 ** (-places)
+        self.assertAlmostEqualFloat(a, b, tolerance=tol, msg=msg)
 
     def assertDistanceMetric(
         self,
@@ -245,12 +415,59 @@ class RewardSpaceTestBase(unittest.TestCase):
             self.assertGreater(value, low, f"{name} <= {low}")
             self.assertLess(value, high, f"{name} >= {high}")
 
+    def assertNearZero(
+        self,
+        value: Union[float, int],
+        *,
+        atol: Optional[float] = None,
+        msg: Optional[str] = None,
+    ) -> None:
+        """Assert a scalar is numerically near zero within absolute tolerance.
+
+        Uses strict identity tolerance by default for PBRS invariance style checks.
+        """
+        self.assertFinite(value, name="value")
+        tol = atol if atol is not None else self.TOL_IDENTITY_RELAXED
+        if abs(float(value)) > tol:
+            self.fail(msg or f"Value {value} not near zero (tol={tol})")
+
+    def assertSymmetric(
+        self,
+        func,
+        a,
+        b,
+        *,
+        atol: Optional[float] = None,
+        rtol: Optional[float] = None,
+        msg: Optional[str] = None,
+    ) -> None:
+        """Assert function(func, a, b) == function(func, b, a) within tolerance.
+
+        Intended for symmetric distance metrics (e.g., JS distance).
+        """
+        va = func(a, b)
+        vb = func(b, a)
+        self.assertAlmostEqualFloat(va, vb, tolerance=atol, rtol=rtol, msg=msg)
+
+    @staticmethod
+    def seed_all(seed: int = 123) -> None:
+        """Seed all RNGs used (numpy & random)."""
+        np.random.seed(seed)
+        random.seed(seed)
+
+    # Central tolerance mapping (single source for potential future dynamic use)
+    TOLS = {
+        "strict": EPS_BASE,
+        "relaxed": 1e-9,
+        "generic": 1e-6,
+    }
+
 
 class TestIntegration(RewardSpaceTestBase):
-    """Integration tests for CLI and file outputs."""
+    """CLI + file output integration tests."""
 
     def test_cli_execution_produces_expected_files(self):
-        """Test that CLI execution produces all expected output files."""
+        """CLI produces expected files."""
         cmd = [
             sys.executable,
             "reward_space_analysis.py",
@@ -266,10 +483,10 @@ class TestIntegration(RewardSpaceTestBase):
             cmd, capture_output=True, text=True, cwd=Path(__file__).parent
         )
 
-        # Should execute successfully
+        # Exit 0
         self.assertEqual(result.returncode, 0, f"CLI failed: {result.stderr}")
 
-        # Should produce expected files (single source of truth list)
+        # Expected files
         expected_files = [
             "reward_samples.csv",
             "feature_importance.csv",
@@ -285,7 +502,7 @@ class TestIntegration(RewardSpaceTestBase):
             self.assertTrue(file_path.exists(), f"Missing expected file: {filename}")
 
     def test_manifest_structure_and_reproducibility(self):
-        """Test manifest structure and reproducibility with same seed."""
+        """Manifest structure + reproducibility (same seed)."""
         # First run
         cmd1 = [
             sys.executable,
@@ -360,17 +577,14 @@ class TestIntegration(RewardSpaceTestBase):
         )
 
 
-class TestStatisticalCoherence(RewardSpaceTestBase):
-    """Statistical coherence validation tests."""
+class TestStatistics(RewardSpaceTestBase):
+    """Statistical tests: metrics, diagnostics, bootstrap, correlations."""
 
     def _make_test_dataframe(self, n: int = 100) -> pd.DataFrame:
-        """Generate test dataframe for statistical validation."""
+        """Build synthetic dataframe."""
         np.random.seed(self.SEED)
-
-        # Create correlated data for Spearman test
         idle_duration = np.random.exponential(10, n)
         reward_idle = -0.01 * idle_duration + np.random.normal(0, 0.001, n)
-
         return pd.DataFrame(
             {
                 "idle_duration": idle_duration,
@@ -382,17 +596,17 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
             }
         )
 
-    def test_distribution_shift_metrics(self):
-        """Test KL divergence, JS distance, Wasserstein distance calculations."""
+    def test_stats_distribution_shift_metrics(self):
+        """KL/JS/Wasserstein metrics."""
         df1 = self._make_test_dataframe(100)
         df2 = self._make_test_dataframe(100)
 
-        # Add slight shift to second dataset
+        # Shift second dataset
         df2["reward_total"] += 0.1
 
         metrics = compute_distribution_shift_metrics(df1, df2)
 
-        # Should contain expected metrics for pnl (continuous feature)
+        # Expected pnl metrics
         expected_keys = {
             "pnl_kl_divergence",
             "pnl_js_distance",
@@ -410,7 +624,7 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
         # Values should be finite and reasonable
         for metric_name, value in metrics.items():
             if "pnl" in metric_name:
-                # All metrics must be finite; selected metrics must be non-negative
+                # Metrics finite; distances non-negative
                 if any(
                     suffix in metric_name
                     for suffix in [
@@ -424,15 +638,15 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                 else:
                     self.assertFinite(value, name=metric_name)
 
-    def test_distribution_shift_identity_null_metrics(self):
-        """Identical distributions should yield (near) zero shift metrics."""
+    def test_stats_distribution_shift_identity_null_metrics(self):
+        """Identity distributions -> near-zero shift metrics."""
         df = self._make_test_dataframe(180)
         metrics_id = compute_distribution_shift_metrics(df, df.copy())
         for name, val in metrics_id.items():
             if name.endswith(("_kl_divergence", "_js_distance", "_wasserstein")):
                 self.assertLess(
                     abs(val),
-                    1e-6,
+                    self.TOL_GENERIC_EQ,
                     f"Metric {name} expected ≈ 0 on identical distributions (got {val})",
                 )
             elif name.endswith("_ks_statistic"):
@@ -442,19 +656,19 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                     f"KS statistic should be near 0 on identical distributions (got {val})",
                 )
 
-    def test_hypothesis_testing(self):
-        """Test statistical hypothesis tests."""
+    def test_stats_hypothesis_testing(self):
+        """Light correlation sanity check."""
         df = self._make_test_dataframe(200)
 
-        # Test only if we have enough data - simple correlation validation
+        # Only if enough samples
         if len(df) > 30:
             idle_data = df[df["idle_duration"] > 0]
             if len(idle_data) > 10:
-                # Simple correlation check: idle duration should correlate negatively with idle reward
+                # Negative correlation expected
                 idle_dur = idle_data["idle_duration"].to_numpy()
                 idle_rew = idle_data["reward_idle"].to_numpy()
 
-                # Basic validation that data makes sense
+                # Sanity shape
                 self.assertTrue(
                     len(idle_dur) == len(idle_rew),
                     "Idle duration and reward arrays should have same length",
@@ -464,7 +678,7 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                     "Idle durations should be non-negative",
                 )
 
-                # Idle rewards should generally be negative (penalty for hold)
+                # Majority negative
                 negative_rewards = (idle_rew < 0).sum()
                 total_rewards = len(idle_rew)
                 negative_ratio = negative_rewards / total_rewards
@@ -475,13 +689,13 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                     "Most idle rewards should be negative (penalties)",
                 )
 
-    def test_distribution_diagnostics(self):
-        """Test distribution normality diagnostics."""
+    def test_stats_distribution_diagnostics(self):
+        """Distribution diagnostics."""
         df = self._make_test_dataframe(100)
 
         diagnostics = distribution_diagnostics(df)
 
-        # Should contain diagnostics for key columns (flattened format)
+        # Expect keys
         expected_prefixes = ["reward_total_", "pnl_"]
         for prefix in expected_prefixes:
             matching_keys = [
@@ -491,19 +705,424 @@ class TestStatisticalCoherence(RewardSpaceTestBase):
                 len(matching_keys), 0, f"Should have diagnostics for {prefix}"
             )
 
-            # Check for basic statistical measures
+            # Basic moments
             expected_suffixes = ["mean", "std", "skewness", "kurtosis"]
             for suffix in expected_suffixes:
                 key = f"{prefix}{suffix}"
                 if key in diagnostics:
                     self.assertFinite(diagnostics[key], name=key)
 
+    def test_statistical_functions(self):
+        """Smoke test statistical_hypothesis_tests on synthetic data (API integration)."""
+        base = self.make_stats_df(n=200, seed=self.SEED, idle_pattern="mixed")
+        base.loc[:149, ["reward_idle", "reward_hold", "reward_exit"]] = 0.0
+        results = statistical_hypothesis_tests(base)
+        self.assertIsInstance(results, dict)
 
-class TestRewardAlignment(RewardSpaceTestBase):
-    """Test reward calculation alignment with environment."""
+    # Helper data generators
+    def _const_df(self, n: int = 64) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "reward_total": np.ones(n) * 0.5,
+                "pnl": np.zeros(n),
+                "trade_duration": np.ones(n) * 10,
+                "idle_duration": np.ones(n) * 3,
+            }
+        )
+
+    def _shift_scale_df(
+        self, n: int = 256, shift: float = 0.0, scale: float = 1.0
+    ) -> pd.DataFrame:
+        rng = np.random.default_rng(123)
+        base = rng.normal(0, 1, n)
+        return pd.DataFrame(
+            {
+                "reward_total": shift + scale * base,
+                "pnl": shift + scale * base * 0.2,
+                "trade_duration": rng.exponential(20, n),
+                "idle_duration": rng.exponential(10, n),
+            }
+        )
+
+    def test_stats_constant_distribution_bootstrap_and_diagnostics(self):
+        """Bootstrap on constant columns (degenerate)."""
+        df = self._const_df(80)
+        res = bootstrap_confidence_intervals(
+            df, ["reward_total", "pnl"], n_bootstrap=200, confidence_level=0.95
+        )
+        for k, (mean, lo, hi) in res.items():  # tuple: mean, low, high
+            self.assertAlmostEqualFloat(mean, lo, tolerance=2e-9)
+            self.assertAlmostEqualFloat(mean, hi, tolerance=2e-9)
+            self.assertLessEqual(hi - lo, 2e-9)
+
+    def test_stats_js_distance_symmetry_violin(self):
+        """JS distance symmetry d(P,Q)==d(Q,P)."""
+        df1 = self._shift_scale_df(300, shift=0.0)
+        df2 = self._shift_scale_df(300, shift=0.3)
+        metrics = compute_distribution_shift_metrics(df1, df2)
+        js_key = next((k for k in metrics if k.endswith("pnl_js_distance")), None)
+        if js_key is None:
+            self.skipTest("JS distance key not present in metrics output")
+        metrics_swapped = compute_distribution_shift_metrics(df2, df1)
+        js_key_swapped = next(
+            (k for k in metrics_swapped if k.endswith("pnl_js_distance")), None
+        )
+        self.assertIsNotNone(js_key_swapped)
+        self.assertAlmostEqualFloat(
+            metrics[js_key],
+            metrics_swapped[js_key_swapped],
+            tolerance=self.TOL_IDENTITY_STRICT,
+            rtol=self.TOL_RELATIVE,
+        )
+
+    def test_stats_js_distance_symmetry_helper(self):
+        """Symmetry helper assertion for JS distance."""
+        rng = np.random.default_rng(777)
+        p_raw = rng.uniform(0.0, 1.0, size=400)
+        q_raw = rng.uniform(0.0, 1.0, size=400)
+        p = p_raw / p_raw.sum()
+        q = q_raw / q_raw.sum()
+
+        def _kl(a: np.ndarray, b: np.ndarray) -> float:
+            mask = (a > 0) & (b > 0)
+            return float(np.sum(a[mask] * np.log(a[mask] / b[mask])))
+
+        def js_distance(a: np.ndarray, b: np.ndarray) -> float:
+            m = 0.5 * (a + b)
+            js_div = 0.5 * _kl(a, m) + 0.5 * _kl(b, m)
+            return math.sqrt(max(js_div, 0.0))
+
+        self.assertSymmetric(
+            js_distance, p, q, atol=self.TOL_IDENTITY_STRICT, rtol=self.TOL_RELATIVE
+        )
+        self.assertLessEqual(
+            js_distance(p, q), self.JS_DISTANCE_UPPER_BOUND + self.TOL_IDENTITY_STRICT
+        )
+
+    def test_stats_bootstrap_shrinkage_with_sample_size(self):
+        """Bootstrap CI shrinks ~1/sqrt(n)."""
+        small = self._shift_scale_df(80)
+        large = self._shift_scale_df(800)
+        res_small = bootstrap_confidence_intervals(
+            small, ["reward_total"], n_bootstrap=400
+        )
+        res_large = bootstrap_confidence_intervals(
+            large, ["reward_total"], n_bootstrap=400
+        )
+        (_, lo_s, hi_s) = list(res_small.values())[0]
+        (_, lo_l, hi_l) = list(res_large.values())[0]
+        hw_small = (hi_s - lo_s) / 2.0
+        hw_large = (hi_l - lo_l) / 2.0
+        self.assertLess(hw_large, hw_small * 0.55)
+
+    def test_stats_variance_vs_duration_spearman_sign(self):
+        """trade_duration up => pnl variance up (rank corr >0)."""
+        rng = np.random.default_rng(99)
+        n = 250
+        trade_duration = np.linspace(1, 300, n)
+        pnl = rng.normal(0, 1 + trade_duration / 400.0, n)
+        df = pd.DataFrame(
+            {"trade_duration": trade_duration, "pnl": pnl, "reward_total": pnl}
+        )
+        ranks_dur = pd.Series(trade_duration).rank().to_numpy()
+        ranks_var = pd.Series(np.abs(pnl)).rank().to_numpy()
+        rho = np.corrcoef(ranks_dur, ranks_var)[0, 1]
+        self.assertGreater(rho, 0.1)
+
+    def test_stats_scaling_invariance_distribution_metrics(self):
+        """Equal scaling keeps KL/JS ≈0."""
+        df1 = self._shift_scale_df(400)
+        scale = 3.5
+        df2 = df1.copy()
+        df2["pnl"] *= scale
+        df1["pnl"] *= scale
+        metrics = compute_distribution_shift_metrics(df1, df2)
+        for k, v in metrics.items():
+            if k.endswith("_kl_divergence") or k.endswith("_js_distance"):
+                self.assertLess(
+                    abs(v),
+                    5e-4,
+                    f"Expected near-zero divergence after equal scaling (k={k}, v={v})",
+                )
+
+    def test_stats_mean_decomposition_consistency(self):
+        """Batch mean additivity."""
+        df_a = self._shift_scale_df(120)
+        df_b = self._shift_scale_df(180, shift=0.2)
+        m_concat = pd.concat([df_a["pnl"], df_b["pnl"]]).mean()
+        m_weighted = (
+            df_a["pnl"].mean() * len(df_a) + df_b["pnl"].mean() * len(df_b)
+        ) / (len(df_a) + len(df_b))
+        self.assertAlmostEqualFloat(
+            m_concat,
+            m_weighted,
+            tolerance=self.TOL_IDENTITY_STRICT,
+            rtol=self.TOL_RELATIVE,
+        )
+
+    def test_stats_ks_statistic_bounds(self):
+        """KS in [0,1]."""
+        df1 = self._shift_scale_df(150)
+        df2 = self._shift_scale_df(150, shift=0.4)
+        metrics = compute_distribution_shift_metrics(df1, df2)
+        for k, v in metrics.items():
+            if k.endswith("_ks_statistic"):
+                self.assertWithin(v, 0.0, 1.0, name=k)
+
+    def test_stats_bh_correction_null_false_positive_rate(self):
+        """Null: low BH discovery rate."""
+        rng = np.random.default_rng(1234)
+        n = 400
+        df = pd.DataFrame(
+            {
+                "pnl": rng.normal(0, 1, n),
+                "reward_total": rng.normal(0, 1, n),
+                "idle_duration": rng.exponential(5, n),
+            }
+        )
+        df["reward_idle"] = rng.normal(0, 1, n) * 1e-3
+        df["position"] = rng.choice([0.0, 1.0], size=n)
+        df["action"] = rng.choice([0.0, 2.0], size=n)
+        tests = statistical_hypothesis_tests(df)
+        flags: list[bool] = []
+        for v in tests.values():
+            if isinstance(v, dict):
+                if "significant_adj" in v:
+                    flags.append(bool(v["significant_adj"]))
+                elif "significant" in v:
+                    flags.append(bool(v["significant"]))
+        if flags:
+            rate = sum(flags) / len(flags)
+            self.assertLess(
+                rate, 0.15, f"BH null FP rate too high under null: {rate:.3f}"
+            )
+
+    def test_stats_half_life_monotonic_series(self):
+        """Smoothed exponential decay monotonic."""
+        x = np.arange(0, 80)
+        y = np.exp(-x / 15.0)
+        rng = np.random.default_rng(5)
+        y_noisy = y + rng.normal(0, 1e-4, len(y))
+        window = 5
+        y_smooth = np.convolve(y_noisy, np.ones(window) / window, mode="valid")
+        self.assertMonotonic(y_smooth, non_increasing=True, tolerance=1e-5)
+
+    def test_stats_bootstrap_confidence_intervals_basic(self):
+        """Bootstrap CI calculation (basic)."""
+        test_data = self.make_stats_df(n=100, seed=self.SEED)
+        results = bootstrap_confidence_intervals(
+            test_data,
+            ["reward_total", "pnl"],
+            n_bootstrap=100,
+        )
+        for metric, (mean, ci_low, ci_high) in results.items():
+            self.assertFinite(mean, name=f"mean[{metric}]")
+            self.assertFinite(ci_low, name=f"ci_low[{metric}]")
+            self.assertFinite(ci_high, name=f"ci_high[{metric}]")
+            self.assertLess(ci_low, ci_high)
+
+    def test_stats_hypothesis_seed_reproducibility(self):
+        """Seed reproducibility for statistical_hypothesis_tests + bootstrap."""
+        df = self.make_stats_df(n=300, seed=123, idle_pattern="mixed")
+        r1 = statistical_hypothesis_tests(df, seed=777)
+        r2 = statistical_hypothesis_tests(df, seed=777)
+        self.assertEqual(set(r1.keys()), set(r2.keys()))
+        for k in r1:
+            for field in ("p_value", "significant"):
+                v1 = r1[k][field]
+                v2 = r2[k][field]
+                if (
+                    isinstance(v1, float)
+                    and isinstance(v2, float)
+                    and (np.isnan(v1) and np.isnan(v2))
+                ):
+                    continue
+                self.assertEqual(v1, v2, f"Mismatch for {k}:{field}")
+        # Bootstrap reproducibility
+        metrics = ["reward_total", "pnl"]
+        ci_a = bootstrap_confidence_intervals(df, metrics, n_bootstrap=150, seed=2024)
+        ci_b = bootstrap_confidence_intervals(df, metrics, n_bootstrap=150, seed=2024)
+        self.assertEqual(ci_a, ci_b)
+
+    def test_stats_distribution_metrics_mathematical_bounds(self):
+        """Mathematical bounds and validity of distribution shift metrics."""
+        np.random.seed(self.SEED)
+        df1 = pd.DataFrame(
+            {
+                "pnl": np.random.normal(0, self.TEST_PNL_STD, 500),
+                "trade_duration": np.random.exponential(30, 500),
+                "idle_duration": np.random.gamma(2, 5, 500),
+            }
+        )
+        df2 = pd.DataFrame(
+            {
+                "pnl": np.random.normal(0.01, 0.025, 500),
+                "trade_duration": np.random.exponential(35, 500),
+                "idle_duration": np.random.gamma(2.5, 6, 500),
+            }
+        )
+        metrics = compute_distribution_shift_metrics(df1, df2)
+        for feature in ["pnl", "trade_duration", "idle_duration"]:
+            for suffix, upper in [
+                ("kl_divergence", None),
+                ("js_distance", 1.0),
+                ("wasserstein", None),
+                ("ks_statistic", 1.0),
+            ]:
+                key = f"{feature}_{suffix}"
+                if key in metrics:
+                    if upper is None:
+                        self.assertDistanceMetric(metrics[key], name=key)
+                    else:
+                        self.assertDistanceMetric(metrics[key], upper=upper, name=key)
+            p_key = f"{feature}_ks_pvalue"
+            if p_key in metrics:
+                self.assertPValue(metrics[p_key])
+
+    def test_stats_heteroscedasticity_pnl_validation(self):
+        """PnL variance increases with trade duration (heteroscedasticity)."""
+        df = simulate_samples(
+            num_samples=1000,
+            seed=123,
+            params=self.DEFAULT_PARAMS,
+            max_trade_duration=100,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
+            max_duration_ratio=2.0,
+            trading_mode="margin",
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
+        )
+        exit_data = df[df["reward_exit"] != 0].copy()
+        if len(exit_data) < 50:
+            self.skipTest("Insufficient exit actions for heteroscedasticity test")
+        exit_data["duration_bin"] = pd.cut(
+            exit_data["duration_ratio"], bins=4, labels=["Q1", "Q2", "Q3", "Q4"]
+        )
+        variance_by_bin = exit_data.groupby("duration_bin")["pnl"].var().dropna()
+        if "Q1" in variance_by_bin.index and "Q4" in variance_by_bin.index:
+            self.assertGreater(
+                variance_by_bin["Q4"],
+                variance_by_bin["Q1"] * 0.8,
+                "PnL heteroscedasticity: variance should increase with duration",
+            )
+
+    def test_stats_statistical_functions_bounds_validation(self):
+        """All statistical functions respect bounds."""
+        df = self.make_stats_df(n=300, seed=self.SEED, idle_pattern="all_nonzero")
+        diagnostics = distribution_diagnostics(df)
+        for col in ["reward_total", "pnl", "trade_duration", "idle_duration"]:
+            if f"{col}_skewness" in diagnostics:
+                self.assertFinite(
+                    diagnostics[f"{col}_skewness"], name=f"skewness[{col}]"
+                )
+            if f"{col}_kurtosis" in diagnostics:
+                self.assertFinite(
+                    diagnostics[f"{col}_kurtosis"], name=f"kurtosis[{col}]"
+                )
+            if f"{col}_shapiro_pval" in diagnostics:
+                self.assertPValue(
+                    diagnostics[f"{col}_shapiro_pval"],
+                    msg=f"Shapiro p-value bounds for {col}",
+                )
+        hypothesis_results = statistical_hypothesis_tests(df, seed=42)
+        for test_name, result in hypothesis_results.items():
+            if "p_value" in result:
+                self.assertPValue(
+                    result["p_value"], msg=f"p-value bounds for {test_name}"
+                )
+            if "effect_size_epsilon_sq" in result:
+                eps2 = result["effect_size_epsilon_sq"]
+                self.assertFinite(eps2, name=f"epsilon_sq[{test_name}]")
+                self.assertGreaterEqual(eps2, 0.0)
+            if "effect_size_rank_biserial" in result:
+                rb = result["effect_size_rank_biserial"]
+                self.assertFinite(rb, name=f"rank_biserial[{test_name}]")
+                self.assertWithin(rb, -1.0, 1.0, name="rank_biserial")
+            if "rho" in result and result["rho"] is not None:
+                rho = result["rho"]
+                self.assertFinite(rho, name=f"rho[{test_name}]")
+                self.assertWithin(rho, -1.0, 1.0, name="rho")
+
+    def test_stats_benjamini_hochberg_adjustment(self):
+        """BH adjustment adds p_value_adj & significant_adj with valid bounds."""
+        df = simulate_samples(
+            num_samples=600,
+            seed=123,
+            params=self.DEFAULT_PARAMS,
+            max_trade_duration=100,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
+            max_duration_ratio=2.0,
+            trading_mode="margin",
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
+        )
+        results_adj = statistical_hypothesis_tests(
+            df, adjust_method="benjamini_hochberg", seed=777
+        )
+        self.assertGreater(len(results_adj), 0)
+        for name, res in results_adj.items():
+            self.assertIn("p_value", res)
+            self.assertIn("p_value_adj", res)
+            self.assertIn("significant_adj", res)
+            p_raw = res["p_value"]
+            p_adj = res["p_value_adj"]
+            self.assertPValue(p_raw)
+            self.assertPValue(p_adj)
+            self.assertGreaterEqual(p_adj, p_raw - self.TOL_IDENTITY_STRICT)
+            alpha = 0.05
+            self.assertEqual(res["significant_adj"], bool(p_adj < alpha))
+            if "effect_size_epsilon_sq" in res:
+                eff = res["effect_size_epsilon_sq"]
+                self.assertFinite(eff)
+                self.assertGreaterEqual(eff, 0)
+            if "effect_size_rank_biserial" in res:
+                rb = res["effect_size_rank_biserial"]
+                self.assertFinite(rb)
+                self.assertWithin(rb, -1, 1, name="rank_biserial")
+
+
+class TestRewardComponents(RewardSpaceTestBase):
+    """Core reward component tests."""
+
+    def test_reward_calculation_scenarios_basic(self):
+        """Reward calculation scenarios: expected components become non-zero."""
+        test_cases = [
+            (Positions.Neutral, Actions.Neutral, "idle_penalty"),
+            (Positions.Long, Actions.Long_exit, "exit_component"),
+            (Positions.Short, Actions.Short_exit, "exit_component"),
+        ]
+        for position, action, expected_type in test_cases:
+            with self.subTest(position=position, action=action):
+                context = RewardContext(
+                    pnl=0.02 if expected_type == "exit_component" else 0.0,
+                    trade_duration=50 if position != Positions.Neutral else 0,
+                    idle_duration=10 if position == Positions.Neutral else 0,
+                    max_trade_duration=100,
+                    max_unrealized_profit=0.03,
+                    min_unrealized_profit=-0.01,
+                    position=position,
+                    action=action,
+                )
+                breakdown = calculate_reward(
+                    context,
+                    self.DEFAULT_PARAMS,
+                    base_factor=self.TEST_BASE_FACTOR,
+                    profit_target=self.TEST_PROFIT_TARGET,
+                    risk_reward_ratio=1.0,
+                    short_allowed=True,
+                    action_masking=True,
+                )
+                if expected_type == "idle_penalty":
+                    self.assertNotEqual(breakdown.idle_penalty, 0.0)
+                elif expected_type == "exit_component":
+                    self.assertNotEqual(breakdown.exit_component, 0.0)
+                self.assertFinite(breakdown.total, name="breakdown.total")
 
     def test_basic_reward_calculation(self):
-        """Test basic reward calculation consistency."""
         context = make_ctx(
             pnl=self.TEST_PROFIT_TARGET,
             trade_duration=10,
@@ -513,33 +1132,19 @@ class TestRewardAlignment(RewardSpaceTestBase):
             position=Positions.Long,
             action=Actions.Long_exit,
         )
-
-        breakdown = calculate_reward(
+        br = calculate_reward(
             context,
             self.DEFAULT_PARAMS,
             base_factor=self.TEST_BASE_FACTOR,
-            profit_target=0.06,  # Scenario-specific larger target kept explicit
+            profit_target=0.06,
             risk_reward_ratio=self.TEST_RR_HIGH,
             short_allowed=True,
             action_masking=True,
         )
-
-        # Should return valid breakdown
-        self.assertIsInstance(breakdown.total, (int, float))
-        self.assertFinite(breakdown.total, name="breakdown.total")
-
-        # Exit reward should be positive for profitable trade
-        self.assertGreater(
-            breakdown.exit_component, 0, "Profitable exit should have positive reward"
-        )
+        self.assertFinite(br.total, name="total")
+        self.assertGreater(br.exit_component, 0)
 
     def test_efficiency_zero_policy(self):
-        """Ensure pnl == 0 with max_unrealized_profit == 0 does not get boosted.
-
-        This verifies the policy: near-zero pnl -> no efficiency modulation.
-        """
-
-        # Build context where pnl == 0.0 and max_unrealized_profit == pnl
         ctx = make_ctx(
             pnl=0.0,
             trade_duration=1,
@@ -549,37 +1154,29 @@ class TestRewardAlignment(RewardSpaceTestBase):
             position=Positions.Long,
             action=Actions.Long_exit,
         )
-
         params = self.DEFAULT_PARAMS.copy()
         profit_target = self.TEST_PROFIT_TARGET * self.TEST_RR
-
         pnl_factor = _get_pnl_factor(params, ctx, profit_target, self.TEST_RR)
-        # Expect no efficiency modulation: factor should be >= 0 and close to 1.0
         self.assertFinite(pnl_factor, name="pnl_factor")
-        self.assertAlmostEqualFloat(pnl_factor, 1.0, tolerance=1e-6)
+        self.assertAlmostEqualFloat(pnl_factor, 1.0, tolerance=self.TOL_GENERIC_EQ)
 
     def test_max_idle_duration_candles_logic(self):
-        """Idle penalty scaling test with explicit max_idle_duration_candles."""
         params_small = self.DEFAULT_PARAMS.copy()
         params_large = self.DEFAULT_PARAMS.copy()
-        # Activate explicit max idle durations
         params_small["max_idle_duration_candles"] = 50
         params_large["max_idle_duration_candles"] = 200
-
         base_factor = self.TEST_BASE_FACTOR
-        idle_duration = 40  # below large threshold, near small threshold
         context = make_ctx(
             pnl=0.0,
             trade_duration=0,
-            idle_duration=idle_duration,
+            idle_duration=40,
             max_trade_duration=128,
             max_unrealized_profit=0.0,
             min_unrealized_profit=0.0,
             position=Positions.Neutral,
             action=Actions.Neutral,
         )
-
-        breakdown_small = calculate_reward(
+        small = calculate_reward(
             context,
             params_small,
             base_factor,
@@ -588,7 +1185,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             short_allowed=True,
             action_masking=True,
         )
-        breakdown_large = calculate_reward(
+        large = calculate_reward(
             context,
             params_large,
             base_factor=self.TEST_BASE_FACTOR,
@@ -597,238 +1194,9 @@ class TestRewardAlignment(RewardSpaceTestBase):
             short_allowed=True,
             action_masking=True,
         )
-
-        self.assertLess(breakdown_small.idle_penalty, 0.0)
-        self.assertLess(breakdown_large.idle_penalty, 0.0)
-        # Because denominator is larger, absolute penalty (negative) should be smaller in magnitude
-        self.assertGreater(
-            breakdown_large.idle_penalty,
-            breakdown_small.idle_penalty,
-            f"Expected less severe penalty with larger max_idle_duration_candles (large={breakdown_large.idle_penalty}, small={breakdown_small.idle_penalty})",
-        )
-
-    def test_pbrs_progressive_release_decay_clamped(self):
-        """progressive_release with decay>1 must clamp to 1 so Φ' = 0 and Δ = -Φ_prev."""
-        params = self.DEFAULT_PARAMS.copy()
-        params.update(
-            {
-                "potential_gamma": DEFAULT_MODEL_REWARD_PARAMETERS["potential_gamma"],
-                "exit_potential_mode": "progressive_release",
-                "exit_potential_decay": 5.0,  # should clamp to 1.0
-                "hold_potential_enabled": True,
-                "entry_additive_enabled": False,
-                "exit_additive_enabled": False,
-            }
-        )
-        current_pnl = 0.02
-        current_dur = 0.5
-        prev_potential = _compute_hold_potential(current_pnl, current_dur, params)
-        total_reward, shaping_reward, next_potential = apply_potential_shaping(
-            base_reward=0.0,
-            current_pnl=current_pnl,
-            current_duration_ratio=current_dur,
-            next_pnl=0.02,
-            next_duration_ratio=0.6,
-            is_terminal=True,
-            last_potential=prev_potential,
-            params=params,
-        )
-        self.assertAlmostEqualFloat(next_potential, 0.0, tolerance=1e-9)
-        self.assertAlmostEqualFloat(shaping_reward, -prev_potential, tolerance=1e-9)
-        self.assertAlmostEqualFloat(total_reward, shaping_reward, tolerance=1e-9)
-
-    def test_pbrs_spike_cancel_invariance(self):
-        """spike_cancel terminal shaping should be ≈ 0 (γ*(Φ/γ) - Φ)."""
-        params = self.DEFAULT_PARAMS.copy()
-        params.update(
-            {
-                "potential_gamma": 0.9,
-                "exit_potential_mode": "spike_cancel",
-                "hold_potential_enabled": True,
-                "entry_additive_enabled": False,
-                "exit_additive_enabled": False,
-            }
-        )
-        current_pnl = 0.015
-        current_dur = 0.4
-        prev_potential = _compute_hold_potential(current_pnl, current_dur, params)
-        # Use helper accessor to avoid union type issues
-        gamma = _get_float_param(
-            params,
-            "potential_gamma",
-            DEFAULT_MODEL_REWARD_PARAMETERS.get("potential_gamma", 0.95),
-        )
-        expected_next = (
-            prev_potential / gamma if gamma not in (0.0, None) else prev_potential
-        )
-        total_reward, shaping_reward, next_potential = apply_potential_shaping(
-            base_reward=0.0,
-            current_pnl=current_pnl,
-            current_duration_ratio=current_dur,
-            next_pnl=0.016,
-            next_duration_ratio=0.45,
-            is_terminal=True,
-            last_potential=prev_potential,
-            params=params,
-        )
-        self.assertAlmostEqualFloat(next_potential, expected_next, tolerance=1e-9)
-        self.assertAlmostEqualFloat(shaping_reward, 0.0, tolerance=1e-9)
-        self.assertAlmostEqualFloat(total_reward, 0.0, tolerance=1e-9)
-
-    def test_idle_penalty_fallback_and_proportionality(self):
-        """Fallback & proportionality validation.
-
-        Semantics:
-        - When max_idle_duration_candles is unset, fallback must be 2 * max_trade_duration.
-        - Idle penalty scales ~ linearly with idle_duration (power=1), so doubling idle_duration doubles penalty magnitude.
-        - We also infer the implicit denominator from a mid-range idle duration (>1x and <2x trade duration) to ensure the
-          2x fallback.
-        """
-        params = self.DEFAULT_PARAMS.copy()
-        params["max_idle_duration_candles"] = None
-        base_factor = 90.0
-        profit_target = self.TEST_PROFIT_TARGET
-        risk_reward_ratio = 1.0
-
-        # Two contexts with different idle durations
-        ctx_a = make_ctx(
-            pnl=0.0,
-            trade_duration=0,
-            idle_duration=20,
-            max_trade_duration=100,
-            max_unrealized_profit=0.0,
-            min_unrealized_profit=0.0,
-            position=Positions.Neutral,
-            action=Actions.Neutral,
-        )
-        ctx_b = dataclasses.replace(ctx_a, idle_duration=40)
-
-        br_a = calculate_reward(
-            ctx_a,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=risk_reward_ratio,
-            short_allowed=True,
-            action_masking=True,
-        )
-        br_b = calculate_reward(
-            ctx_b,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=risk_reward_ratio,
-            short_allowed=True,
-            action_masking=True,
-        )
-
-        self.assertLess(br_a.idle_penalty, 0.0)
-        self.assertLess(br_b.idle_penalty, 0.0)
-
-        # Ratio of penalties should be close to 2 (linear power=1 scaling) allowing small numerical tolerance
-        ratio = (
-            br_b.idle_penalty / br_a.idle_penalty if br_a.idle_penalty != 0 else None
-        )
-        self.assertIsNotNone(ratio, "Idle penalty A should not be zero")
-        # Both penalties are negative, ratio should be ~ (40/20) = 2, hence ratio ~ 2
-        self.assertAlmostEqualFloat(
-            abs(ratio),
-            2.0,
-            tolerance=0.2,
-            msg=f"Idle penalty proportionality mismatch (ratio={ratio})",
-        )
-        # Additional mid-range inference check (idle_duration between 1x and 2x trade duration)
-        ctx_mid = dataclasses.replace(
-            ctx_a, idle_duration=120, max_trade_duration=100
-        )  # Adjusted context for mid-range check
-        br_mid = calculate_reward(
-            ctx_mid,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=risk_reward_ratio,
-            short_allowed=True,
-            action_masking=True,
-        )
-        self.assertLess(br_mid.idle_penalty, 0.0)
-        idle_penalty_scale = _get_float_param(params, "idle_penalty_scale", 0.5)
-        idle_penalty_power = _get_float_param(params, "idle_penalty_power", 1.025)
-        # Internal factor may come from params (overrides provided base_factor argument)
-        factor = _get_float_param(params, "base_factor", float(base_factor))
-        idle_factor = factor * (profit_target * risk_reward_ratio) / 4.0
-        observed_ratio = abs(br_mid.idle_penalty) / (idle_factor * idle_penalty_scale)
-        if observed_ratio > 0:
-            implied_D = 120 / (observed_ratio ** (1 / idle_penalty_power))
-            self.assertAlmostEqualFloat(
-                implied_D,
-                400.0,
-                tolerance=20.0,
-                msg=f"Fallback denominator mismatch (implied={implied_D}, expected≈400, factor={factor})",
-            )
-
-    def test_exit_factor_threshold_warning_non_capping(self):
-        """Ensure exit_factor_threshold does not cap the exit factor (warning-only semantics).
-
-        We approximate by computing two rewards: a baseline and an amplified one (via larger base_factor & pnl) and
-        ensure the amplified reward scales proportionally beyond the threshold rather than flattening.
-        """
-        params = self.DEFAULT_PARAMS.copy()
-        # Remove base_factor from params so that the function uses the provided argument (makes scaling observable)
-        params.pop("base_factor", None)
-        exit_factor_threshold = _get_float_param(
-            params, "exit_factor_threshold", 10_000.0
-        )
-
-        context = RewardContext(
-            pnl=0.08,  # above typical profit_target * RR
-            trade_duration=10,
-            idle_duration=0,
-            max_trade_duration=100,
-            max_unrealized_profit=0.09,
-            min_unrealized_profit=0.0,
-            position=Positions.Long,
-            action=Actions.Long_exit,
-        )
-
-        # Baseline with moderate base_factor
-        baseline = calculate_reward(
-            context,
-            params,
-            base_factor=self.TEST_BASE_FACTOR,
-            profit_target=self.TEST_PROFIT_TARGET,
-            risk_reward_ratio=self.TEST_RR_HIGH,
-            short_allowed=True,
-            action_masking=True,
-        )
-
-        # Amplified: choose a much larger base_factor (ensure > threshold relative scale)
-        amplified_base_factor = max(
-            self.TEST_BASE_FACTOR * 50,
-            exit_factor_threshold * self.TEST_RR_HIGH / max(context.pnl, 1e-9),
-        )
-        amplified = calculate_reward(
-            context,
-            params,
-            base_factor=amplified_base_factor,
-            profit_target=self.TEST_PROFIT_TARGET,
-            risk_reward_ratio=self.TEST_RR_HIGH,
-            short_allowed=True,
-            action_masking=True,
-        )
-
-        scale_observed = (
-            amplified.exit_component / baseline.exit_component
-            if baseline.exit_component
-            else 0.0
-        )
-        self.assertGreater(baseline.exit_component, 0.0)
-        self.assertGreater(amplified.exit_component, baseline.exit_component)
-        # Expect at least ~10x increase (safe margin) to confirm absence of clipping
-        self.assertGreater(
-            scale_observed,
-            10.0,
-            f"Amplified reward did not scale sufficiently (factor={scale_observed:.2f}, amplified_base_factor={amplified_base_factor})",
-        )
+        self.assertLess(small.idle_penalty, 0.0)
+        self.assertLess(large.idle_penalty, 0.0)
+        self.assertGreater(large.idle_penalty, small.idle_penalty)
 
     def test_exit_factor_calculation(self):
         """Test exit factor calculation consistency across core modes + plateau variant.
@@ -879,70 +1247,8 @@ class TestRewardAlignment(RewardSpaceTestBase):
         self.assertGreater(plateau_factor_post, 0)
         self.assertGreaterEqual(
             plateau_factor_pre,
-            plateau_factor_post - 1e-12,
+            plateau_factor_post - self.TOL_IDENTITY_STRICT,
             "Plateau pre-grace factor should be >= post-grace factor",
-        )
-
-    def test_negative_slope_sanitization(self):
-        """Negative slopes for linear must be sanitized to positive default (1.0)."""
-        base_factor = self.TEST_BASE_FACTOR
-        pnl = 0.04
-        pnl_factor = 1.0
-        duration_ratio_linear = 1.2  # any positive ratio
-        duration_ratio_plateau = 1.3  # > grace so slope matters
-
-        # Linear mode: slope -5.0 should behave like slope=1.0 (sanitized)
-        params_lin_neg = self.DEFAULT_PARAMS.copy()
-        params_lin_neg.update(
-            {"exit_attenuation_mode": "linear", "exit_linear_slope": -5.0}
-        )
-        params_lin_pos = self.DEFAULT_PARAMS.copy()
-        params_lin_pos.update(
-            {"exit_attenuation_mode": "linear", "exit_linear_slope": 1.0}
-        )
-        val_lin_neg = _get_exit_factor(
-            base_factor, pnl, pnl_factor, duration_ratio_linear, params_lin_neg
-        )
-        val_lin_pos = _get_exit_factor(
-            base_factor, pnl, pnl_factor, duration_ratio_linear, params_lin_pos
-        )
-        self.assertAlmostEqualFloat(
-            val_lin_neg,
-            val_lin_pos,
-            tolerance=1e-9,
-            msg="Negative linear slope not sanitized to default behavior",
-        )
-
-        # Plateau+linear: negative slope sanitized similarly
-        params_pl_neg = self.DEFAULT_PARAMS.copy()
-        params_pl_neg.update(
-            {
-                "exit_attenuation_mode": "linear",
-                "exit_plateau": True,
-                "exit_plateau_grace": 1.0,
-                "exit_linear_slope": -3.0,
-            }
-        )
-        params_pl_pos = self.DEFAULT_PARAMS.copy()
-        params_pl_pos.update(
-            {
-                "exit_attenuation_mode": "linear",
-                "exit_plateau": True,
-                "exit_plateau_grace": 1.0,
-                "exit_linear_slope": 1.0,
-            }
-        )
-        val_pl_neg = _get_exit_factor(
-            base_factor, pnl, pnl_factor, duration_ratio_plateau, params_pl_neg
-        )
-        val_pl_pos = _get_exit_factor(
-            base_factor, pnl, pnl_factor, duration_ratio_plateau, params_pl_pos
-        )
-        self.assertAlmostEqualFloat(
-            val_pl_neg,
-            val_pl_pos,
-            tolerance=1e-9,
-            msg="Negative plateau+linear slope not sanitized to default behavior",
         )
 
     def test_idle_penalty_zero_when_profit_target_zero(self):
@@ -971,31 +1277,6 @@ class TestRewardAlignment(RewardSpaceTestBase):
         )
         self.assertEqual(
             br.total, 0.0, "Total reward should be zero in this configuration"
-        )
-
-    def test_power_mode_alpha_formula(self):
-        """Validate power mode: factor ≈ base_factor / (1+r)^alpha where alpha=-log(tau)/log(2)."""
-        tau = 0.5
-        r = 1.2
-        alpha = -math.log(tau) / math.log(2.0)
-        base_factor = self.TEST_BASE_FACTOR
-        pnl = self.TEST_PROFIT_TARGET
-        pnl_factor = 1.0  # isolate attenuation
-        params = self.DEFAULT_PARAMS.copy()
-        params.update(
-            {
-                "exit_attenuation_mode": "power",
-                "exit_power_tau": tau,
-                "exit_plateau": False,
-            }
-        )
-        observed = _get_exit_factor(base_factor, pnl, pnl_factor, r, params)
-        expected = base_factor / (1.0 + r) ** alpha
-        self.assertAlmostEqualFloat(
-            observed,
-            expected,
-            tolerance=1e-9,
-            msg=f"Power mode attenuation mismatch (obs={observed}, exp={expected}, alpha={alpha})",
         )
 
     def test_win_reward_factor_saturation(self):
@@ -1049,7 +1330,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
         self.assertMonotonic(
             ratios_observed,
             non_decreasing=True,
-            tolerance=1e-12,
+            tolerance=self.TOL_IDENTITY_STRICT,
             name="pnl_amplification_ratio",
         )
 
@@ -1080,12 +1361,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             )
 
     def test_scale_invariance_and_decomposition(self):
-        """Core reward components scale ~ linearly with base_factor; total = core + shaping + additives.
-
-        Contract:
-            For each non-zero core component C: C(base_factor * k) ≈ k * C(base_factor).
-            Decomposition uses total = (exit + idle + hold + invalid + shaping + entry_additive + exit_additive).
-        """
+        """Components scale ~ linearly with base_factor; total equals sum(core + shaping + additives)."""
         params = self.DEFAULT_PARAMS.copy()
         # Remove internal base_factor so the explicit argument is used
         params.pop("base_factor", None)
@@ -1141,7 +1417,7 @@ class TestRewardAlignment(RewardSpaceTestBase):
             ),
         ]
 
-        tol_scale = 1e-9
+        tol_scale = self.TOL_RELATIVE
         for ctx in contexts:
             br1 = calculate_reward(
                 ctx,
@@ -1272,481 +1548,67 @@ class TestRewardAlignment(RewardSpaceTestBase):
             # Magnitudes should be close (tolerance scaled)
             self.assertLess(
                 abs(abs(br_long.exit_component) - abs(br_short.exit_component)),
-                1e-9 * max(1.0, abs(br_long.exit_component)),
+                self.TOL_RELATIVE * max(1.0, abs(br_long.exit_component)),
                 f"Long/Short asymmetry pnl={pnl}: long={br_long.exit_component}, short={br_short.exit_component}",
             )
 
 
-class TestPublicAPI(RewardSpaceTestBase):
-    """Test public API functions and interfaces."""
+class TestAPIAndHelpers(RewardSpaceTestBase):
+    """Public API + helper utility tests."""
 
+    # --- Public API ---
     def test_parse_overrides(self):
-        """Test parse_overrides function."""
-        # Test valid overrides
-        overrides = ["key1=1.5", "key2=hello", "key3=42"]
+        overrides = ["alpha=1.5", "mode=linear", "limit=42"]
         result = parse_overrides(overrides)
-
-        self.assertEqual(result["key1"], 1.5)
-        self.assertEqual(result["key2"], "hello")
-        self.assertEqual(result["key3"], 42.0)
-
-        # Test invalid format
+        self.assertEqual(result["alpha"], 1.5)
+        self.assertEqual(result["mode"], "linear")
+        self.assertEqual(result["limit"], 42.0)
         with self.assertRaises(ValueError):
-            parse_overrides(["invalid_format"])
+            parse_overrides(["badpair"])  # missing '='
 
-    def test_bootstrap_confidence_intervals(self):
-        """Test bootstrap confidence intervals calculation."""
-        # Create test data
-        np.random.seed(self.SEED)
-        test_data = pd.DataFrame(
-            {
-                "reward_total": np.random.normal(0, 1, 100),
-                "pnl": np.random.normal(0.01, self.TEST_PNL_STD, 100),
-            }
-        )
-
-        results = bootstrap_confidence_intervals(
-            test_data,
-            ["reward_total", "pnl"],
-            n_bootstrap=100,  # Small for speed
-        )
-
-        self.assertIn("reward_total", results)
-        self.assertIn("pnl", results)
-
-        for metric, (mean, ci_low, ci_high) in results.items():
-            self.assertFinite(mean, name=f"mean[{metric}]")
-            self.assertFinite(ci_low, name=f"ci_low[{metric}]")
-            self.assertFinite(ci_high, name=f"ci_high[{metric}]")
-            self.assertLess(
-                ci_low, ci_high, f"CI bounds for {metric} should be ordered"
-            )
-
-    def test_statistical_hypothesis_tests_seed_reproducibility(self):
-        """Ensure statistical_hypothesis_tests + bootstrap CIs are reproducible with stats_seed."""
-
-        np.random.seed(123)
-        # Create idle_duration with variability throughout to avoid constant Spearman warnings
-        idle_base = np.random.uniform(3, 40, 300)
-        idle_mask = np.random.rand(300) < 0.4
-        idle_duration = (
-            idle_base * idle_mask
-        )  # some zeros but not fully constant subset
-        df = pd.DataFrame(
-            {
-                "reward_total": np.random.normal(0, 1, 300),
-                "reward_idle": np.where(idle_mask, np.random.normal(-1, 0.3, 300), 0.0),
-                "reward_hold": np.where(
-                    ~idle_mask, np.random.normal(-0.5, 0.2, 300), 0.0
-                ),
-                "reward_exit": np.random.normal(0.8, 0.6, 300),
-                "pnl": np.random.normal(0.01, self.TEST_PNL_STD, 300),
-                "trade_duration": np.random.uniform(5, 150, 300),
-                "idle_duration": idle_duration,
-                "position": np.random.choice([0.0, 0.5, 1.0], 300),
-            }
-        )
-
-        # Two runs with same seed
-        r1 = statistical_hypothesis_tests(df, seed=777)
-        r2 = statistical_hypothesis_tests(df, seed=777)
-        self.assertEqual(set(r1.keys()), set(r2.keys()))
-        for k in r1:
-            for field in ("p_value", "significant"):
-                v1 = r1[k][field]
-                v2 = r2[k][field]
-                if (
-                    isinstance(v1, float)
-                    and isinstance(v2, float)
-                    and (np.isnan(v1) and np.isnan(v2))
-                ):
-                    continue
-                self.assertEqual(v1, v2, f"Mismatch for {k}:{field}")
-
-        # Different seed may change bootstrap CI of rho if present
-        r3 = statistical_hypothesis_tests(df, seed=888)
-        if "idle_correlation" in r1 and "idle_correlation" in r3:
-            ci1 = r1["idle_correlation"]["ci_95"]
-            ci3 = r3["idle_correlation"]["ci_95"]
-            # Not guaranteed different, but often; only assert shape
-            self.assertEqual(len(ci1), 2)
-            self.assertEqual(len(ci3), 2)
-
-        # Test bootstrap reproducibility path
-        metrics = ["reward_total", "pnl"]
-        ci_a = bootstrap_confidence_intervals(df, metrics, n_bootstrap=250, seed=2024)
-        ci_b = bootstrap_confidence_intervals(df, metrics, n_bootstrap=250, seed=2024)
-        self.assertEqual(ci_a, ci_b)
-
-
-class TestStatisticalValidation(RewardSpaceTestBase):
-    """Test statistical validation and mathematical bounds."""
-
-    def test_pnl_invariant_validation(self):
-        """Test critical PnL invariant: only exit actions should have non-zero PnL."""
-        # Generate samples and verify PnL invariant
+    def test_api_simulation_and_reward_smoke(self):
         df = simulate_samples(
-            num_samples=200,
-            seed=42,
+            num_samples=20,
+            seed=7,
             params=self.DEFAULT_PARAMS,
-            max_trade_duration=50,
+            max_trade_duration=40,
             base_factor=self.TEST_BASE_FACTOR,
             profit_target=self.TEST_PROFIT_TARGET,
             risk_reward_ratio=self.TEST_RR,
-            max_duration_ratio=2.0,
+            max_duration_ratio=1.5,
             trading_mode="margin",
             pnl_base_std=self.TEST_PNL_STD,
             pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
-
-        # Critical invariant: Total PnL must equal sum of exit PnL
-        total_pnl = df["pnl"].sum()
-        exit_mask = df["reward_exit"] != 0
-        exit_pnl_sum = df.loc[exit_mask, "pnl"].sum()
-
-        self.assertAlmostEqual(
-            total_pnl,
-            exit_pnl_sum,
-            places=10,
-            msg="PnL invariant violation: total PnL != sum of exit PnL",
-        )
-
-        # Only exit actions (2.0, 4.0) should have non-zero PnL
-        non_zero_pnl_actions = set(df[df["pnl"] != 0]["action"].unique())
-        expected_exit_actions = {2.0, 4.0}  # Long_exit, Short_exit
-
-        self.assertTrue(
-            non_zero_pnl_actions.issubset(expected_exit_actions),
-            f"Non-exit actions have PnL: {non_zero_pnl_actions - expected_exit_actions}",
-        )
-
-        # No actions should have zero PnL but non-zero exit reward
-        invalid_combinations = df[(df["pnl"] == 0) & (df["reward_exit"] != 0)]
-        self.assertEqual(
-            len(invalid_combinations),
-            0,
-            "Found actions with zero PnL but non-zero exit reward",
-        )
-
-    def test_distribution_metrics_mathematical_bounds(self):
-        """Test mathematical bounds and validity of distribution shift metrics."""
-        # Create two different distributions for testing
-        np.random.seed(self.SEED)
-        df1 = pd.DataFrame(
-            {
-                "pnl": np.random.normal(0, self.TEST_PNL_STD, 500),
-                "trade_duration": np.random.exponential(30, 500),
-                "idle_duration": np.random.gamma(2, 5, 500),
-            }
-        )
-
-        df2 = pd.DataFrame(
-            {
-                "pnl": np.random.normal(0.01, 0.025, 500),
-                "trade_duration": np.random.exponential(35, 500),
-                "idle_duration": np.random.gamma(2.5, 6, 500),
-            }
-        )
-
-        metrics = compute_distribution_shift_metrics(df1, df2)
-
-        # Validate mathematical bounds for each feature
-        for feature in ["pnl", "trade_duration", "idle_duration"]:
-            # KL divergence must be >= 0
-            kl_key = f"{feature}_kl_divergence"
-            if kl_key in metrics:
-                self.assertDistanceMetric(metrics[kl_key], name=kl_key)
-
-            # JS distance must be in [0, 1]
-            js_key = f"{feature}_js_distance"
-            if js_key in metrics:
-                self.assertDistanceMetric(metrics[js_key], upper=1.0, name=js_key)
-
-            # Wasserstein must be >= 0
-            ws_key = f"{feature}_wasserstein"
-            if ws_key in metrics:
-                self.assertDistanceMetric(metrics[ws_key], name=ws_key)
-
-            # KS statistic must be in [0, 1]
-            ks_stat_key = f"{feature}_ks_statistic"
-            if ks_stat_key in metrics:
-                self.assertDistanceMetric(
-                    metrics[ks_stat_key], upper=1.0, name=ks_stat_key
-                )
-
-            # KS p-value must be in [0, 1]
-            ks_p_key = f"{feature}_ks_pvalue"
-            if ks_p_key in metrics:
-                self.assertPValue(
-                    metrics[ks_p_key], msg=f"KS p-value out of bounds for {feature}"
-                )
-
-    def test_heteroscedasticity_pnl_validation(self):
-        """Test that PnL variance increases with trade duration (heteroscedasticity)."""
-        # Generate larger sample for statistical power
-        df = simulate_samples(
-            num_samples=1000,
-            seed=123,
-            params=self.DEFAULT_PARAMS,
-            max_trade_duration=100,
-            base_factor=self.TEST_BASE_FACTOR,
-            profit_target=self.TEST_PROFIT_TARGET,
-            risk_reward_ratio=self.TEST_RR,
-            max_duration_ratio=2.0,
-            trading_mode="margin",
-            pnl_base_std=self.TEST_PNL_STD,
-            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
-        )
-
-        # Filter to exit actions only (where PnL is meaningful)
-        exit_data = df[df["reward_exit"] != 0].copy()
-
-        if len(exit_data) < 50:
-            self.skipTest("Insufficient exit actions for heteroscedasticity test")
-
-        # Create duration bins and test variance pattern
-        exit_data["duration_bin"] = pd.cut(
-            exit_data["duration_ratio"], bins=4, labels=["Q1", "Q2", "Q3", "Q4"]
-        )
-
-        variance_by_bin = exit_data.groupby("duration_bin")["pnl"].var().dropna()
-
-        # Should see increasing variance with duration (not always strict monotonic due to sampling)
-        # Test that Q4 variance > Q1 variance (should hold with heteroscedastic model)
-        if "Q1" in variance_by_bin.index and "Q4" in variance_by_bin.index:
-            self.assertGreater(
-                variance_by_bin["Q4"],
-                variance_by_bin["Q1"] * 0.8,  # Allow some tolerance
-                "PnL heteroscedasticity: variance should increase with duration",
+        self.assertGreater(len(df), 0)
+        any_exit = df[df["reward_exit"] != 0].head(1)
+        if not any_exit.empty:
+            row = any_exit.iloc[0]
+            ctx = RewardContext(
+                pnl=float(row["pnl"]),
+                trade_duration=int(row["trade_duration"]),
+                idle_duration=int(row["idle_duration"]),
+                max_trade_duration=40,
+                max_unrealized_profit=float(row["pnl"]) + 0.01,
+                min_unrealized_profit=float(row["pnl"]) - 0.01,
+                position=Positions.Long,
+                action=Actions.Long_exit,
             )
-
-    def test_exit_factor_mathematical_formulas(self):
-        """Test mathematical correctness of exit factor calculations."""
-
-        # Test context with known values
-        context = RewardContext(
-            pnl=0.05,
-            trade_duration=50,
-            idle_duration=0,
-            max_trade_duration=100,
-            max_unrealized_profit=0.06,
-            min_unrealized_profit=0.04,
-            position=Positions.Long,
-            action=Actions.Long_exit,
-        )
-
-        params = self.DEFAULT_PARAMS.copy()
-        duration_ratio = 50 / 100  # 0.5
-
-        # Test power mode with known tau
-        params["exit_attenuation_mode"] = "power"
-        params["exit_power_tau"] = 0.5
-        params["exit_plateau"] = False
-
-        reward_power = calculate_reward(
-            context,
-            params,
-            self.TEST_BASE_FACTOR,
-            self.TEST_PROFIT_TARGET,
-            self.TEST_RR,
-            short_allowed=True,
-            action_masking=True,
-        )
-
-        # Mathematical validation: alpha = -ln(tau) = -ln(0.5) ≈ 0.693
-        # Analytical alpha value (unused directly now, kept for clarity): -ln(0.5) ≈ 0.693
-
-        # The reward should be attenuated by this factor
-        self.assertGreater(
-            reward_power.exit_component, 0, "Power mode should generate positive reward"
-        )
-
-        # Test half_life mode
-        params["exit_attenuation_mode"] = "half_life"
-        params["exit_half_life"] = 0.5
-
-        reward_half_life = calculate_reward(
-            context,
-            params,
-            self.TEST_BASE_FACTOR,
-            self.TEST_PROFIT_TARGET,
-            self.TEST_RR,
-            short_allowed=True,
-            action_masking=True,
-        )
-
-        # Mathematical validation: 2^(-duration_ratio/half_life) = 2^(-0.5/0.5) = 0.5
-        expected_half_life_factor = 2 ** (-duration_ratio / 0.5)
-        self.assertAlmostEqual(expected_half_life_factor, 0.5, places=6)
-
-        # Test that different modes produce different results (mathematical diversity)
-        params["exit_attenuation_mode"] = "linear"
-        params["exit_linear_slope"] = 1.0
-
-        reward_linear = calculate_reward(
-            context,
-            params,
-            self.TEST_BASE_FACTOR,
-            self.TEST_PROFIT_TARGET,
-            self.TEST_RR,
-            short_allowed=True,
-            action_masking=True,
-        )
-
-        # All modes should produce positive rewards but different values
-        self.assertGreater(reward_power.exit_component, 0)
-        self.assertGreater(reward_half_life.exit_component, 0)
-        self.assertGreater(reward_linear.exit_component, 0)
-
-        # They should be different (mathematical distinctness)
-        rewards = [
-            reward_power.exit_component,
-            reward_half_life.exit_component,
-            reward_linear.exit_component,
-        ]
-        unique_rewards = set(f"{r:.6f}" for r in rewards)
-        self.assertGreater(
-            len(unique_rewards),
-            1,
-            "Different exit factor modes should produce different rewards",
-        )
-
-    def test_statistical_functions_bounds_validation(self):
-        """Test that all statistical functions respect mathematical bounds."""
-        # Create test data with known statistical properties
-        np.random.seed(self.SEED)
-        df = pd.DataFrame(
-            {
-                "reward_total": np.random.normal(0, 1, 300),
-                "reward_idle": np.random.normal(-1, 0.5, 300),
-                "reward_hold": np.random.normal(-0.5, 0.3, 300),
-                "reward_exit": np.random.normal(1, 0.8, 300),
-                "pnl": np.random.normal(0.01, 0.02, 300),
-                "trade_duration": np.random.uniform(5, 150, 300),
-                "idle_duration": np.random.uniform(0, 100, 300),
-                "position": np.random.choice([0.0, 0.5, 1.0], 300),
-            }
-        )
-
-        # Test distribution diagnostics bounds
-        diagnostics = distribution_diagnostics(df)
-
-        for col in ["reward_total", "pnl", "trade_duration", "idle_duration"]:
-            # Skewness can be any real number, but should be finite
-            if f"{col}_skewness" in diagnostics:
-                skew = diagnostics[f"{col}_skewness"]
-                self.assertFinite(skew, name=f"skewness[{col}]")
-
-            # Kurtosis should be finite (can be negative for platykurtic distributions)
-            if f"{col}_kurtosis" in diagnostics:
-                kurt = diagnostics[f"{col}_kurtosis"]
-                self.assertFinite(kurt, name=f"kurtosis[{col}]")
-
-            # Shapiro p-value must be in [0, 1]
-            if f"{col}_shapiro_pval" in diagnostics:
-                self.assertPValue(
-                    diagnostics[f"{col}_shapiro_pval"],
-                    msg=f"Shapiro p-value bounds for {col}",
-                )
-
-        # Test hypothesis tests results bounds
-        hypothesis_results = statistical_hypothesis_tests(df, seed=42)
-
-        for test_name, result in hypothesis_results.items():
-            # All p-values must be in [0, 1]
-            if "p_value" in result:
-                self.assertPValue(
-                    result["p_value"], msg=f"p-value bounds for {test_name}"
-                )
-            # Effect size epsilon squared (ANOVA/Kruskal) must be finite and >= 0
-            if "effect_size_epsilon_sq" in result:
-                eps2 = result["effect_size_epsilon_sq"]
-                self.assertFinite(eps2, name=f"epsilon_sq[{test_name}]")
-                self.assertGreaterEqual(
-                    eps2, 0.0, f"Effect size epsilon^2 for {test_name} must be >= 0"
-                )
-            # Rank-biserial correlation (Mann-Whitney) must be finite in [-1, 1]
-            if "effect_size_rank_biserial" in result:
-                rb = result["effect_size_rank_biserial"]
-                self.assertFinite(rb, name=f"rank_biserial[{test_name}]")
-                self.assertGreaterEqual(
-                    rb, -1.0, f"Rank-biserial correlation for {test_name} must be >= -1"
-                )
-                self.assertLessEqual(
-                    rb, 1.0, f"Rank-biserial correlation for {test_name} must be <= 1"
-                )
-            # Generic correlation effect size (Spearman/Pearson) if present
-            if "rho" in result:
-                rho = result["rho"]
-                if rho is not None:
-                    self.assertFinite(rho, name=f"rho[{test_name}]")
-                    self.assertGreaterEqual(
-                        rho, -1.0, f"Correlation rho for {test_name} must be >= -1"
-                    )
-                    self.assertLessEqual(
-                        rho, 1.0, f"Correlation rho for {test_name} must be <= 1"
-                    )
-
-    def test_benjamini_hochberg_adjustment(self):
-        """Benjamini-Hochberg adjustment adds p_value_adj & significant_adj fields with valid bounds."""
-
-        # Use simulation to trigger multiple tests
-        df = simulate_samples(
-            num_samples=1000,
-            seed=123,
-            params=self.DEFAULT_PARAMS,
-            max_trade_duration=100,
-            base_factor=self.TEST_BASE_FACTOR,
-            profit_target=self.TEST_PROFIT_TARGET,
-            risk_reward_ratio=self.TEST_RR,
-            max_duration_ratio=2.0,
-            trading_mode="margin",
-            pnl_base_std=self.TEST_PNL_STD,
-            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
-        )
-
-        results_adj = statistical_hypothesis_tests(
-            df, adjust_method="benjamini_hochberg", seed=777
-        )
-        # At least one test should have run (idle or kruskal etc.)
-        self.assertGreater(len(results_adj), 0, "No hypothesis tests executed")
-        for name, res in results_adj.items():
-            self.assertIn("p_value", res, f"Missing p_value in {name}")
-            self.assertIn("p_value_adj", res, f"Missing p_value_adj in {name}")
-            self.assertIn("significant_adj", res, f"Missing significant_adj in {name}")
-            p_raw = res["p_value"]
-            p_adj = res["p_value_adj"]
-            self.assertPValue(p_raw, msg=f"Raw p-value out of bounds ({p_raw})")
-            self.assertPValue(p_adj, msg=f"Adjusted p-value out of bounds ({p_adj})")
-            # BH should not reduce p-value (non-decreasing) after monotonic enforcement
-            self.assertGreaterEqual(
-                p_adj,
-                p_raw - 1e-12,
-                f"Adjusted p-value {p_adj} is smaller than raw {p_raw}",
+            breakdown = calculate_reward(
+                ctx,
+                self.DEFAULT_PARAMS,
+                base_factor=self.TEST_BASE_FACTOR,
+                profit_target=self.TEST_PROFIT_TARGET,
+                risk_reward_ratio=self.TEST_RR,
+                short_allowed=True,
+                action_masking=True,
             )
-            # Consistency of significance flags
-            alpha = 0.05
-            self.assertEqual(
-                res["significant_adj"],
-                bool(p_adj < alpha),
-                f"significant_adj inconsistent for {name}",
-            )
-            # Optional: if effect sizes present, basic bounds
-            if "effect_size_epsilon_sq" in res:
-                eff = res["effect_size_epsilon_sq"]
-                self.assertFinite(eff, name=f"effect_size[{name}]")
-                self.assertGreaterEqual(eff, 0, f"ε² should be >=0 for {name}")
-            if "effect_size_rank_biserial" in res:
-                rb = res["effect_size_rank_biserial"]
-                self.assertFinite(rb, name=f"rank_biserial[{name}]")
-                self.assertGreaterEqual(rb, -1, f"Rank-biserial lower bound {name}")
-                self.assertLessEqual(rb, 1, f"Rank-biserial upper bound {name}")
+            self.assertFinite(breakdown.total)
 
-    def test_simulate_samples_with_different_modes(self):
-        """Test simulate_samples with different trading modes."""
-        # Test spot mode (no shorts)
+    def test_simulate_samples_trading_modes_spot_vs_margin(self):
+        """simulate_samples coverage: spot should forbid shorts, margin should allow them."""
         df_spot = simulate_samples(
-            num_samples=100,
+            num_samples=80,
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
@@ -1758,16 +1620,14 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             pnl_base_std=self.TEST_PNL_STD,
             pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
-
-        # Should not have any short positions
-        short_positions = (df_spot["position"] == float(Positions.Short.value)).sum()
+        short_positions_spot = (
+            df_spot["position"] == float(Positions.Short.value)
+        ).sum()
         self.assertEqual(
-            short_positions, 0, "Spot mode should not have short positions"
+            short_positions_spot, 0, "Spot mode must not contain short positions"
         )
-
-        # Test margin mode (shorts allowed)
         df_margin = simulate_samples(
-            num_samples=100,
+            num_samples=80,
             seed=42,
             params=self.DEFAULT_PARAMS,
             max_trade_duration=100,
@@ -1779,9 +1639,7 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             pnl_base_std=self.TEST_PNL_STD,
             pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
         )
-
-        # Should have required columns
-        required_columns = [
+        for col in [
             "pnl",
             "trade_duration",
             "idle_duration",
@@ -1792,132 +1650,10 @@ class TestStatisticalValidation(RewardSpaceTestBase):
             "reward_idle",
             "reward_hold",
             "reward_exit",
-        ]
-        for col in required_columns:
-            self.assertIn(col, df_margin.columns, f"Column {col} should be present")
+        ]:
+            self.assertIn(col, df_margin.columns)
 
-    def test_reward_calculation(self):
-        """Test reward calculation scenarios."""
-        # Test different reward scenarios
-        test_cases = [
-            # (position, action, expected_reward_type)
-            (Positions.Neutral, Actions.Neutral, "idle_penalty"),
-            (Positions.Long, Actions.Long_exit, "exit_component"),
-            (Positions.Short, Actions.Short_exit, "exit_component"),
-        ]
-
-        for position, action, expected_type in test_cases:
-            with self.subTest(position=position, action=action):
-                context = RewardContext(
-                    pnl=0.02 if expected_type == "exit_component" else 0.0,
-                    trade_duration=50 if position != Positions.Neutral else 0,
-                    idle_duration=10 if position == Positions.Neutral else 0,
-                    max_trade_duration=100,
-                    max_unrealized_profit=0.03,
-                    min_unrealized_profit=-0.01,
-                    position=position,
-                    action=action,
-                )
-
-                breakdown = calculate_reward(
-                    context,
-                    self.DEFAULT_PARAMS,
-                    base_factor=self.TEST_BASE_FACTOR,
-                    profit_target=self.TEST_PROFIT_TARGET,
-                    risk_reward_ratio=1.0,
-                    short_allowed=True,
-                    action_masking=True,
-                )
-
-                # Check that the appropriate component is non-zero
-                if expected_type == "idle_penalty":
-                    self.assertNotEqual(
-                        breakdown.idle_penalty,
-                        0.0,
-                        f"Expected idle penalty for {position}/{action}",
-                    )
-                elif expected_type == "exit_component":
-                    self.assertNotEqual(
-                        breakdown.exit_component,
-                        0.0,
-                        f"Expected exit component for {position}/{action}",
-                    )
-
-                # Total should always be finite
-                self.assertFinite(breakdown.total, name="breakdown.total")
-
-
-class TestBoundaryConditions(RewardSpaceTestBase):
-    """Test boundary conditions and edge cases."""
-
-    def test_extreme_parameter_values(self):
-        """Test behavior with extreme parameter values."""
-        # Test with very large parameters
-        extreme_params = self.DEFAULT_PARAMS.copy()
-        extreme_params["win_reward_factor"] = 1000.0
-        extreme_params["base_factor"] = 10000.0
-
-        context = RewardContext(
-            pnl=0.05,
-            trade_duration=50,
-            idle_duration=0,
-            max_trade_duration=100,
-            max_unrealized_profit=0.06,
-            min_unrealized_profit=0.02,
-            position=Positions.Long,
-            action=Actions.Long_exit,
-        )
-
-        breakdown = calculate_reward(
-            context,
-            extreme_params,
-            base_factor=10000.0,
-            profit_target=self.TEST_PROFIT_TARGET,
-            risk_reward_ratio=self.TEST_RR,
-            short_allowed=True,
-            action_masking=True,
-        )
-
-        self.assertFinite(breakdown.total, name="breakdown.total")
-
-    def test_different_exit_attenuation_modes(self):
-        """Test different exit attenuation modes (legacy, sqrt, linear, power, half_life)."""
-        modes = ATTENUATION_MODES_WITH_LEGACY
-
-        for mode in modes:
-            with self.subTest(mode=mode):
-                test_params = self.DEFAULT_PARAMS.copy()
-                test_params["exit_attenuation_mode"] = mode
-
-                context = RewardContext(
-                    pnl=0.02,
-                    trade_duration=50,
-                    idle_duration=0,
-                    max_trade_duration=100,
-                    max_unrealized_profit=0.03,
-                    min_unrealized_profit=0.01,
-                    position=Positions.Long,
-                    action=Actions.Long_exit,
-                )
-
-                breakdown = calculate_reward(
-                    context,
-                    test_params,
-                    base_factor=self.TEST_BASE_FACTOR,
-                    profit_target=self.TEST_PROFIT_TARGET,
-                    risk_reward_ratio=self.TEST_RR,
-                    short_allowed=True,
-                    action_masking=True,
-                )
-
-                self.assertFinite(
-                    breakdown.exit_component, name="breakdown.exit_component"
-                )
-                self.assertFinite(breakdown.total, name="breakdown.total")
-
-
-class TestHelperFunctions(RewardSpaceTestBase):
-    """Test utility and helper functions."""
+    # --- Helper functions ---
 
     def test_to_bool(self):
         """Test _to_bool with various inputs."""
@@ -1974,35 +1710,6 @@ class TestHelperFunctions(RewardSpaceTestBase):
         self.assertGreater(
             short_positions, 0, "Futures mode should allow short positions"
         )
-
-    def test_statistical_functions(self):
-        """Test statistical functions."""
-        # Create test data with specific patterns
-        np.random.seed(self.SEED)
-        test_data = pd.DataFrame(
-            {
-                "reward_total": np.random.normal(0, 1, 200),
-                "reward_idle": np.concatenate(
-                    [np.zeros(150), np.random.normal(-1, 0.5, 50)]
-                ),
-                "reward_hold": np.concatenate(
-                    [np.zeros(150), np.random.normal(-0.5, 0.3, 50)]
-                ),
-                "reward_exit": np.concatenate(
-                    [np.zeros(150), np.random.normal(2, 1, 50)]
-                ),
-                "pnl": np.random.normal(0.01, 0.02, 200),
-                "trade_duration": np.random.uniform(10, 100, 200),
-                "idle_duration": np.concatenate(
-                    [np.random.uniform(5, 50, 50), np.zeros(150)]
-                ),
-                "position": np.random.choice([0.0, 0.5, 1.0], 200),
-            }
-        )
-
-        # Test hypothesis tests
-        results = statistical_hypothesis_tests(test_data)
-        self.assertIsInstance(results, dict)
 
     def test_argument_parser_construction(self):
         """Test build_argument_parser function."""
@@ -2093,7 +1800,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             + breakdown.shaping_reward
             + breakdown.entry_additive
             + breakdown.exit_additive,
-            tolerance=1e-9,
+            tolerance=self.TOL_IDENTITY_RELAXED,
             msg="Total should equal sum of components (idle + shaping/additives)",
         )
 
@@ -2128,7 +1835,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             + breakdown.shaping_reward
             + breakdown.entry_additive
             + breakdown.exit_additive,
-            tolerance=1e-9,
+            tolerance=self.TOL_IDENTITY_RELAXED,
             msg="Total should equal sum of components (hold + shaping/additives)",
         )
 
@@ -2207,7 +1914,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
             + breakdown.shaping_reward
             + breakdown.entry_additive
             + breakdown.exit_additive,
-            tolerance=1e-9,
+            tolerance=self.TOL_IDENTITY_RELAXED,
             msg="Total should equal invalid penalty plus shaping/additives",
         )
 
@@ -2277,7 +1984,7 @@ class TestPrivateFunctions(RewardSpaceTestBase):
                     + breakdown.shaping_reward
                     + breakdown.entry_additive
                     + breakdown.exit_additive,
-                    tolerance=1e-9,
+                    tolerance=self.TOL_IDENTITY_RELAXED,
                     msg=f"Total mismatch including shaping {description}",
                 )
 
@@ -2350,16 +2057,8 @@ class TestPrivateFunctions(RewardSpaceTestBase):
         self.assertFinite(breakdown.exit_component, name="exit_component")
 
 
-class TestRewardRobustness(RewardSpaceTestBase):
-    """Tests implementing all prioritized robustness enhancements.
-
-    Covers:
-    - Reward decomposition integrity (total == core components + shaping + additives)
-    - Exit factor monotonic attenuation per mode where mathematically expected
-    - Boundary parameter conditions (tau extremes, plateau grace edges, linear slope = 0)
-    - Non-linear power tests for idle & hold penalties (power != 1)
-    - Warning emission (exit_factor_threshold) without capping
-    """
+class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
+    """Robustness & boundary assertions: invariants, attenuation maths, parameter edges, scaling, warnings."""
 
     def _mk_context(
         self,
@@ -2382,6 +2081,16 @@ class TestRewardRobustness(RewardSpaceTestBase):
             position=position,
             action=action,
         )
+
+    def make_params(self, **overrides: Any) -> Dict[str, Any]:  # type: ignore[override]
+        """Factory for parameter dict used in robustness tests.
+
+        Returns a shallow copy of DEFAULT_PARAMS with optional overrides.
+        Type hints facilitate future mypy strict mode.
+        """
+        p: Dict[str, Any] = self.DEFAULT_PARAMS.copy()
+        p.update(overrides)
+        return p
 
     def test_decomposition_integrity(self):
         """Assert reward_total equals exactly the single active component (mutual exclusivity).
@@ -2441,38 +2150,367 @@ class TestRewardRobustness(RewardSpaceTestBase):
             ctx_obj: RewardContext = sc["ctx"]  # type: ignore[index]
             active_label: str = sc["active"]  # type: ignore[index]
             with self.subTest(active=active_label):
+                # Build parameters disabling shaping and additives to enforce strict decomposition
+                params_local = self.DEFAULT_PARAMS.copy()
+                params_local.update(
+                    {
+                        "entry_additive_enabled": False,
+                        "exit_additive_enabled": False,
+                        "hold_potential_enabled": False,
+                        "potential_gamma": 0.0,
+                        # Ensure any invariance flags do not add shaping
+                        "check_invariants": False,
+                    }
+                )
                 br = calculate_reward(
                     ctx_obj,
-                    self.DEFAULT_PARAMS,
+                    params_local,
                     base_factor=self.TEST_BASE_FACTOR,
                     profit_target=self.TEST_PROFIT_TARGET,
                     risk_reward_ratio=self.TEST_RR,
                     short_allowed=True,
-                    action_masking=(active_label != "invalid_penalty"),
+                    action_masking=True,
                 )
-                components = [
-                    br.invalid_penalty,
-                    br.idle_penalty,
-                    br.hold_penalty,
-                    br.exit_component,
-                ]
-                non_zero = [
-                    c for c in components if not math.isclose(c, 0.0, abs_tol=1e-12)
-                ]
-                self.assertEqual(
-                    len(non_zero),
-                    1,
-                    f"Exactly one component must be active for {sc['active']}",
+                # Single active component must match total; others zero (or near zero for shaping/additives)
+                core_components = {
+                    "exit_component": br.exit_component,
+                    "idle_penalty": br.idle_penalty,
+                    "hold_penalty": br.hold_penalty,
+                    "invalid_penalty": br.invalid_penalty,
+                }
+                for name, value in core_components.items():
+                    if name == active_label:
+                        self.assertAlmostEqualFloat(
+                            value,
+                            br.total,
+                            tolerance=self.TOL_IDENTITY_RELAXED,
+                            msg=f"Active component {name} != total",
+                        )
+                    else:
+                        self.assertNearZero(
+                            value,
+                            atol=self.TOL_IDENTITY_RELAXED,
+                            msg=f"Inactive component {name} not near zero (val={value})",
+                        )
+                # Shaping and additives explicitly disabled
+                self.assertAlmostEqualFloat(
+                    br.shaping_reward, 0.0, tolerance=self.TOL_IDENTITY_RELAXED
                 )
                 self.assertAlmostEqualFloat(
-                    br.total,
-                    non_zero[0]
-                    + br.shaping_reward
-                    + br.entry_additive
-                    + br.exit_additive,
-                    tolerance=1e-9,
-                    msg=f"Total mismatch including shaping for {sc['active']}",
+                    br.entry_additive, 0.0, tolerance=self.TOL_IDENTITY_RELAXED
                 )
+                self.assertAlmostEqualFloat(
+                    br.exit_additive, 0.0, tolerance=self.TOL_IDENTITY_RELAXED
+                )
+
+    def test_pnl_invariant_exit_only(self):
+        """Invariant: only exit actions have non-zero PnL (robustness category)."""
+        df = simulate_samples(
+            num_samples=200,
+            seed=42,
+            params=self.DEFAULT_PARAMS,
+            max_trade_duration=50,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
+            max_duration_ratio=2.0,
+            trading_mode="margin",
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
+        )
+        total_pnl = df["pnl"].sum()
+        exit_mask = df["reward_exit"] != 0
+        exit_pnl_sum = df.loc[exit_mask, "pnl"].sum()
+        self.assertAlmostEqual(
+            total_pnl,
+            exit_pnl_sum,
+            places=10,
+            msg="PnL invariant violation: total PnL != sum of exit PnL",
+        )
+        non_zero_pnl_actions = set(df[df["pnl"] != 0]["action"].unique())
+        expected_exit_actions = {2.0, 4.0}
+        self.assertTrue(
+            non_zero_pnl_actions.issubset(expected_exit_actions),
+            f"Non-exit actions have PnL: {non_zero_pnl_actions - expected_exit_actions}",
+        )
+        invalid_combinations = df[(df["pnl"] == 0) & (df["reward_exit"] != 0)]
+        self.assertEqual(len(invalid_combinations), 0)
+
+    def test_exit_factor_mathematical_formulas(self):
+        """Mathematical correctness of exit factor calculations across modes."""
+        context = self._mk_context(pnl=0.05, trade_duration=50)
+        params = self.DEFAULT_PARAMS.copy()
+        duration_ratio = 50 / 100
+        params["exit_attenuation_mode"] = "power"
+        params["exit_power_tau"] = 0.5
+        params["exit_plateau"] = False
+        reward_power = calculate_reward(
+            context,
+            params,
+            self.TEST_BASE_FACTOR,
+            self.TEST_PROFIT_TARGET,
+            self.TEST_RR,
+            short_allowed=True,
+            action_masking=True,
+        )
+        self.assertGreater(reward_power.exit_component, 0)
+        params["exit_attenuation_mode"] = "half_life"
+        params["exit_half_life"] = 0.5
+        reward_half_life = calculate_reward(
+            context,
+            params,
+            self.TEST_BASE_FACTOR,
+            self.TEST_PROFIT_TARGET,
+            self.TEST_RR,
+            short_allowed=True,
+            action_masking=True,
+        )
+        expected_half_life_factor = 2 ** (-duration_ratio / 0.5)
+        self.assertPlacesEqual(expected_half_life_factor, 0.5, places=6)
+        params["exit_attenuation_mode"] = "linear"
+        params["exit_linear_slope"] = 1.0
+        reward_linear = calculate_reward(
+            context,
+            params,
+            self.TEST_BASE_FACTOR,
+            self.TEST_PROFIT_TARGET,
+            self.TEST_RR,
+            short_allowed=True,
+            action_masking=True,
+        )
+        rewards = [
+            reward_power.exit_component,
+            reward_half_life.exit_component,
+            reward_linear.exit_component,
+        ]
+        self.assertTrue(all(r > 0 for r in rewards))
+        unique_rewards = set(f"{r:.6f}" for r in rewards)
+        self.assertGreater(len(unique_rewards), 1)
+
+    def test_idle_penalty_fallback_and_proportionality(self):
+        """Idle penalty fallback denominator & proportional scaling (robustness)."""
+        params = self.DEFAULT_PARAMS.copy()
+        params["max_idle_duration_candles"] = None
+        base_factor = 90.0
+        profit_target = self.TEST_PROFIT_TARGET
+        risk_reward_ratio = 1.0
+        ctx_a = self._mk_context(
+            pnl=0.0,
+            trade_duration=0,
+            idle_duration=20,
+            max_trade_duration=100,
+            position=Positions.Neutral,
+            action=Actions.Neutral,
+        )
+        ctx_b = dataclasses.replace(ctx_a, idle_duration=40)
+        br_a = calculate_reward(
+            ctx_a,
+            params,
+            base_factor=base_factor,
+            profit_target=profit_target,
+            risk_reward_ratio=risk_reward_ratio,
+            short_allowed=True,
+            action_masking=True,
+        )
+        br_b = calculate_reward(
+            ctx_b,
+            params,
+            base_factor=base_factor,
+            profit_target=profit_target,
+            risk_reward_ratio=risk_reward_ratio,
+            short_allowed=True,
+            action_masking=True,
+        )
+        self.assertLess(br_a.idle_penalty, 0.0)
+        self.assertLess(br_b.idle_penalty, 0.0)
+        ratio = (
+            br_b.idle_penalty / br_a.idle_penalty if br_a.idle_penalty != 0 else None
+        )
+        self.assertIsNotNone(ratio)
+        self.assertAlmostEqualFloat(abs(ratio), 2.0, tolerance=0.2)
+        ctx_mid = dataclasses.replace(ctx_a, idle_duration=120, max_trade_duration=100)
+        br_mid = calculate_reward(
+            ctx_mid,
+            params,
+            base_factor=base_factor,
+            profit_target=profit_target,
+            risk_reward_ratio=risk_reward_ratio,
+            short_allowed=True,
+            action_masking=True,
+        )
+        self.assertLess(br_mid.idle_penalty, 0.0)
+        idle_penalty_scale = _get_float_param(params, "idle_penalty_scale", 0.5)
+        idle_penalty_power = _get_float_param(params, "idle_penalty_power", 1.025)
+        factor = _get_float_param(params, "base_factor", float(base_factor))
+        idle_factor = factor * (profit_target * risk_reward_ratio) / 4.0
+        observed_ratio = abs(br_mid.idle_penalty) / (idle_factor * idle_penalty_scale)
+        if observed_ratio > 0:
+            implied_D = 120 / (observed_ratio ** (1 / idle_penalty_power))
+            self.assertAlmostEqualFloat(implied_D, 400.0, tolerance=20.0)
+
+    def test_exit_factor_threshold_warning_and_non_capping(self):
+        """Warning emission without capping when exit_factor_threshold exceeded."""
+        params = self.make_params(exit_factor_threshold=10.0)
+        params.pop("base_factor", None)
+        context = self._mk_context(
+            pnl=0.08,
+            trade_duration=10,
+            max_unrealized_profit=0.09,
+            min_unrealized_profit=0.0,
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            baseline = calculate_reward(
+                context,
+                params,
+                base_factor=self.TEST_BASE_FACTOR,
+                profit_target=self.TEST_PROFIT_TARGET,
+                risk_reward_ratio=self.TEST_RR_HIGH,
+                short_allowed=True,
+                action_masking=True,
+            )
+            amplified_base_factor = self.TEST_BASE_FACTOR * 200.0
+            amplified = calculate_reward(
+                context,
+                params,
+                base_factor=amplified_base_factor,
+                profit_target=self.TEST_PROFIT_TARGET,
+                risk_reward_ratio=self.TEST_RR_HIGH,
+                short_allowed=True,
+                action_masking=True,
+            )
+        self.assertGreater(baseline.exit_component, 0.0)
+        self.assertGreater(amplified.exit_component, baseline.exit_component)
+        scale = amplified.exit_component / baseline.exit_component
+        self.assertGreater(scale, 10.0)
+        runtime_warnings = [w for w in caught if issubclass(w.category, RuntimeWarning)]
+        self.assertTrue(runtime_warnings)
+        self.assertTrue(
+            any(
+                (
+                    "exceeded threshold" in str(w.message)
+                    or "exceeds threshold" in str(w.message)
+                    or "|factor|=" in str(w.message)
+                )
+                for w in runtime_warnings
+            )
+        )
+
+    def test_negative_slope_sanitization(self):
+        """Negative exit_linear_slope is sanitized to 1.0 (default) producing identical factors.
+
+        We compare exit factors with an explicit negative slope vs explicit slope=1.0.
+        The sanitized version should match reference within strict tolerance.
+        """
+        base_factor = 100.0
+        pnl = 0.03
+        pnl_factor = 1.0
+        duration_ratios = [0.0, 0.2, 0.5, 1.0, 1.5]
+        params_bad = self.make_params(
+            exit_attenuation_mode="linear", exit_linear_slope=-5.0, exit_plateau=False
+        )
+        params_ref = self.make_params(
+            exit_attenuation_mode="linear", exit_linear_slope=1.0, exit_plateau=False
+        )
+        for dr in duration_ratios:
+            f_bad = _get_exit_factor(base_factor, pnl, pnl_factor, dr, params_bad)
+            f_ref = _get_exit_factor(base_factor, pnl, pnl_factor, dr, params_ref)
+            self.assertAlmostEqualFloat(
+                f_bad,
+                f_ref,
+                tolerance=self.TOL_IDENTITY_RELAXED,
+                msg=f"Sanitized slope mismatch at dr={dr} f_bad={f_bad} f_ref={f_ref}",
+            )
+
+    def test_power_mode_alpha_formula(self):
+        """Power mode: alpha = -log(tau)/log(2); verify analytic attenuation.
+
+        For several tau values we evaluate the exit factor ratio between dr=0 and dr=1
+        and compare to expected 1/(1+1)^alpha = 2^{-alpha}.
+        """
+        base_factor = 200.0
+        pnl = 0.04
+        pnl_factor = 1.0
+        duration_ratio = 1.0
+        taus = [
+            0.9,
+            0.5,
+            0.25,
+            1.0,
+        ]  # include boundary 1.0 => alpha=0 per formula? actually -> -log(1)/log2 = 0
+        for tau in taus:
+            params = self.make_params(
+                exit_attenuation_mode="power", exit_power_tau=tau, exit_plateau=False
+            )
+            f0 = _get_exit_factor(base_factor, pnl, pnl_factor, 0.0, params)
+            f1 = _get_exit_factor(base_factor, pnl, pnl_factor, duration_ratio, params)
+            # Extract alpha using same formula (replicate logic)
+            if 0.0 < tau <= 1.0:
+                alpha = -math.log(tau) / math.log(2.0)
+            else:
+                alpha = 1.0
+            expected_ratio = 1.0 / (1.0 + duration_ratio) ** alpha
+            observed_ratio = f1 / f0 if f0 != 0 else float("nan")
+            self.assertFinite(observed_ratio, name="observed_ratio")
+            self.assertLess(
+                abs(observed_ratio - expected_ratio),
+                5e-12 if tau == 1.0 else 5e-9,
+                f"Alpha attenuation mismatch tau={tau} alpha={alpha} obs_ratio={observed_ratio} exp_ratio={expected_ratio}",
+            )
+
+    # Fused from former TestBoundaryConditions
+    def test_extreme_parameter_values(self):
+        extreme_params = self.DEFAULT_PARAMS.copy()
+        extreme_params["win_reward_factor"] = 1000.0
+        extreme_params["base_factor"] = 10000.0
+        context = RewardContext(
+            pnl=0.05,
+            trade_duration=50,
+            idle_duration=0,
+            max_trade_duration=100,
+            max_unrealized_profit=0.06,
+            min_unrealized_profit=0.02,
+            position=Positions.Long,
+            action=Actions.Long_exit,
+        )
+        br = calculate_reward(
+            context,
+            extreme_params,
+            base_factor=10000.0,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
+            short_allowed=True,
+            action_masking=True,
+        )
+        self.assertFinite(br.total, name="breakdown.total")
+
+    def test_exit_attenuation_modes_enumeration(self):
+        modes = ATTENUATION_MODES_WITH_LEGACY
+        for mode in modes:
+            with self.subTest(mode=mode):
+                test_params = self.DEFAULT_PARAMS.copy()
+                test_params["exit_attenuation_mode"] = mode
+                ctx = RewardContext(
+                    pnl=0.02,
+                    trade_duration=50,
+                    idle_duration=0,
+                    max_trade_duration=100,
+                    max_unrealized_profit=0.03,
+                    min_unrealized_profit=0.01,
+                    position=Positions.Long,
+                    action=Actions.Long_exit,
+                )
+                br = calculate_reward(
+                    ctx,
+                    test_params,
+                    base_factor=self.TEST_BASE_FACTOR,
+                    profit_target=self.TEST_PROFIT_TARGET,
+                    risk_reward_ratio=self.TEST_RR,
+                    short_allowed=True,
+                    action_masking=True,
+                )
+                self.assertFinite(br.exit_component, name="breakdown.exit_component")
+                self.assertFinite(br.total, name="breakdown.total")
 
     def test_exit_factor_monotonic_attenuation(self):
         """For attenuation modes: factor should be non-increasing w.r.t duration_ratio.
@@ -2509,14 +2547,18 @@ class TestRewardRobustness(RewardSpaceTestBase):
             # Plateau+linear: ignore initial flat region when checking monotonic decrease
             if mode == "plateau_linear":
                 grace = float(params["exit_plateau_grace"])  # type: ignore[index]
-                filtered = [(r, v) for r, v in zip(ratios, values) if r >= grace - 1e-9]
+                filtered = [
+                    (r, v)
+                    for r, v in zip(ratios, values)
+                    if r >= grace - self.TOL_IDENTITY_RELAXED
+                ]
                 values_to_check = [v for _, v in filtered]
             else:
                 values_to_check = values
             for earlier, later in zip(values_to_check, values_to_check[1:]):
                 self.assertLessEqual(
                     later,
-                    earlier + 1e-9,
+                    earlier + self.TOL_IDENTITY_RELAXED,
                     f"Non-monotonic attenuation in mode={mode}",
                 )
 
@@ -2530,7 +2572,12 @@ class TestRewardRobustness(RewardSpaceTestBase):
         params_hi = self.DEFAULT_PARAMS.copy()
         params_hi.update({"exit_attenuation_mode": "power", "exit_power_tau": 0.999999})
         params_lo = self.DEFAULT_PARAMS.copy()
-        params_lo.update({"exit_attenuation_mode": "power", "exit_power_tau": 1e-6})
+        params_lo.update(
+            {
+                "exit_attenuation_mode": "power",
+                "exit_power_tau": self.MIN_EXIT_POWER_TAU,
+            }
+        )
         r = 1.5
         hi_val = _get_exit_factor(base_factor, pnl, pnl_factor, r, params_hi)
         lo_val = _get_exit_factor(base_factor, pnl, pnl_factor, r, params_lo)
@@ -2616,7 +2663,7 @@ class TestRewardRobustness(RewardSpaceTestBase):
             self.assertAlmostEqualFloat(
                 v,
                 first,
-                tolerance=1e-9,
+                tolerance=self.TOL_IDENTITY_RELAXED,
                 msg=f"Plateau+linear slope=0 factor drift at ratio set {ratios} => {values}",
             )
 
@@ -2646,229 +2693,16 @@ class TestRewardRobustness(RewardSpaceTestBase):
             self.assertAlmostEqualFloat(
                 vals[i],
                 ref,
-                1e-9,
+                self.TOL_IDENTITY_RELAXED,
                 msg=f"Unexpected attenuation before grace end at ratio {r}",
             )
         # Last ratio (1.6) should be attenuated (strictly less than ref)
         self.assertLess(vals[-1], ref, "Attenuation should begin after grace boundary")
 
-    def test_legacy_step_non_monotonic(self):
-        """Legacy mode applies step change at duration_ratio=1 (should not be monotonic)."""
-
-        params = self.DEFAULT_PARAMS.copy()
-        params["exit_attenuation_mode"] = "legacy"
-        params["exit_plateau"] = False
-        base_factor = self.TEST_BASE_FACTOR
-        pnl = 0.02
-        pnl_factor = 1.0
-        # ratio below 1 vs above 1
-        below = _get_exit_factor(base_factor, pnl, pnl_factor, 0.5, params)
-        above = _get_exit_factor(base_factor, pnl, pnl_factor, 1.5, params)
-        # Legacy multiplies by 1.5 then 0.5 -> below should be > above * 2 (since (1.5)/(0.5)=3)
-        self.assertGreater(
-            below, above, "Legacy pre-threshold factor should exceed post-threshold"
-        )
-        ratio = below / max(above, 1e-12)
-        self.assertGreater(
-            ratio,
-            2.5,
-            f"Legacy step ratio unexpectedly small (expected ~3, got {ratio:.3f})",
-        )
-
-    def test_exit_factor_non_negative_with_positive_pnl(self):
-        """Exit factor must not be negative when pnl >= 0 (invariant clamp)."""
-
-        params = self.DEFAULT_PARAMS.copy()
-        # All canonical modes + legacy + synthetic plateau variant
-        modes = list(ATTENUATION_MODES_WITH_LEGACY) + ["plateau_linear"]
-        base_factor = self.TEST_BASE_FACTOR
-        pnl = 0.05
-        pnl_factor = 2.0  # amplified
-        for mode in modes:
-            params_mode = params.copy()
-            if mode == "plateau_linear":
-                params_mode["exit_attenuation_mode"] = "linear"
-                params_mode["exit_plateau"] = True
-                params_mode["exit_plateau_grace"] = 0.4
-            else:
-                params_mode["exit_attenuation_mode"] = mode
-            val = _get_exit_factor(base_factor, pnl, pnl_factor, 2.0, params_mode)
-            self.assertGreaterEqual(
-                val,
-                0.0,
-                f"Exit factor should be >=0 for non-negative pnl in mode {mode}",
-            )
-
-
-class TestParameterValidation(RewardSpaceTestBase):
-    """Tests for validate_reward_parameters adjustments and reasons."""
-
-    def test_validate_reward_parameters_adjustments(self):
-        raw = self.DEFAULT_PARAMS.copy()
-        # Introduce out-of-bound values
-        raw["idle_penalty_scale"] = -5.0  # < min 0
-        raw["efficiency_center"] = 2.0  # > max 1
-        raw["exit_power_tau"] = 0.0  # below min (treated as 1e-6)
-        sanitized, adjustments = validate_reward_parameters(raw)
-        # Idle penalty scale should be clamped to 0.0
-        self.assertEqual(sanitized["idle_penalty_scale"], 0.0)
-        self.assertIn("idle_penalty_scale", adjustments)
-        self.assertIsInstance(adjustments["idle_penalty_scale"]["reason"], str)
-        self.assertIn("min=0.0", str(adjustments["idle_penalty_scale"]["reason"]))
-        # Efficiency center should be clamped to 1.0
-        self.assertEqual(sanitized["efficiency_center"], 1.0)
-        self.assertIn("efficiency_center", adjustments)
-        self.assertIn("max=1.0", str(adjustments["efficiency_center"]["reason"]))
-        # exit_power_tau should be raised to lower bound (>=1e-6)
-        self.assertGreaterEqual(float(sanitized["exit_power_tau"]), 1e-6)
-        self.assertIn("exit_power_tau", adjustments)
-        self.assertIn("min=", str(adjustments["exit_power_tau"]["reason"]))
-
-    def test_idle_and_hold_penalty_power(self):
-        """Test non-linear scaling when penalty powers != 1."""
-        params = self.DEFAULT_PARAMS.copy()
-        params["idle_penalty_power"] = 2.0
-        params["max_idle_duration_candles"] = 100
-        base_factor = 90.0
-        profit_target = self.TEST_PROFIT_TARGET
-        # Idle penalties for durations 20 vs 40 (quadratic → (40/100)^2 / (20/100)^2 = (0.4^2)/(0.2^2)=4)
-        ctx_a = RewardContext(
-            pnl=0.0,
-            trade_duration=0,
-            idle_duration=20,
-            max_trade_duration=128,
-            max_unrealized_profit=0.0,
-            min_unrealized_profit=0.0,
-            position=Positions.Neutral,
-            action=Actions.Neutral,
-        )
-        ctx_b = dataclasses.replace(ctx_a, idle_duration=40)
-        br_a = calculate_reward(
-            ctx_a,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=self.TEST_RR,
-            short_allowed=True,
-            action_masking=True,
-        )
-        br_b = calculate_reward(
-            ctx_b,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=self.TEST_RR,
-            short_allowed=True,
-            action_masking=True,
-        )
-        ratio_quadratic = 0.0
-        if br_a.idle_penalty != 0:
-            ratio_quadratic = br_b.idle_penalty / br_a.idle_penalty
-        # Both negative; absolute ratio should be close to 4
-        self.assertAlmostEqual(
-            abs(ratio_quadratic),
-            4.0,
-            delta=0.8,
-            msg=f"Idle penalty quadratic scaling mismatch (ratio={ratio_quadratic})",
-        )
-        # Hold penalty with power 2: durations just above threshold
-        params["hold_penalty_power"] = 2.0
-        ctx_h1 = RewardContext(
-            pnl=0.0,
-            trade_duration=130,
-            idle_duration=0,
-            max_trade_duration=100,
-            max_unrealized_profit=0.0,
-            min_unrealized_profit=0.0,
-            position=Positions.Long,
-            action=Actions.Neutral,
-        )
-        ctx_h2 = dataclasses.replace(ctx_h1, trade_duration=140)
-        # Compute baseline and comparison hold penalties
-        br_h1 = calculate_reward(
-            ctx_h1,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=self.TEST_RR,
-            short_allowed=True,
-            action_masking=True,
-        )
-        br_h2 = calculate_reward(
-            ctx_h2,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=1.0,
-            short_allowed=True,
-            action_masking=True,
-        )
-        # Quadratic scaling: ((140-100)/(130-100))^2 = (40/30)^2 ≈ 1.777...
-        hold_ratio = 0.0
-        if br_h1.hold_penalty != 0:
-            hold_ratio = br_h2.hold_penalty / br_h1.hold_penalty
-        self.assertAlmostEqual(
-            abs(hold_ratio),
-            (40 / 30) ** 2,
-            delta=0.4,
-            msg=f"Hold penalty quadratic scaling mismatch (ratio={hold_ratio})",
-        )
-
-    def test_exit_factor_threshold_warning_emission(self):
-        """Ensure a RuntimeWarning is emitted when exit_factor exceeds threshold (no capping)."""
-
-        params = self.DEFAULT_PARAMS.copy()
-        params["exit_factor_threshold"] = 10.0  # low threshold to trigger easily
-        # Remove base_factor to allow argument override
-        params.pop("base_factor", None)
-
-        context = RewardContext(
-            pnl=0.06,
-            trade_duration=10,
-            idle_duration=0,
-            max_trade_duration=128,
-            max_unrealized_profit=0.08,
-            min_unrealized_profit=0.0,
-            position=Positions.Long,
-            action=Actions.Long_exit,
-        )
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            br = calculate_reward(
-                context,
-                params,
-                base_factor=5000.0,  # large enough to exceed threshold
-                profit_target=self.TEST_PROFIT_TARGET,
-                risk_reward_ratio=self.TEST_RR_HIGH,
-                short_allowed=True,
-                action_masking=True,
-            )
-            self.assertGreater(br.exit_component, 0.0)
-            emitted = [warn for warn in w if issubclass(warn.category, RuntimeWarning)]
-            self.assertTrue(
-                len(emitted) >= 1, "Expected a RuntimeWarning for exit factor threshold"
-            )
-            # Confirm message indicates threshold exceedance (supports legacy and new message format)
-            self.assertTrue(
-                any(
-                    (
-                        "exceeded threshold" in str(warn.message)
-                        or "exceeds threshold" in str(warn.message)
-                        or "|factor|=" in str(warn.message)
-                    )
-                    for warn in emitted
-                ),
-                "Warning message should indicate threshold exceedance",
-            )
-
-
-class TestContinuityPlateau(RewardSpaceTestBase):
-    """Continuity tests for plateau-enabled exit attenuation (excluding legacy)."""
-
     def test_plateau_continuity_at_grace_boundary(self):
         modes = ["sqrt", "linear", "power", "half_life"]
         grace = 0.8
-        eps = 1e-4
+        eps = self.CONTINUITY_EPS_SMALL
         base_factor = self.TEST_BASE_FACTOR
         pnl = 0.01
         pnl_factor = 1.0
@@ -2901,7 +2735,7 @@ class TestContinuityPlateau(RewardSpaceTestBase):
                 self.assertAlmostEqualFloat(
                     left,
                     boundary,
-                    tolerance=1e-9,
+                    tolerance=self.TOL_IDENTITY_RELAXED,
                     msg=f"Left/boundary mismatch for mode {mode}",
                 )
                 self.assertLess(
@@ -2934,8 +2768,8 @@ class TestContinuityPlateau(RewardSpaceTestBase):
 
         mode = "linear"
         grace = 0.6
-        eps1 = 1e-3
-        eps2 = 1e-4
+        eps1 = self.CONTINUITY_EPS_LARGE
+        eps2 = self.CONTINUITY_EPS_SMALL
         base_factor = 80.0
         pnl = 0.02
         params = self.DEFAULT_PARAMS.copy()
@@ -2953,13 +2787,13 @@ class TestContinuityPlateau(RewardSpaceTestBase):
 
         diff1 = f_boundary - f1
         diff2 = f_boundary - f2
-        ratio = diff1 / max(diff2, 1e-12)
+        ratio = diff1 / max(diff2, self.TOL_NUMERIC_GUARD)
         self.assertGreater(ratio, 5.0, f"Scaling ratio too small (ratio={ratio:.2f})")
         self.assertLess(ratio, 15.0, f"Scaling ratio too large (ratio={ratio:.2f})")
 
 
 class TestLoadRealEpisodes(RewardSpaceTestBase):
-    """Unit tests for load_real_episodes (moved from separate file)."""
+    """Unit tests for load_real_episodes."""
 
     def write_pickle(self, obj, path: Path):
         with path.open("wb") as f:
@@ -3009,7 +2843,7 @@ class TestLoadRealEpisodes(RewardSpaceTestBase):
             _ = w
 
         self.assertEqual(len(loaded), 1)
-        self.assertAlmostEqual(float(loaded.iloc[0]["pnl"]), 0.02, places=7)
+        self.assertPlacesEqual(float(loaded.iloc[0]["pnl"]), 0.02, places=7)
 
     def test_non_iterable_transitions_raises(self):
         bad = {"transitions": 123}
@@ -3053,7 +2887,7 @@ class TestLoadRealEpisodes(RewardSpaceTestBase):
         loaded = load_real_episodes(p)
         self.assertIn("pnl", loaded.columns)
         self.assertIn(loaded["pnl"].dtype.kind, ("f", "i"))
-        self.assertAlmostEqual(float(loaded.iloc[0]["pnl"]), 0.04, places=7)
+        self.assertPlacesEqual(float(loaded.iloc[0]["pnl"]), 0.04, places=7)
 
     def test_pickled_dataframe_loads(self):
         """Ensure a directly pickled DataFrame loads correctly."""
@@ -3076,8 +2910,79 @@ class TestLoadRealEpisodes(RewardSpaceTestBase):
         self.assertIn("pnl", loaded_data.columns)
 
 
-class TestPBRSIntegration(RewardSpaceTestBase):
-    """Tests for PBRS (Potential-Based Reward Shaping) integration."""
+class TestPBRS(RewardSpaceTestBase):
+    """PBRS mechanics tests (transforms, parameters, potentials, invariance)."""
+
+    def test_pbrs_progressive_release_decay_clamped(self):
+        """progressive_release decay>1 clamps -> Φ'=0 & Δ=-Φ_prev."""
+        params = self.DEFAULT_PARAMS.copy()
+        params.update(
+            {
+                "potential_gamma": DEFAULT_MODEL_REWARD_PARAMETERS["potential_gamma"],
+                "exit_potential_mode": "progressive_release",
+                "exit_potential_decay": 5.0,  # clamp to 1.0
+                "hold_potential_enabled": True,
+                "entry_additive_enabled": False,
+                "exit_additive_enabled": False,
+            }
+        )
+        current_pnl = 0.02
+        current_dur = 0.5
+        prev_potential = _compute_hold_potential(current_pnl, current_dur, params)
+        _total_reward, shaping_reward, next_potential = apply_potential_shaping(
+            base_reward=0.0,
+            current_pnl=current_pnl,
+            current_duration_ratio=current_dur,
+            next_pnl=0.02,
+            next_duration_ratio=0.6,
+            is_terminal=True,
+            last_potential=prev_potential,
+            params=params,
+        )
+        self.assertAlmostEqualFloat(
+            next_potential, 0.0, tolerance=self.TOL_IDENTITY_RELAXED
+        )
+        self.assertAlmostEqualFloat(
+            shaping_reward, -prev_potential, tolerance=self.TOL_IDENTITY_RELAXED
+        )
+
+    def test_pbrs_spike_cancel_invariance(self):
+        """spike_cancel terminal shaping ≈0 (Φ' inversion yields cancellation)."""
+        params = self.DEFAULT_PARAMS.copy()
+        params.update(
+            {
+                "potential_gamma": 0.9,
+                "exit_potential_mode": "spike_cancel",
+                "hold_potential_enabled": True,
+                "entry_additive_enabled": False,
+                "exit_additive_enabled": False,
+            }
+        )
+        current_pnl = 0.015
+        current_dur = 0.4
+        prev_potential = _compute_hold_potential(current_pnl, current_dur, params)
+        gamma = _get_float_param(
+            params,
+            "potential_gamma",
+            DEFAULT_MODEL_REWARD_PARAMETERS.get("potential_gamma", 0.95),
+        )
+        expected_next = (
+            prev_potential / gamma if gamma not in (0.0, None) else prev_potential
+        )
+        _total_reward, shaping_reward, next_potential = apply_potential_shaping(
+            base_reward=0.0,
+            current_pnl=current_pnl,
+            current_duration_ratio=current_dur,
+            next_pnl=0.016,
+            next_duration_ratio=0.45,
+            is_terminal=True,
+            last_potential=prev_potential,
+            params=params,
+        )
+        self.assertAlmostEqualFloat(
+            next_potential, expected_next, tolerance=self.TOL_IDENTITY_RELAXED
+        )
+        self.assertNearZero(shaping_reward, atol=self.TOL_IDENTITY_RELAXED)
 
     def test_tanh_transform(self):
         """tanh transform: tanh(x) in (-1, 1)."""
@@ -3102,7 +3007,7 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         self.assertAlmostEqualFloat(
             apply_transform("asinh", 1.2345),
             -apply_transform("asinh", -1.2345),
-            tolerance=1e-12,
+            tolerance=self.TOL_IDENTITY_STRICT,
         )
         # Monotonicity
         vals = [apply_transform("asinh", x) for x in [-5.0, -1.0, 0.0, 1.0, 5.0]]
@@ -3141,7 +3046,9 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         """Test error handling for invalid transforms."""
         # Environment falls back silently to tanh
         self.assertAlmostEqualFloat(
-            apply_transform("invalid_transform", 1.0), math.tanh(1.0), tolerance=1e-9
+            apply_transform("invalid_transform", 1.0),
+            math.tanh(1.0),
+            tolerance=self.TOL_IDENTITY_RELAXED,
         )
 
     def test_get_float_param(self):
@@ -3204,208 +3111,18 @@ class TestPBRSIntegration(RewardSpaceTestBase):
         self.assertEqual(val, 0.0)
 
     def test_exit_potential_canonical(self):
-        """Test exit potential in canonical mode."""
-        params = {"exit_potential_mode": "canonical"}
-        val = _compute_exit_potential(1.0, params)
-        self.assertEqual(val, 0.0)
-
-    def test_exit_potential_progressive_release(self):
-        """Progressive release: Φ' = Φ * (1 - decay)."""
-        params = {
-            "exit_potential_mode": "progressive_release",
-            "exit_potential_decay": 0.8,
-        }
-        # Expected: Φ' = Φ * (1 - decay) = 1 * (1 - 0.8) = 0.2
-        val = _compute_exit_potential(1.0, params)
-        self.assertAlmostEqual(val, 0.2)
-
-    def test_exit_potential_spike_cancel(self):
-        """Spike cancel: Φ' = Φ / γ (inversion)."""
-        params = {
-            "exit_potential_mode": "spike_cancel",
-            "potential_gamma": DEFAULT_MODEL_REWARD_PARAMETERS["potential_gamma"],
-        }
-        val = _compute_exit_potential(1.0, params)
-        self.assertAlmostEqual(val, 1.0 / 0.95, places=7)
-
-    def test_exit_potential_retain_previous(self):
-        """Test exit potential in retain previous mode."""
-        params = {"exit_potential_mode": "retain_previous"}
-        val = _compute_exit_potential(1.0, params)
-        self.assertEqual(val, 1.0)
-
-    def test_pbrs_terminal_canonical(self):
-        """Canonical mode structural invariance checks.
-
-        We do NOT enforce Σ shaping ≈ 0 here (finite-horizon drift acceptable). We verify:
-        - Additive components auto-disabled (policy invariance enforcement)
-        - Terminal potential always zero (Φ_terminal = 0)
-        - Shaping magnitudes bounded (safety guard against spikes)
-        """
         params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
         params.update(
             {
                 "exit_potential_mode": "canonical",
                 "hold_potential_enabled": True,
-                "entry_additive_enabled": False,
-                "exit_additive_enabled": False,
+                "entry_additive_enabled": True,  # expected to be auto-disabled by canonical invariance
+                "exit_additive_enabled": True,  # expected to be auto-disabled by canonical invariance
             }
         )
-        rng = np.random.default_rng(123)
-        last_potential = 0.0
-        terminal_next_potentials: list[float] = []
-        shaping_values: list[float] = []
-        current_pnl = 0.0
-        current_dur = 0.0
-        for _ in range(350):
-            is_terminal = rng.uniform() < 0.08
-            # Sample candidate next state (ignored for terminal potential because canonical sets Φ'=0)
-            next_pnl = 0.0 if is_terminal else float(rng.normal(0, 0.2))
-            inc = rng.uniform(0, 0.12)
-            next_dur = 0.0 if is_terminal else float(min(1.0, current_dur + inc))
-            _total, shaping, next_potential = apply_potential_shaping(
-                base_reward=0.0,
-                current_pnl=current_pnl,
-                current_duration_ratio=current_dur,
-                next_pnl=next_pnl,
-                next_duration_ratio=next_dur,
-                is_terminal=is_terminal,
-                last_potential=last_potential,
-                params=params,
-            )
-            shaping_values.append(shaping)
-            if is_terminal:
-                terminal_next_potentials.append(next_potential)
-                last_potential = 0.0
-                current_pnl = 0.0
-                current_dur = 0.0
-            else:
-                last_potential = next_potential
-                current_pnl = next_pnl
-                current_dur = next_dur
-        # Assertions
-        self.assertFalse(params["entry_additive_enabled"])  # enforced
-        self.assertFalse(params["exit_additive_enabled"])  # enforced
-        if terminal_next_potentials:
-            self.assertTrue(all(abs(p) < 1e-12 for p in terminal_next_potentials))
-        max_abs = max(abs(v) for v in shaping_values) if shaping_values else 0.0
-        self.assertLessEqual(max_abs, 5.0)
-
-        # Test basic PBRS function integration works
-        params = {"hold_potential_enabled": True, "hold_potential_scale": 1.0}
-        potential = _compute_hold_potential(0.1, 0.2, params)
-        self.assertFinite(potential, name="hold_potential")
-
-    def test_pbrs_default_parameters_completeness(self):
-        """Test that all required PBRS parameters have defaults."""
-        for param in PBRS_REQUIRED_PARAMS:
-            self.assertIn(
-                param,
-                DEFAULT_MODEL_REWARD_PARAMETERS,
-                f"Missing PBRS parameter: {param}",
-            )
-
-    def test_pbrs_progressive_release_decay_clamped_zero_current(self):
-        """progressive_release with decay>1 clamps to 1 (full release to 0).
-
-        Scenario isolates current Φ(s)=0 and non-zero previous potential carried in last_potential,
-        verifying clamp logic independent of current state potential.
-        """
-        params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
-        params.update(
-            {
-                "exit_potential_mode": "progressive_release",
-                "exit_potential_decay": 5.0,  # will clamp to 1.0
-            }
-        )
-        _total, shaping, next_potential = apply_potential_shaping(
-            base_reward=0.0,
-            current_pnl=0.0,
-            current_duration_ratio=0.0,
-            next_pnl=0.0,
-            next_duration_ratio=0.0,
-            is_terminal=True,
-            last_potential=0.8,
-            params=params,
-        )
-        # After clamp: next_potential = 0 and shaping = γ*0 - 0 (Φ(s)=0) => 0
-        self.assertAlmostEqualFloat(next_potential, 0.0, tolerance=1e-12)
-        self.assertAlmostEqualFloat(shaping, 0.0, tolerance=1e-9)
-
-    def test_pbrs_invalid_transform_fallback_potential(self):
-        """Invalid transform name in potential path must fall back without NaNs."""
-        params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
-        params.update({"hold_potential_transform_pnl": "not_a_transform"})
-        _total, shaping, next_potential = apply_potential_shaping(
-            base_reward=0.0,
-            current_pnl=0.2,
-            current_duration_ratio=0.3,
-            next_pnl=0.25,
-            next_duration_ratio=0.35,
-            is_terminal=False,
-            last_potential=0.0,
-            params=params,
-        )
-        self.assertTrue(np.isfinite(shaping))
-        self.assertTrue(np.isfinite(next_potential))
-
-    def test_pbrs_gamma_zero_disables_progressive_effect(self):
-        """Gamma=0 => shaping term = -Φ(s); potential still updated for next step (Φ' used only if γ>0).
-
-        We only assert shaping bounded since Φ is transformed & scaled; ensures stability without exceptions.
-        """
-        params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
-        params.update({"potential_gamma": 0.0, "hold_potential_enabled": True})
-        base_reward = 1.23
-        _total, shaping, next_potential = apply_potential_shaping(
-            base_reward=base_reward,
-            current_pnl=0.1,
-            current_duration_ratio=0.2,
-            next_pnl=0.15,
-            next_duration_ratio=0.25,
-            is_terminal=False,
-            last_potential=0.0,
-            params=params,
-        )
-        # Shaping bounded (Φ in [-scale, scale] after transforms), conservatively check |shaping| <= 1
-        self.assertLessEqual(abs(shaping), 1.0)
-        self.assertTrue(np.isfinite(next_potential))
-
-    def test_pbrs_non_canonical_runtime_behavior(self):
-        """Non-canonical mode: Φ'=0 at terminal but additives remain enabled (should not be auto-disabled).
-
-        We construct a simple scenario:
-        - enable hold potential (so Φ(s) != 0)
-        - set exit_potential_mode = 'non-canonical'
-        - enable both entry & exit additives with small scales so they contribute deterministically
-        - take a terminal transition
-
-        Expectations:
-        - canonical auto-disabling does NOT occur (additives stay True)
-        - next_potential returned by _compute_exit_potential is exactly 0.0 (Φ'=0)
-        - shaping_reward = γ * 0 - Φ(s) = -Φ(s)
-        - total_reward = base + shaping + entry_add + exit_add (all finite)
-        - invariance would be broken (but we just assert mechanism, not report here)
-        """
-        params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
-        params.update(
-            {
-                "hold_potential_enabled": True,
-                "hold_potential_scale": 1.0,
-                "exit_potential_mode": "non-canonical",
-                "entry_additive_enabled": True,
-                "exit_additive_enabled": True,
-                # deterministic small values
-                "entry_additive_scale": 0.5,
-                "exit_additive_scale": 0.5,
-                "entry_additive_gain": 1.0,
-                "exit_additive_gain": 1.0,
-            }
-        )
-        base_reward = 0.123
-        current_pnl = 0.2
+        base_reward = 0.25
+        current_pnl = 0.05
         current_duration_ratio = 0.4
-        # terminal next state values (ignored for potential since Φ'=0 in non-canonical exit path)
         next_pnl = 0.0
         next_duration_ratio = 0.0
         total, shaping, next_potential = apply_potential_shaping(
@@ -3418,11 +3135,18 @@ class TestPBRSIntegration(RewardSpaceTestBase):
             last_potential=0.789,  # arbitrary, should be ignored for Φ'
             params=params,
         )
-        # Additives should not have been disabled
-        self.assertTrue(params["entry_additive_enabled"])
-        self.assertTrue(params["exit_additive_enabled"])
+        # Canonical invariance must DISABLE additives (invariance of terminal shaping)
+        self.assertIn("_pbrs_invariance_applied", params)
+        self.assertFalse(
+            params["entry_additive_enabled"],
+            "Entry additive should be auto-disabled in canonical mode",
+        )
+        self.assertFalse(
+            params["exit_additive_enabled"],
+            "Exit additive should be auto-disabled in canonical mode",
+        )
         # Next potential is forced to 0
-        self.assertAlmostEqual(next_potential, 0.0, places=12)
+        self.assertPlacesEqual(next_potential, 0.0, places=12)
         # Compute current potential independently to assert shaping = -Φ(s)
         current_potential = _compute_hold_potential(
             current_pnl,
@@ -3430,32 +3154,252 @@ class TestPBRSIntegration(RewardSpaceTestBase):
             {"hold_potential_enabled": True, "hold_potential_scale": 1.0},
         )
         # shaping should equal -current_potential within tolerance
-        self.assertAlmostEqual(shaping, -current_potential, delta=1e-9)
-        # Total reward includes additives: ensure total - base - shaping differs from 0 (i.e., additives present)
+        self.assertAlmostEqual(
+            shaping, -current_potential, delta=self.TOL_IDENTITY_RELAXED
+        )
+        # Since additives are disabled, total ≈ base_reward + shaping (residual ~0)
         residual = total - base_reward - shaping
-        self.assertNotAlmostEqual(residual, 0.0, delta=1e-12)
+        self.assertAlmostEqual(residual, 0.0, delta=self.TOL_IDENTITY_RELAXED)
         self.assertTrue(np.isfinite(total))
+
+    def test_pbrs_invariance_internal_flag_set(self):
+        """Canonical path sets _pbrs_invariance_applied once; second call idempotent."""
+        params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
+        params.update(
+            {
+                "exit_potential_mode": "canonical",
+                "hold_potential_enabled": True,
+                "entry_additive_enabled": True,  # will be auto-disabled
+                "exit_additive_enabled": True,
+            }
+        )
+        # Structural sweep (ensures terminal Φ'==0 and shaping bounded)
+        terminal_next_potentials, shaping_values = self._canonical_sweep(params)
+
+        # Premier appel (terminal pour forcer chemin exit) pour activer le flag
+        _t1, _s1, _n1 = apply_potential_shaping(
+            base_reward=0.0,
+            current_pnl=0.05,
+            current_duration_ratio=0.3,
+            next_pnl=0.0,
+            next_duration_ratio=0.0,
+            is_terminal=True,
+            last_potential=0.4,
+            params=params,
+        )
+        self.assertIn("_pbrs_invariance_applied", params)
+        self.assertFalse(params["entry_additive_enabled"])
+        self.assertFalse(params["exit_additive_enabled"])
+        if terminal_next_potentials:
+            self.assertTrue(
+                all(abs(p) < self.PBRS_TERMINAL_TOL for p in terminal_next_potentials)
+            )
+        max_abs = max(abs(v) for v in shaping_values) if shaping_values else 0.0
+        self.assertLessEqual(max_abs, self.PBRS_MAX_ABS_SHAPING)
+
+        # Capture state and re-run (idempotence)
+        state_after = (
+            params["entry_additive_enabled"],
+            params["exit_additive_enabled"],
+        )  # type: ignore[index]
+        _t2, _s2, _n2 = apply_potential_shaping(
+            base_reward=0.0,
+            current_pnl=0.02,
+            current_duration_ratio=0.1,
+            next_pnl=0.0,
+            next_duration_ratio=0.0,
+            is_terminal=True,
+            last_potential=0.1,
+            params=params,
+        )
+        self.assertEqual(
+            state_after,
+            (params["entry_additive_enabled"], params["exit_additive_enabled"]),
+        )
+
+    def test_progressive_release_negative_decay_clamped(self):
+        """Negative decay must clamp to 0 => next potential equals last potential (no release)."""
+        params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
+        params.update(
+            {
+                "exit_potential_mode": "progressive_release",
+                "exit_potential_decay": -0.75,  # clamped to 0
+                "hold_potential_enabled": True,
+            }
+        )
+        last_potential = 0.42
+        # Use neutral current state so Φ(s) ≈ 0 (approx) if transforms remain small.
+        total, shaping, next_potential = apply_potential_shaping(
+            base_reward=0.0,
+            current_pnl=0.0,
+            current_duration_ratio=0.0,
+            next_pnl=0.0,
+            next_duration_ratio=0.0,
+            is_terminal=True,
+            last_potential=last_potential,
+            params=params,
+        )
+        self.assertPlacesEqual(next_potential, last_potential, places=12)
+        # shaping = γ*Φ' - Φ(s) ≈ γ*last_potential - 0
+        gamma_raw = DEFAULT_MODEL_REWARD_PARAMETERS.get("potential_gamma", 0.95)
+        try:
+            gamma = float(gamma_raw)  # type: ignore[assignment]
+        except Exception:
+            gamma = 0.95
+            self.assertLessEqual(
+                abs(shaping - gamma * last_potential), self.TOL_GENERIC_EQ
+            )
+        self.assertPlacesEqual(total, shaping, places=12)
+
+    def test_potential_gamma_nan_fallback(self):
+        """potential_gamma=NaN should fall back to default value (indirect comparison)."""
+        base_params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
+        default_gamma = base_params.get("potential_gamma", 0.95)
+        params_nan = base_params.copy()
+        params_nan.update(
+            {"potential_gamma": float("nan"), "hold_potential_enabled": True}
+        )
+        # Non-terminal transition so Φ(s') is computed and depends on gamma
+        res_nan = apply_potential_shaping(
+            base_reward=0.1,
+            current_pnl=0.03,
+            current_duration_ratio=0.2,
+            next_pnl=0.035,
+            next_duration_ratio=0.25,
+            is_terminal=False,
+            last_potential=0.0,
+            params=params_nan,
+        )
+        params_ref = base_params.copy()
+        params_ref.update(
+            {"potential_gamma": default_gamma, "hold_potential_enabled": True}
+        )
+        res_ref = apply_potential_shaping(
+            base_reward=0.1,
+            current_pnl=0.03,
+            current_duration_ratio=0.2,
+            next_pnl=0.035,
+            next_duration_ratio=0.25,
+            is_terminal=False,
+            last_potential=0.0,
+            params=params_ref,
+        )
+        # Compare shaping & total (deterministic path here)
+        self.assertLess(
+            abs(res_nan[1] - res_ref[1]),
+            self.TOL_IDENTITY_RELAXED,
+            "Unexpected shaping difference under gamma NaN fallback",
+        )
+        self.assertLess(
+            abs(res_nan[0] - res_ref[0]),
+            self.TOL_IDENTITY_RELAXED,
+            "Unexpected total difference under gamma NaN fallback",
+        )
+
+    def test_transform_bulk_monotonicity_and_bounds(self):
+        """Non-decreasing monotonicity & (-1,1) bounds for smooth transforms (excluding clip)."""
+        transforms = ["tanh", "softsign", "arctan", "sigmoid", "asinh"]
+        xs = [-5.0, -1.0, -0.5, 0.0, 0.5, 1.0, 5.0]
+        for name in transforms:
+            with self.subTest(transform=name):
+                vals = [apply_transform(name, x) for x in xs]
+                # Strict bounds (-1,1) (sigmoid & tanh asymptotic)
+                self.assertTrue(
+                    all(-1.0 < v < 1.0 for v in vals), f"{name} out of bounds"
+                )
+                # Non-decreasing monotonicity
+                for a, b in zip(vals, vals[1:]):
+                    self.assertLessEqual(
+                        a,
+                        b + self.TOL_IDENTITY_STRICT,
+                        f"{name} not monotonic between {a} and {b}",
+                    )
+
+    def test_pbrs_retain_previous_cumulative_drift(self):
+        """retain_previous mode accumulates negative shaping drift (non-invariant)."""
+        params = DEFAULT_MODEL_REWARD_PARAMETERS.copy()
+        params.update(
+            {
+                "exit_potential_mode": "retain_previous",
+                "hold_potential_enabled": True,
+                "entry_additive_enabled": False,
+                "exit_additive_enabled": False,
+                "potential_gamma": 0.9,
+            }
+        )
+        gamma = _get_float_param(
+            params,
+            "potential_gamma",
+            DEFAULT_MODEL_REWARD_PARAMETERS.get("potential_gamma", 0.95),
+        )
+        rng = np.random.default_rng(555)
+        potentials = rng.uniform(0.05, 0.85, size=220)
+        deltas = [(gamma * p - p) for p in potentials]
+        cumulative = float(np.sum(deltas))
+        self.assertLess(cumulative, -self.TOL_NEGLIGIBLE)
+        self.assertGreater(abs(cumulative), 10 * self.TOL_IDENTITY_RELAXED)
+
+    def test_normality_invariance_under_scaling(self):
+        """Skewness & excess kurtosis invariant under positive scaling of normal sample."""
+        rng = np.random.default_rng(808)
+        base = rng.normal(0.0, 1.0, size=7000)
+        scaled = 5.0 * base
+
+        def _skew_kurt(x: np.ndarray) -> tuple[float, float]:
+            m = np.mean(x)
+            c = x - m
+            m2 = np.mean(c**2)
+            m3 = np.mean(c**3)
+            m4 = np.mean(c**4)
+            skew = m3 / (m2**1.5 + 1e-18)
+            kurt = m4 / (m2**2 + 1e-18) - 3.0
+            return skew, kurt
+
+        s_base, k_base = _skew_kurt(base)
+        s_scaled, k_scaled = _skew_kurt(scaled)
+        self.assertAlmostEqualFloat(s_base, s_scaled, tolerance=self.TOL_DISTRIB_SHAPE)
+        self.assertAlmostEqualFloat(k_base, k_scaled, tolerance=self.TOL_DISTRIB_SHAPE)
+
+    def test_js_symmetry_and_kl_relation_bound(self):
+        """JS distance symmetry & upper bound sqrt(log 2)."""
+        rng = np.random.default_rng(9090)
+        p_raw = rng.uniform(0.0, 1.0, size=300)
+        q_raw = rng.uniform(0.0, 1.0, size=300)
+        p = p_raw / p_raw.sum()
+        q = q_raw / q_raw.sum()
+        m = 0.5 * (p + q)
+
+        def _kl(a, b):
+            mask = (a > 0) & (b > 0)
+            return float(np.sum(a[mask] * np.log(a[mask] / b[mask])))
+
+        js_div = 0.5 * _kl(p, m) + 0.5 * _kl(q, m)
+        js_dist = math.sqrt(max(js_div, 0.0))
+        self.assertDistanceMetric(js_dist, name="js_distance")
+        # Upper bound plus strict identity epsilon guard
+        self.assertLessEqual(
+            js_dist,
+            self.JS_DISTANCE_UPPER_BOUND + self.TOL_IDENTITY_STRICT,
+        )
+        js_div_swap = 0.5 * _kl(q, m) + 0.5 * _kl(p, m)
+        js_dist_swap = math.sqrt(max(js_div_swap, 0.0))
+        self.assertAlmostEqualFloat(
+            js_dist, js_dist_swap, tolerance=self.TOL_GENERIC_EQ
+        )
 
 
 class TestReportFormatting(RewardSpaceTestBase):
     """Tests for report formatting elements not previously covered."""
 
     def test_abs_shaping_line_present_and_constant(self):
-        """Ensure the report contains the Abs Σ Shaping Reward line and tolerance not hard-coded elsewhere.
-
-        Strategy: run a minimal simulation via generate_report setUp artifact.
-        We reuse helper simulate_samples (already tested) to produce output then search in report.
-        """
-        # Generate a tiny dataset directly using existing pathway by invoking analysis main logic would be heavy.
-        # Instead we mimic the invariance block logic locally to ensure formatting; this keeps test fast and stable.
-        # Create a temporary markdown file to exercise the function that writes invariance section.
-        # Sanity check tolerance value
-        self.assertAlmostEqual(PBRS_INVARIANCE_TOL, 1e-6, places=12)
+        """Abs Σ Shaping Reward line present, formatted, uses constant not literal."""
+        # Minimal synthetic construction to exercise invariance formatting logic.
+        self.assertPlacesEqual(PBRS_INVARIANCE_TOL, self.TOL_GENERIC_EQ, places=12)
 
         # Use small synthetic DataFrame with zero shaping sum (pandas imported globally)
         df = pd.DataFrame(
             {
-                "reward_shaping": [1e-12, -1e-12],
+                "reward_shaping": [self.TOL_IDENTITY_STRICT, -self.TOL_IDENTITY_STRICT],
                 "reward_entry_additive": [0.0, 0.0],
                 "reward_exit_additive": [0.0, 0.0],
             }
@@ -3475,10 +3419,12 @@ class TestReportFormatting(RewardSpaceTestBase):
         # Ensure scientific notation magnitude consistent with small number
         val = float(m.group(1)) if m else None  # type: ignore[arg-type]
         if val is not None:
-            self.assertLess(val, 1e-8 + 1e-12)
+            self.assertLess(val, self.TOL_NEGLIGIBLE + self.TOL_IDENTITY_STRICT)
         # Ensure no stray hard-coded tolerance string inside content
         self.assertNotIn(
-            "1e-6", content, "Tolerance should not be hard-coded in line output"
+            str(self.TOL_GENERIC_EQ),
+            content,
+            "Tolerance constant value should appear, not raw literal",
         )
 
     def test_pbrs_non_canonical_report_generation(self):
@@ -3487,7 +3433,7 @@ class TestReportFormatting(RewardSpaceTestBase):
 
         df = pd.DataFrame(
             {
-                "reward_shaping": [0.01, -0.002],  # somme = 0.008 (>> tolérance)
+                "reward_shaping": [0.01, -0.002],  # sum = 0.008 (>> tolerance)
                 "reward_entry_additive": [0.0, 0.0],
                 "reward_exit_additive": [0.001, 0.0],
             }
@@ -3516,6 +3462,162 @@ class TestReportFormatting(RewardSpaceTestBase):
         self.assertIsNotNone(m_abs)
         if m_abs:
             self.assertAlmostEqual(abs(total_shaping), float(m_abs.group(1)), places=12)
+
+    def test_additive_activation_deterministic_contribution(self):
+        """Additives enabled increase total reward; shaping impact limited."""
+        # Use a non-canonical exit mode to avoid automatic invariance enforcement
+        # disabling the additive components on first call (canonical path auto-disables).
+        base = base_params(
+            hold_potential_enabled=True,
+            entry_additive_enabled=False,
+            exit_additive_enabled=False,
+            exit_potential_mode="non-canonical",
+        )
+        with_add = base.copy()
+        with_add.update(
+            {
+                "entry_additive_enabled": True,
+                "exit_additive_enabled": True,
+                "entry_additive_scale": 0.4,
+                "exit_additive_scale": 0.4,
+                "entry_additive_gain": 1.0,
+                "exit_additive_gain": 1.0,
+            }
+        )
+        ctx = {
+            "base_reward": 0.05,
+            "current_pnl": 0.01,
+            "current_duration_ratio": 0.2,
+            "next_pnl": 0.012,
+            "next_duration_ratio": 0.25,
+            "is_terminal": False,
+        }
+        _t0, s0, _n0 = apply_potential_shaping(last_potential=0.0, params=base, **ctx)
+        t1, s1, _n1 = apply_potential_shaping(
+            last_potential=0.0, params=with_add, **ctx
+        )
+        self.assertFinite(t1)
+        self.assertFinite(s1)
+        # Additives should not alter invariance: shaping difference small
+        self.assertLess(abs(s1 - s0), 0.2)
+        self.assertGreater(
+            t1 - _t0, 0.0, "Total reward should increase with additives present"
+        )
+
+    def test_report_cumulative_invariance_aggregation(self):
+        """Canonical telescoping term: small per-step mean drift, bounded increments."""
+        params = base_params(
+            hold_potential_enabled=True,
+            entry_additive_enabled=False,
+            exit_additive_enabled=False,
+            exit_potential_mode="canonical",
+        )
+        gamma = _get_float_param(
+            params,
+            "potential_gamma",
+            DEFAULT_MODEL_REWARD_PARAMETERS.get("potential_gamma", 0.95),
+        )
+        rng = np.random.default_rng(321)
+        last_potential = 0.0
+        telescoping_sum = 0.0
+        max_abs_step = 0.0
+        steps = 0
+        for _ in range(500):
+            is_terminal = rng.uniform() < 0.1
+            current_pnl = float(rng.normal(0, 0.05))
+            current_dur = float(rng.uniform(0, 1))
+            next_pnl = 0.0 if is_terminal else float(rng.normal(0, 0.05))
+            next_dur = 0.0 if is_terminal else float(rng.uniform(0, 1))
+            _tot, _shap, next_potential = apply_potential_shaping(
+                base_reward=0.0,
+                current_pnl=current_pnl,
+                current_duration_ratio=current_dur,
+                next_pnl=next_pnl,
+                next_duration_ratio=next_dur,
+                is_terminal=is_terminal,
+                last_potential=last_potential,
+                params=params,
+            )
+            # Accumulate theoretical telescoping term: γ Φ(s') - Φ(s)
+            inc = gamma * next_potential - last_potential
+            telescoping_sum += inc
+            if abs(inc) > max_abs_step:
+                max_abs_step = abs(inc)
+            steps += 1
+            if is_terminal:
+                # Reset potential at terminal per canonical semantics
+                last_potential = 0.0
+            else:
+                last_potential = next_potential
+        mean_drift = telescoping_sum / max(1, steps)
+        self.assertLess(
+            abs(mean_drift),
+            2e-2,
+            f"Per-step telescoping drift too large (mean={mean_drift}, steps={steps})",
+        )
+        self.assertLessEqual(
+            max_abs_step,
+            self.PBRS_MAX_ABS_SHAPING,
+            f"Unexpected large telescoping increment (max={max_abs_step})",
+        )
+
+    def test_report_explicit_non_invariance_progressive_release(self):
+        """progressive_release should generally yield non-zero cumulative shaping (release leak)."""
+        params = base_params(
+            hold_potential_enabled=True,
+            entry_additive_enabled=False,
+            exit_additive_enabled=False,
+            exit_potential_mode="progressive_release",
+            exit_potential_decay=0.25,
+        )
+        rng = np.random.default_rng(321)
+        last_potential = 0.0
+        shaping_sum = 0.0
+        for _ in range(160):
+            is_terminal = rng.uniform() < 0.15
+            next_pnl = 0.0 if is_terminal else float(rng.normal(0, 0.07))
+            next_dur = 0.0 if is_terminal else float(rng.uniform(0, 1))
+            _tot, shap, next_pot = apply_potential_shaping(
+                base_reward=0.0,
+                current_pnl=float(rng.normal(0, 0.07)),
+                current_duration_ratio=float(rng.uniform(0, 1)),
+                next_pnl=next_pnl,
+                next_duration_ratio=next_dur,
+                is_terminal=is_terminal,
+                last_potential=last_potential,
+                params=params,
+            )
+            shaping_sum += shap
+            last_potential = 0.0 if is_terminal else next_pot
+        self.assertGreater(
+            abs(shaping_sum),
+            PBRS_INVARIANCE_TOL * 50,
+            f"Expected non-zero Σ shaping (got {shaping_sum})",
+        )
+
+    def test_gamma_extremes(self):
+        """Gamma=0 and gamma≈1 boundary behaviours produce bounded shaping and finite potentials."""
+        for gamma in [0.0, 0.999999]:
+            params = base_params(
+                hold_potential_enabled=True,
+                entry_additive_enabled=False,
+                exit_additive_enabled=False,
+                exit_potential_mode="canonical",
+                potential_gamma=gamma,
+            )
+            _tot, shap, next_pot = apply_potential_shaping(
+                base_reward=0.0,
+                current_pnl=0.02,
+                current_duration_ratio=0.3,
+                next_pnl=0.025,
+                next_duration_ratio=0.35,
+                is_terminal=False,
+                last_potential=0.0,
+                params=params,
+            )
+            self.assertTrue(np.isfinite(shap))
+            self.assertTrue(np.isfinite(next_pot))
+            self.assertLessEqual(abs(shap), self.PBRS_MAX_ABS_SHAPING)
 
 
 if __name__ == "__main__":
