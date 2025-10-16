@@ -1763,29 +1763,21 @@ class MyRLEnv(Base5ActionRLEnv):
         pnl: float,
         pnl_target: float,
     ) -> float:
-        """Apply potential-based reward shaping (PBRS) following Ng et al. 1999.
+        """Apply potential-based reward shaping (PBRS) (Ng et al. 1999).
 
-        Implements the canonical PBRS formula:
-
-            R'(s, a, s') = R_base(s, a, s') + γ Φ(s') - Φ(s)
+        Canonical formula:  R'(s,a,s') = R_base(s,a,s') + γ Φ(s') − Φ(s)
 
         Notation
         --------
-        - R_base(s, a, s') : unshaped environment reward (code variable: ``base_reward``)
-        - Φ(s)             : potential before transition (code: ``prev_potential`` / ``self._last_potential``)
-        - Φ(s')            : potential after transition (computed per transition type)
-        - γ                : shaping discount (``self._potential_gamma``)
-        - Δ(s,s')          : shaping term = γ Φ(s') - Φ(s) (logged as ``shaping_reward`` per step)
-        - R'(s, a, s')     : shaped reward delivered to the agent = R_base + Δ(s,s') + (additives if enabled)
-        - pnl_ratio        : pnl / pnl_target (normalized profit component before transform)
-        - duration_ratio   : trade_duration / max_trade_duration (clipped to [0,1] before transform)
+        R_base: base reward; Φ(s)/Φ(s'): potentials (prev/next); γ: shaping discount;
+        Δ(s,s') = γΦ(s') − Φ(s); R' = R_base + Δ + optional additives; pnl_ratio = pnl/pnl_target;
+        duration_ratio = trade_duration / max_trade_duration (clamped to [0,1]).
 
         PBRS Theory & Compliance
         ------------------------
-        This implementation follows academic standards for potential-based reward shaping:
-        - Ng et al. 1999: Canonical formula with invariance guarantees
-        - Wiewiora et al. 2003: Terminal state handling (Φ(terminal)=0)
-        - Maintains policy invariance in canonical mode with proper terminal handling
+        - Ng et al. 1999 (potential-based shaping invariance)
+        - Wiewiora et al. 2003 (Φ(terminal)=0 handling)
+        - Invariance holds only in canonical mode with additives disabled.
 
         Architecture & Transitions
         --------------------------
@@ -1807,19 +1799,9 @@ class MyRLEnv(Base5ActionRLEnv):
 
         Potential Function Φ(s)
         -----------------------
-        Hold potential formula: Φ(s) = scale * 0.5 * [T_pnl(g*pnl_ratio) + T_dur(g*duration_ratio)]
-
-        **Bounded Transform Functions** (each maps R -> (-1, 1) except clip which is [-1, 1]):
-        - tanh: tanh(x)
-        - softsign: x / (1 + |x|)
-        - arctan: (2/pi) * arctan(x)
-        - sigmoid: 2σ(x) - 1, σ(x) = 1/(1 + e^(-x))
-        - asinh: x / sqrt(1 + x^2)
-        - clip: clip(x, -1, 1)
-
-        **Parameters**:
-        - gain g: sharpens (g>1) or softens (g<1) transform input
-        - scale: multiplies final potential value
+        Φ(s) = scale * 0.5 * [T_pnl(g * pnl_ratio) + T_dur(g * duration_ratio)]
+        Transforms (bounded in [-1,1]): tanh, softsign, arctan, sigmoid (≈ tanh(0.5x)), asinh, clip.
+        Parameters: gain g (sharpens/softens), scale.
 
         Exit Potential Modes
         --------------------
@@ -1829,12 +1811,16 @@ class MyRLEnv(Base5ActionRLEnv):
         - Shaping reward: γ·0-Φ(s) = -Φ(s)
         - Entry/exit additives automatically disabled to preserve invariance
 
+        **non_canonical**:
+        - Φ(s')=0 for all exit transitions
+        - Entry/exit additives are allowed
+
         **progressive_release** (heuristic):
         - Φ(s')=Φ(s)*(1-decay_factor), gradual decay
         - Shaping reward: γΦ(s')-Φ(s) = γΦ(s)*(1-d)-Φ(s)
 
         **spike_cancel** (heuristic):
-        - Φ(s')=Φ(s)/γ, aims for zero net shaping
+        - Φ(s')=Φ(s)/γ (γ>0 finite)
         - Shaping reward: γΦ(s')-Φ(s) = γ*(Φ(s)/γ)-Φ(s) = 0
 
         **retain_previous** (heuristic):
@@ -1848,14 +1834,11 @@ class MyRLEnv(Base5ActionRLEnv):
         - Exit additive: Applied at exit transitions, computed via _compute_exit_additive()
         - Neither additive persists in stored potential (maintains neutrality)
 
-        **Path Dependence**: Only canonical mode preserves PBRS invariance. Heuristic
-        exit modes introduce path dependence through non-zero terminal potentials.
+        **Path Dependence**: Only canonical preserves invariance; others introduce path dependence.
 
         Invariance & Validation
         -----------------------
-        **Theoretical Guarantee**: In canonical mode, ∑ Δ(s,s') = 0 over
-        complete episodes due to Φ(terminal)=0. Entry/exit additives are automatically
-        disabled in canonical mode to preserve this invariance.
+        **Theoretical Guarantee**: Canonical + no additives ⇒ Σ_t γ^t Δ_t = 0 (Φ(start)=Φ(end)=0).
 
         **Deviations from Theory**:
         - Heuristic exit modes violate invariance
@@ -1867,6 +1850,7 @@ class MyRLEnv(Base5ActionRLEnv):
         - Finite value validation with fallback to 0
         - Terminal state enforcement: Φ(s)=0 when terminated=True
         - All transform functions are strictly bounded in [-1, 1], ensuring numerical stability
+        - Bounds: |Φ(s)| ≤ scale ; |Δ(s,s')| ≤ (1+γ)*scale
 
         Parameters
         ----------
@@ -1890,11 +1874,11 @@ class MyRLEnv(Base5ActionRLEnv):
 
         Notes
         -----
-        - Use canonical mode for theoretical compliance
-        - Monitor ∑Δ(s,s') for invariance validation (should sum to 0 over episodes)
-        - Heuristic exit modes are experimental and may affect convergence
-        - Transform validation removed from runtime (deferred to analysis tools)
-        - In canonical exit mode, Φ is reset to 0 at exit boundaries, ensuring telescoping cancellation (∑Δ=0) over closed episodes
+        - Canonical mode recommended for invariance
+        - Monitor discounted Σ γ^t Δ_t (≈0 per episode canonical)
+        - Heuristic exit modes may affect convergence
+        - Transform validation delegated to analysis tools
+        - Φ reset at exits (canonical) enables telescoping cancellation
         """
         if not self._hold_potential_enabled and not (
             self._entry_additive_enabled or self._exit_additive_enabled
