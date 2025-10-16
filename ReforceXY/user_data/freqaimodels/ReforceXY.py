@@ -285,6 +285,45 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             self.continual_learning = False
 
+    def pack_env_dict(
+        self, pair: str, model_params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        env_info = super().pack_env_dict(pair)
+
+        config = env_info.setdefault("config", {})
+        freqai_cfg = config.setdefault("freqai", {})
+        rl_cfg = freqai_cfg.setdefault("rl_config", {})
+        model_reward_parameters = rl_cfg.setdefault("model_reward_parameters", {})
+
+        gamma: Optional[float] = None
+        best_trial_params: Optional[Dict[str, Any]] = None
+        if self.hyperopt:
+            best_trial_params = self.load_best_trial_params(pair)
+
+        if model_params and isinstance(model_params.get("gamma"), (int, float)):
+            gamma = float(model_params.get("gamma"))
+        elif best_trial_params and isinstance(
+            best_trial_params.get("gamma"), (int, float)
+        ):
+            gamma = float(best_trial_params.get("gamma"))
+        elif hasattr(self.model, "gamma") and isinstance(
+            self.model.gamma, (int, float)
+        ):
+            gamma = float(self.model.gamma)
+        else:
+            model_params_gamma = self.get_model_params().get("gamma")
+            if isinstance(model_params_gamma, (int, float)):
+                gamma = float(model_params_gamma)
+
+        if gamma is not None:
+            model_reward_parameters["potential_gamma"] = gamma
+        else:
+            logger.warning(
+                f"{pair}: No valid PBRS discount gamma resolved for environment"
+            )
+
+        return env_info
+
     def set_train_and_eval_environments(
         self,
         data_dictionary: Dict[str, DataFrame],
@@ -302,9 +341,6 @@ class ReforceXY(BaseReinforcementLearningModel):
         train_df = data_dictionary.get("train_features")
         test_df = data_dictionary.get("test_features")
         env_dict = self.pack_env_dict(dk.pair)
-        env_dict["config"]["freqai"]["rl_config"]["model_reward_parameters"][
-            "potential_gamma"
-        ] = self.get_model_params().get("gamma")
         seed = self.get_model_params().get("seed", 42)
 
         if self.check_envs:
@@ -571,7 +607,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         self, data_dictionary: Dict[str, Any], dk: FreqaiDataKitchen, **kwargs
     ) -> Any:
         """
-        User customizable fit method
+        Model fitting method
         :param data_dictionary: dict = common data dictionary containing all train/test features/labels/weights.
         :param dk: FreqaiDatakitchen = data kitchen for current pair.
         :return:
@@ -1080,27 +1116,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             seed += trial.number
         set_random_seed(seed)
         env_info: Dict[str, Any] = (
-            self.pack_env_dict(dk.pair) if env_info is None else env_info
+            self.pack_env_dict(dk.pair, model_params) if env_info is None else env_info
         )
-        gamma: Optional[float] = None
-        best_trial_params: Optional[Dict[str, Any]] = None
-        if self.hyperopt:
-            best_trial_params = self.load_best_trial_params(dk.pair)
-        if model_params and isinstance(model_params.get("gamma"), (int, float)):
-            gamma = model_params.get("gamma")
-        elif best_trial_params:
-            gamma = best_trial_params.get("gamma")
-        elif hasattr(self.model, "gamma") and isinstance(
-            self.model.gamma, (int, float)
-        ):
-            gamma = self.model.gamma
-        elif isinstance(self.get_model_params().get("gamma"), (int, float)):
-            gamma = self.get_model_params().get("gamma")
-        if gamma is not None:
-            # Align RL agent gamma with PBRS gamma for consistent discount factor
-            env_info["config"]["freqai"]["rl_config"]["model_reward_parameters"][
-                "potential_gamma"
-            ] = float(gamma)
         env_prefix = f"trial_{trial.number}_" if trial is not None else ""
 
         train_fns = [
