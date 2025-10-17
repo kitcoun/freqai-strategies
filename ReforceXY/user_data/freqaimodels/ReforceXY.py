@@ -770,7 +770,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             dtype=np.float32, copy=False
         )
         n = np_dataframe.shape[0]
-        window_size: int = self.window_size
+        window_size: int = self.CONV_WIDTH
         frame_stacking: int = self.frame_stacking
         frame_stacking_enabled: bool = bool(frame_stacking) and frame_stacking > 1
         inference_masking: bool = self.action_masking and self.inference_masking
