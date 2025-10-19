@@ -149,6 +149,10 @@ class QuickAdapterV3(IStrategy):
                     "maxima": {"color": "#0dd6de", "type": "bar"},
                     "minima": {"color": "#e3970b", "type": "bar"},
                 },
+                "di":{
+                    "DI_values": {"color": "#ff5733", "type": "line"},
+                    "DI_cutoff": {"color": "#33ff57", "type": "line"},
+                }
             },
         }
 
