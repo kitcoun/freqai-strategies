@@ -20,7 +20,7 @@ services:
         optuna_version: 4.5.0
         scikit_learn_extra_version: 0.3.0
         skimage_version: 0.25.2
-    # restart: unless-stopped
+    restart: unless-stopped
     container_name: freqtrade-quickadapter
     environment:
       - TZ=Asia/Shanghai
@@ -32,6 +32,4 @@ services:
     ports:
       - "0.0.0.0:8081:8080"
     # Default command used when running `docker compose up`
-    entrypoint: ""
-    # 执行阻塞命令，保持容器运行
-    command: "tail -f /dev/null"
+    # entrypoint: ""
