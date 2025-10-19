@@ -7,6 +7,7 @@
 	- [Configuration tunables](#configuration-tunables)
 - [ReforceXY](#reforcexy)
 	- [Quick start](#quick-start-1)
+	- [Supported models](#supported-models)
 	- [Configuration tunables](#configuration-tunables-1)
 - [Common workflows](#common-workflows)
 - [Note](#note)

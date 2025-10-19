@@ -285,6 +285,45 @@ class ReforceXY(BaseReinforcementLearningModel):
             )
             self.continual_learning = False
 
+    def pack_env_dict(
+        self, pair: str, model_params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        env_info = super().pack_env_dict(pair)
+
+        config = env_info.setdefault("config", {})
+        freqai_cfg = config.setdefault("freqai", {})
+        rl_cfg = freqai_cfg.setdefault("rl_config", {})
+        model_reward_parameters = rl_cfg.setdefault("model_reward_parameters", {})
+
+        gamma: Optional[float] = None
+        best_trial_params: Optional[Dict[str, Any]] = None
+        if self.hyperopt:
+            best_trial_params = self.load_best_trial_params(pair)
+
+        if model_params and isinstance(model_params.get("gamma"), (int, float)):
+            gamma = float(model_params.get("gamma"))
+        elif best_trial_params and isinstance(
+            best_trial_params.get("gamma"), (int, float)
+        ):
+            gamma = float(best_trial_params.get("gamma"))
+        elif hasattr(self.model, "gamma") and isinstance(
+            self.model.gamma, (int, float)
+        ):
+            gamma = float(self.model.gamma)
+        else:
+            model_params_gamma = self.get_model_params().get("gamma")
+            if isinstance(model_params_gamma, (int, float)):
+                gamma = float(model_params_gamma)
+
+        if gamma is not None:
+            model_reward_parameters["potential_gamma"] = gamma
+        else:
+            logger.warning(
+                f"{pair}: No valid PBRS discount gamma resolved for environment"
+            )
+
+        return env_info
+
     def set_train_and_eval_environments(
         self,
         data_dictionary: Dict[str, DataFrame],
@@ -302,9 +341,6 @@ class ReforceXY(BaseReinforcementLearningModel):
         train_df = data_dictionary.get("train_features")
         test_df = data_dictionary.get("test_features")
         env_dict = self.pack_env_dict(dk.pair)
-        env_dict["config"]["freqai"]["rl_config"]["model_reward_parameters"][
-            "potential_gamma"
-        ] = self.get_model_params().get("gamma")
         seed = self.get_model_params().get("seed", 42)
 
         if self.check_envs:
@@ -571,7 +607,7 @@ class ReforceXY(BaseReinforcementLearningModel):
         self, data_dictionary: Dict[str, Any], dk: FreqaiDataKitchen, **kwargs
     ) -> Any:
         """
-        User customizable fit method
+        Model fitting method
         :param data_dictionary: dict = common data dictionary containing all train/test features/labels/weights.
         :param dk: FreqaiDatakitchen = data kitchen for current pair.
         :return:
@@ -734,7 +770,7 @@ class ReforceXY(BaseReinforcementLearningModel):
             dtype=np.float32, copy=False
         )
         n = np_dataframe.shape[0]
-        window_size: int = self.window_size
+        window_size: int = self.CONV_WIDTH
         frame_stacking: int = self.frame_stacking
         frame_stacking_enabled: bool = bool(frame_stacking) and frame_stacking > 1
         inference_masking: bool = self.action_masking and self.inference_masking
@@ -1080,27 +1116,8 @@ class ReforceXY(BaseReinforcementLearningModel):
             seed += trial.number
         set_random_seed(seed)
         env_info: Dict[str, Any] = (
-            self.pack_env_dict(dk.pair) if env_info is None else env_info
+            self.pack_env_dict(dk.pair, model_params) if env_info is None else env_info
         )
-        gamma: Optional[float] = None
-        best_trial_params: Optional[Dict[str, Any]] = None
-        if self.hyperopt:
-            best_trial_params = self.load_best_trial_params(dk.pair)
-        if model_params and isinstance(model_params.get("gamma"), (int, float)):
-            gamma = model_params.get("gamma")
-        elif best_trial_params:
-            gamma = best_trial_params.get("gamma")
-        elif hasattr(self.model, "gamma") and isinstance(
-            self.model.gamma, (int, float)
-        ):
-            gamma = self.model.gamma
-        elif isinstance(self.get_model_params().get("gamma"), (int, float)):
-            gamma = self.get_model_params().get("gamma")
-        if gamma is not None:
-            # Align RL agent gamma with PBRS gamma for consistent discount factor
-            env_info["config"]["freqai"]["rl_config"]["model_reward_parameters"][
-                "potential_gamma"
-            ] = float(gamma)
         env_prefix = f"trial_{trial.number}_" if trial is not None else ""
 
         train_fns = [
@@ -1334,9 +1351,6 @@ class MyRLEnv(Base5ActionRLEnv):
         self.max_trade_duration_candles: int = self.rl_config.get(
             "max_trade_duration_candles", 128
         )
-        # === Constants ===
-        self.MIN_SOFTSIGN_SHARPNESS: float = 0.01
-        self.MAX_SOFTSIGN_SHARPNESS: float = 100.0
         # === INTERNAL STATE ===
         self._last_closed_position: Optional[Positions] = None
         self._last_closed_trade_tick: int = 0
@@ -1363,17 +1377,10 @@ class MyRLEnv(Base5ActionRLEnv):
                 original_gamma,
                 self._potential_gamma,
             )
-        self._potential_softsign_sharpness: float = float(
-            model_reward_parameters.get("potential_softsign_sharpness", 1.0)
-        )
-        self._potential_softsign_sharpness = max(
-            self.MIN_SOFTSIGN_SHARPNESS,
-            min(self.MAX_SOFTSIGN_SHARPNESS, self._potential_softsign_sharpness),
-        )
         # === EXIT POTENTIAL MODE ===
         # exit_potential_mode options:
         #   'canonical'           -> Φ(s')=0 (preserves invariance, disables additives)
-        #   'non-canonical'       -> Φ(s')=0 (allows additives, breaks invariance)
+        #   'non_canonical'       -> Φ(s')=0 (allows additives, breaks invariance)
         #   'progressive_release' -> Φ(s')=Φ(s)*(1-decay_factor)
         #   'spike_cancel'        -> Φ(s')=Φ(s)/γ (Δ ≈ 0, cancels shaping)
         #   'retain_previous'     -> Φ(s')=Φ(s)
@@ -1382,7 +1389,7 @@ class MyRLEnv(Base5ActionRLEnv):
         )
         _allowed_exit_modes = {
             "canonical",
-            "non-canonical",
+            "non_canonical",
             "progressive_release",
             "spike_cancel",
             "retain_previous",
@@ -1449,11 +1456,11 @@ class MyRLEnv(Base5ActionRLEnv):
             if self._entry_additive_enabled or self._exit_additive_enabled:
                 logger.info(
                     "Canonical mode: additive rewards disabled with Φ(terminal)=0. PBRS invariance is preserved. "
-                    "To use additive rewards, set exit_potential_mode='non-canonical'."
+                    "To use additive rewards, set exit_potential_mode='non_canonical'."
                 )
                 self._entry_additive_enabled = False
                 self._exit_additive_enabled = False
-        elif self._exit_potential_mode == "non-canonical":
+        elif self._exit_potential_mode == "non_canonical":
             if self._entry_additive_enabled or self._exit_additive_enabled:
                 logger.info(
                     "Non-canonical mode: additive rewards enabled with Φ(terminal)=0. PBRS invariance is intentionally broken."
@@ -1664,8 +1671,8 @@ class MyRLEnv(Base5ActionRLEnv):
         Parameters
         ----------
         name : str
-            Transform function name: 'tanh', 'softsign', 'softsign_sharp',
-            'arctan', 'logistic', 'asinh_norm', or 'clip'
+            Transform function name: 'tanh', 'softsign', 'arctan', 'sigmoid',
+            'asinh', or 'clip'
         x : float
             Input value to transform
 
@@ -1681,27 +1688,22 @@ class MyRLEnv(Base5ActionRLEnv):
             ax = abs(x)
             return x / (1.0 + ax)
 
-        if name == "softsign_sharp":
-            s = self._potential_softsign_sharpness
-            xs = s * x
-            ax = abs(xs)
-            return xs / (1.0 + ax)
-
         if name == "arctan":
             return (2.0 / math.pi) * math.atan(x)
 
-        if name == "logistic":
+        if name == "sigmoid":
             try:
                 if x >= 0:
-                    z = math.exp(-x)  # z in (0,1]
-                    return (1.0 - z) / (1.0 + z)
+                    exp_neg_x = math.exp(-x)
+                    sigma_x = 1.0 / (1.0 + exp_neg_x)
                 else:
-                    z = math.exp(x)  # z in (0,1]
-                    return (z - 1.0) / (z + 1.0)
+                    exp_x = math.exp(x)
+                    sigma_x = exp_x / (exp_x + 1.0)
+                return 2.0 * sigma_x - 1.0
             except OverflowError:
                 return 1.0 if x > 0 else -1.0
 
-        if name == "asinh_norm":
+        if name == "asinh":
             return x / math.hypot(1.0, x)
 
         if name == "clip":
@@ -1716,7 +1718,7 @@ class MyRLEnv(Base5ActionRLEnv):
         See ``_apply_potential_shaping`` for complete PBRS documentation.
         """
         mode = self._exit_potential_mode
-        if mode == "canonical" or mode == "non-canonical":
+        if mode == "canonical" or mode == "non_canonical":
             return 0.0
         if mode == "progressive_release":
             decay = self._exit_potential_decay
@@ -1778,29 +1780,21 @@ class MyRLEnv(Base5ActionRLEnv):
         pnl: float,
         pnl_target: float,
     ) -> float:
-        """Apply potential-based reward shaping (PBRS) following Ng et al. 1999.
+        """Apply potential-based reward shaping (PBRS) (Ng et al. 1999).
 
-        Implements the canonical PBRS formula:
-
-            R'(s, a, s') = R_base(s, a, s') + γ Φ(s') - Φ(s)
+        Canonical formula:  R'(s,a,s') = R_base(s,a,s') + γ Φ(s') − Φ(s)
 
         Notation
         --------
-        - R_base(s, a, s') : unshaped environment reward (code variable: ``base_reward``)
-        - Φ(s)             : potential before transition (code: ``prev_potential`` / ``self._last_potential``)
-        - Φ(s')            : potential after transition (computed per transition type)
-        - γ                : shaping discount (``self._potential_gamma``)
-        - Δ(s,s')          : shaping term = γ Φ(s') - Φ(s) (logged as ``shaping_reward`` per step)
-        - R'(s, a, s')     : shaped reward delivered to the agent = R_base + Δ(s,s') + (additives if enabled)
-        - pnl_ratio        : pnl / pnl_target (normalized profit component before transform)
-        - duration_ratio   : trade_duration / max_trade_duration (clipped to [0,1] before transform)
+        R_base: base reward; Φ(s)/Φ(s'): potentials (prev/next); γ: shaping discount;
+        Δ(s,s') = γΦ(s') − Φ(s); R' = R_base + Δ + optional additives; pnl_ratio = pnl/pnl_target;
+        duration_ratio = trade_duration / max_trade_duration (clamped to [0,1]).
 
         PBRS Theory & Compliance
         ------------------------
-        This implementation follows academic standards for potential-based reward shaping:
-        - Ng et al. 1999: Canonical formula with invariance guarantees
-        - Wiewiora et al. 2003: Terminal state handling (Φ(terminal)=0)
-        - Maintains policy invariance in canonical mode with proper terminal handling
+        - Ng et al. 1999 (potential-based shaping invariance)
+        - Wiewiora et al. 2003 (Φ(terminal)=0 handling)
+        - Invariance holds only in canonical mode with additives disabled.
 
         Architecture & Transitions
         --------------------------
@@ -1822,21 +1816,9 @@ class MyRLEnv(Base5ActionRLEnv):
 
         Potential Function Φ(s)
         -----------------------
-        Hold potential formula: Φ(s) = scale * 0.5 * [T_pnl(g*pnl_ratio) + T_dur(g*duration_ratio)]
-
-        **Bounded Transform Functions** (range [-1,1]):
-        - tanh: smooth saturation, tanh(x)
-        - softsign: x/(1+|x|), gentler than tanh
-        - softsign_sharp: (sharpness*x)/(1+|sharpness*x|), custom saturation control
-        - arctan: (2/π)*arctan(x), linear near origin
-        - logistic: 2σ(x)-1 where σ(x)=1/(1+e^(-x)), numerically stable implementation
-        - asinh_norm: x/√(1+x²), normalized asinh-like
-        - clip: hard clamp to [-1,1]
-
-        **Parameters**:
-        - gain g: sharpens (g>1) or softens (g<1) transform input
-        - scale: multiplies final potential value
-        - sharpness: affects softsign_sharp transform (must be >0)
+        Φ(s) = scale * 0.5 * [T_pnl(g * pnl_ratio) + T_dur(g * duration_ratio)]
+        Transforms (bounded in [-1,1]): tanh, softsign, arctan, sigmoid (≈ tanh(0.5x)), asinh, clip.
+        Parameters: gain g (sharpens/softens), scale.
 
         Exit Potential Modes
         --------------------
@@ -1846,12 +1828,16 @@ class MyRLEnv(Base5ActionRLEnv):
         - Shaping reward: γ·0-Φ(s) = -Φ(s)
         - Entry/exit additives automatically disabled to preserve invariance
 
+        **non_canonical**:
+        - Φ(s')=0 for all exit transitions
+        - Entry/exit additives are allowed
+
         **progressive_release** (heuristic):
         - Φ(s')=Φ(s)*(1-decay_factor), gradual decay
         - Shaping reward: γΦ(s')-Φ(s) = γΦ(s)*(1-d)-Φ(s)
 
         **spike_cancel** (heuristic):
-        - Φ(s')=Φ(s)/γ, aims for zero net shaping
+        - Φ(s')=Φ(s)/γ (γ>0 finite)
         - Shaping reward: γΦ(s')-Φ(s) = γ*(Φ(s)/γ)-Φ(s) = 0
 
         **retain_previous** (heuristic):
@@ -1865,14 +1851,11 @@ class MyRLEnv(Base5ActionRLEnv):
         - Exit additive: Applied at exit transitions, computed via _compute_exit_additive()
         - Neither additive persists in stored potential (maintains neutrality)
 
-        **Path Dependence**: Only canonical mode preserves PBRS invariance. Heuristic
-        exit modes introduce path dependence through non-zero terminal potentials.
+        **Path Dependence**: Only canonical preserves invariance; others introduce path dependence.
 
         Invariance & Validation
         -----------------------
-        **Theoretical Guarantee**: In canonical mode, ∑ Δ(s,s') = 0 over
-        complete episodes due to Φ(terminal)=0. Entry/exit additives are automatically
-        disabled in canonical mode to preserve this invariance.
+        **Theoretical Guarantee**: Canonical + no additives ⇒ Σ_t γ^t Δ_t = 0 (Φ(start)=Φ(end)=0).
 
         **Deviations from Theory**:
         - Heuristic exit modes violate invariance
@@ -1884,6 +1867,7 @@ class MyRLEnv(Base5ActionRLEnv):
         - Finite value validation with fallback to 0
         - Terminal state enforcement: Φ(s)=0 when terminated=True
         - All transform functions are strictly bounded in [-1, 1], ensuring numerical stability
+        - Bounds: |Φ(s)| ≤ scale ; |Δ(s,s')| ≤ (1+γ)*scale
 
         Parameters
         ----------
@@ -1907,11 +1891,11 @@ class MyRLEnv(Base5ActionRLEnv):
 
         Notes
         -----
-        - Use canonical mode for theoretical compliance
-        - Monitor ∑Δ(s,s') for invariance validation (should sum to 0 over episodes)
-        - Heuristic exit modes are experimental and may affect convergence
-        - Transform validation removed from runtime (deferred to analysis tools)
-        - In canonical exit mode, Φ is reset to 0 at exit boundaries, ensuring telescoping cancellation (∑Δ=0) over closed episodes
+        - Canonical mode recommended for invariance
+        - Monitor discounted Σ γ^t Δ_t (≈0 per episode canonical)
+        - Heuristic exit modes may affect convergence
+        - Transform validation delegated to analysis tools
+        - Φ reset at exits (canonical) enables telescoping cancellation
         """
         if not self._hold_potential_enabled and not (
             self._entry_additive_enabled or self._exit_additive_enabled
@@ -1976,7 +1960,7 @@ class MyRLEnv(Base5ActionRLEnv):
         elif is_exit:
             if (
                 self._exit_potential_mode == "canonical"
-                or self._exit_potential_mode == "non-canonical"
+                or self._exit_potential_mode == "non_canonical"
             ):
                 next_potential = 0.0
                 exit_shaping_reward = -prev_potential
@@ -1991,11 +1975,10 @@ class MyRLEnv(Base5ActionRLEnv):
                     pnl, pnl_target, duration_ratio
                 )
 
-            exit_reward = exit_shaping_reward + exit_additive
             self._last_potential = next_potential
             self._last_shaping_reward = float(exit_shaping_reward)
             self._total_shaping_reward += float(exit_shaping_reward)
-            return base_reward + exit_reward
+            return base_reward + exit_shaping_reward + exit_additive
         else:
             # Neutral self-loop
             self._last_potential = 0.0
