@@ -80,6 +80,7 @@ INTERNAL_GUARDS: dict[str, float] = {
     "sim_zero_pnl_epsilon": 1e-12,
     "sim_zero_reward_epsilon": 1e-12,
     "sim_extreme_pnl_threshold": 0.2,
+    "histogram_epsilon": 1e-10,
 }
 
 # PBRS constants
@@ -1937,7 +1938,7 @@ def compute_distribution_shift_metrics(
         hist_real, _ = np.histogram(real_values, bins=bins, density=False)
 
         # Add small epsilon to avoid log(0) in KL divergence
-        epsilon = 1e-10
+        epsilon = float(INTERNAL_GUARDS.get("histogram_epsilon", 1e-10))
         hist_synth = hist_synth + epsilon
         hist_real = hist_real + epsilon
         # Normalize to create probability distributions (sum to 1)
@@ -2078,6 +2079,11 @@ def statistical_hypothesis_tests(
     if len(pnl_positive) >= 30 and len(pnl_negative) >= 30:
         u_stat, p_val = stats.mannwhitneyu(pnl_positive, pnl_negative)
 
+        n1, n2 = len(pnl_positive), len(pnl_negative)
+        rb = 1.0 - 2.0 * (float(u_stat) / float(n1 * n2)) if n1 > 0 and n2 > 0 else np.nan
+        if np.isfinite(rb):
+            rb = float(np.clip(rb, -1.0, 1.0))
+
         results["pnl_sign_reward_difference"] = {
             "test": "Mann-Whitney U (pnl+ vs pnl-)",
             "statistic": float(u_stat),
@@ -2085,6 +2091,7 @@ def statistical_hypothesis_tests(
             "significant": bool(p_val < alpha),
             "median_pnl_positive": float(pnl_positive.median()),
             "median_pnl_negative": float(pnl_negative.median()),
+            "effect_size_rank_biserial": float(rb) if np.isfinite(rb) else np.nan,
         }
 
     # Optional multiple testing correction (Benjamini-Hochberg)
