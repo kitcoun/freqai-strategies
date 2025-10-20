@@ -74,8 +74,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 max(int(self.max_system_threads / 4), 1),
             ),
             "storage": "file",
-            "continuous": True,
-            "warm_start": True,
+            "continuous": False,
+            "warm_start": False,
             "n_startup_trials": 15,
             "n_trials": 50,
             "timeout": 7200,
@@ -960,14 +960,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 # "hamming",
                 # "jaccard",
                 "jensenshannon",
-                # "kulczynski1",  # deprecated since version 1.15.0
+                # "kulczynski1",  # Deprecated in SciPy ≥ 1.15.0; do not use.
                 "mahalanobis",
                 # "matching",
                 "minkowski",
                 # "rogerstanimoto",
                 # "russellrao",
                 "seuclidean",
-                # "sokalmichener",  # deprecated since version 1.15.0
+                # "sokalmichener",  # Deprecated in SciPy ≥ 1.15.0; do not use.
                 # "sokalsneath",
                 "sqeuclidean",
                 # "yule",

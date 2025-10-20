@@ -57,7 +57,7 @@ Deterministic synthetic sampling with diagnostics for reward shaping, penalties,
 
 ## Prerequisites
 
-Requirements: Python 3.8+, ≥4GB RAM (CPU only). Recommended venv:
+Requirements: Python 3.9+, ≥4GB RAM (CPU only). Recommended venv:
 
 ```shell
 cd ReforceXY/reward_space_analysis
@@ -140,8 +140,6 @@ None (all have defaults).
 
 **`--seed`** (int, default: 42) – Master seed (reuse for identical runs).
 
-**`--max_trade_duration`** (int, default: 128) – Max trade duration (candles). Idle grace fallback: `max_idle_duration_candles = 4 * max_trade_duration`.
-
 ### Reward Configuration
 
 **`--base_factor`** (float, default: 100.0) – Base reward scale (match environment).
@@ -183,7 +181,8 @@ Core frequently tuned parameters:
 | `win_reward_factor` | 2.0 | Profit overshoot multiplier |
 | `pnl_factor_beta` | 0.5 | PnL amplification beta |
 | `idle_penalty_scale` | 0.5 | Idle penalty scale |
-| `idle_penalty_power` | 1.025 | Idle penalty exponent (>1 slightly convex) |
+| `idle_penalty_power` | 1.025 | Idle penalty exponent |
+| `max_trade_duration_candles` | 128 | Trade duration cap | 
 | `max_idle_duration_candles` | None | Idle duration cap; fallback 4× max trade duration |
 | `hold_penalty_scale` | 0.25 | Hold penalty scale |
 | `hold_penalty_power` | 1.025 | Hold penalty exponent |
@@ -339,13 +338,12 @@ Includes: global stats, representativity, component + PBRS analysis, feature imp
 | `generated_at` | string (ISO 8601) | Timestamp of generation (not part of hash). |
 | `num_samples` | int | Number of synthetic samples generated. |
 | `seed` | int | Master random seed driving simulation determinism. |
-| `max_trade_duration` | int | Max trade duration used to scale durations. |
 | `profit_target_effective` | float | Profit target after risk/reward scaling. |
 | `pvalue_adjust_method` | string | Multiple testing correction mode (`none` or `benjamini_hochberg`). |
 | `parameter_adjustments` | object | Map of any automatic bound clamps (empty if none). |
 | `reward_params` | object | Full resolved reward parameter set (post-validation). |
 | `simulation_params` | object | All simulation inputs (num_samples, seed, volatility knobs, etc.). |
-| `params_hash` | string (sha256) | Hash over ALL `simulation_params` + ALL `reward_params` (lexicographically ordered). |
+| `params_hash` | string (sha256) | Hash over ALL `simulation_params` (excluding `out_dir`, `real_episodes`) + ALL `reward_params` (lexicographically ordered). |
 
 Two runs match iff `params_hash` identical (defaults included in hash scope).
 
@@ -482,4 +480,3 @@ Lower samples; skip PD/feature analysis; reduce resamples; ensure SSD.
 ### Memory Errors
 
 Reduce samples; ensure 64‑bit Python; batch processing; add RAM/swap.
-
