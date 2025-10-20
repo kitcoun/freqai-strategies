@@ -730,15 +730,15 @@ def _get_exit_factor(
             "exit_half_life",
             DEFAULT_MODEL_REWARD_PARAMETERS.get("exit_half_life", 0.5),
         )
-        if hl <= 0.0:
-            if _is_strict_validation(params):
-                raise ValueError(f"exit_half_life={hl} must be > 0 in strict mode")
+        if hl <= 0.0 and _is_strict_validation(params):
+            raise ValueError(f"exit_half_life={hl} must be > 0 in strict mode")
+        if np.isclose(hl, 0.0):
             warnings.warn(
-                f"exit_half_life={hl} <= 0; falling back to 0.0",
+                f"exit_half_life={hl} close to 0; falling back to 1.0",
                 RewardDiagnosticsWarning,
                 stacklevel=2,
             )
-            hl = 0.0
+            return 1.0
         return f * math.pow(2.0, -dr / hl)
 
     kernels = {

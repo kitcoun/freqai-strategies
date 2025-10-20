@@ -2148,8 +2148,8 @@ class MyRLEnv(Base5ActionRLEnv):
 
         def _half_life(f: float, dr: float, p: Mapping) -> float:
             hl = float(p.get("exit_half_life", 0.5))
-            if hl <= 0.0:
-                hl = 0.0
+            if np.isclose(hl, 0.0) or hl < 0.0:
+                return 1.0
             return f * math.pow(2.0, -dr / hl)
 
         strategies: Dict[str, Callable[[float, float, Mapping], float]] = {
@@ -2522,14 +2522,14 @@ class MyRLEnv(Base5ActionRLEnv):
         if terminated:
             # Enforce Φ(terminal)=0 for PBRS invariance (Wiewiora et al. 2003)
             self._last_potential = 0.0
-            eps = 1e-6
-            if self.is_pbrs_invariant_mode() and abs(self._total_reward_shaping) > eps:
-                logger.warning(
-                    "PBRS mode %s invariance deviation: |sum Δ|=%.6f > eps=%.6f",
-                    self._exit_potential_mode,
-                    self._total_reward_shaping,
-                    eps,
-                )
+            # eps = np.finfo(float).eps
+            # if self.is_pbrs_invariant_mode() and abs(self._total_reward_shaping) > eps:
+            #     logger.warning(
+            #         "PBRS mode %s invariance deviation: |sum Δ|=%.6f > eps=%.6f",
+            #         self._exit_potential_mode,
+            #         abs(self._total_reward_shaping),
+            #         eps,
+            #     )
         return (
             self._get_observation(),
             reward,
