@@ -182,7 +182,7 @@ Core frequently tuned parameters:
 | `pnl_factor_beta` | 0.5 | PnL amplification beta |
 | `idle_penalty_scale` | 0.5 | Idle penalty scale |
 | `idle_penalty_power` | 1.025 | Idle penalty exponent |
-| `max_trade_duration_candles` | 128 | Trade duration cap | 
+| `max_trade_duration_candles` | 128 | Trade duration cap |
 | `max_idle_duration_candles` | None | Idle duration cap; fallback 4× max trade duration |
 | `hold_penalty_scale` | 0.25 | Hold penalty scale |
 | `hold_penalty_power` | 1.025 | Hold penalty exponent |

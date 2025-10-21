@@ -1082,13 +1082,15 @@ def calculate_reward(
     )
 
     if pbrs_enabled and not is_neutral:
-        # Derive Φ(prev) from current state to ensure telescoping semantics
-        prev_potential = _compute_hold_potential(current_pnl, current_duration_ratio, params)
-        if not np.isfinite(prev_potential):
-            prev_potential = 0.0
-        # Effective previous potential used for reporting: prefer provided previous_potential if finite
-        prev_potential = (
-            float(previous_potential) if np.isfinite(previous_potential) else float(prev_potential)
+        # Compute Φ(s) for the current state to preserve telescoping semantics Δ = γ·Φ(s') − Φ(s)
+        current_potential = _compute_hold_potential(current_pnl, current_duration_ratio, params)
+        if not np.isfinite(current_potential):
+            current_potential = 0.0
+
+        last_potential = (
+            float(previous_potential)
+            if np.isfinite(previous_potential)
+            else float(current_potential)
         )
 
         total_reward, reward_shaping, next_potential = apply_potential_shaping(
@@ -1099,12 +1101,13 @@ def calculate_reward(
             next_duration_ratio=next_duration_ratio,
             is_exit=is_exit,
             is_entry=is_entry,
-            previous_potential=previous_potential,
+            previous_potential=current_potential,
+            last_potential=last_potential,
             params=params,
         )
 
         breakdown.reward_shaping = reward_shaping
-        breakdown.prev_potential = prev_potential
+        breakdown.prev_potential = current_potential
         breakdown.next_potential = next_potential
         breakdown.entry_additive = (
             _compute_entry_additive(next_pnl, next_duration_ratio, params) if is_entry else 0.0
@@ -2095,9 +2098,11 @@ def statistical_hypothesis_tests(
         }
 
     # Optional multiple testing correction (Benjamini-Hochberg)
-    if adjust_method not in {"none", "benjamini_hochberg"}:
-        raise ValueError("Unsupported adjust_method. Use 'none' or 'benjamini_hochberg'.")
-    if adjust_method == "benjamini_hochberg" and results:
+    if adjust_method not in {"none", "benjamini_hochberg", "benjaminihochberg"}:
+        raise ValueError(
+            "Unsupported adjust_method. Use 'none', 'benjamini_hochberg', or 'benjaminihochberg'."
+        )
+    if adjust_method in {"benjamini_hochberg", "benjaminihochberg"} and results:
         # Collect p-values
         items = list(results.items())
         pvals = np.array([v[1]["p_value"] for v in items])
