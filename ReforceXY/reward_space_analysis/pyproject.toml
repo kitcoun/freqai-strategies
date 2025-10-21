@@ -1,3 +1,31 @@
+[project]
+name = "reward_space_analysis"
+version = "0.1.0"
+description = "Reward space analysis for ReforceXY trading strategy"
+authors = [
+    {name = "Jerome Benoit", email = "jerome.benoit@sap.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "pytest",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=6.0",
+    "ruff",
+    "coverage",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = [
@@ -27,9 +55,6 @@ addopts = [
     "--disable-warnings",
     "--color=yes"
 ]
-
-# Minimum Python version
-python_version = "3.9"
 
 [tool.ruff]
 line-length = 100
