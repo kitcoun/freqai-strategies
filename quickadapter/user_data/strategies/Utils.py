@@ -827,6 +827,7 @@ def get_optuna_study_model_parameters(
     trial: optuna.trial.Trial,
     regressor: str,
     model_training_best_parameters: dict[str, Any],
+    space_reduction: bool,
     expansion_ratio: float,
 ) -> dict[str, Any]:
     if regressor not in regressors:
@@ -864,7 +865,7 @@ def get_optuna_study_model_parameters(
     }
 
     ranges = copy.deepcopy(default_ranges)
-    if model_training_best_parameters:
+    if space_reduction and model_training_best_parameters:
         for param, (default_min, default_max) in default_ranges.items():
             center_value = model_training_best_parameters.get(param)
 

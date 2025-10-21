@@ -81,6 +81,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             "timeout": 7200,
             "label_candles_step": 1,
             "train_candles_step": 10,
+            "space_reduction": False,
             "expansion_ratio": 0.4,
             "seed": 1,
         }
@@ -317,6 +318,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     test_weights,
                     self.get_optuna_params(dk.pair, "hp"),
                     model_training_parameters,
+                    self._optuna_config.get("space_reduction"),
                     self._optuna_config.get("expansion_ratio"),
                 ),
                 direction=optuna.study.StudyDirection.MINIMIZE,
@@ -1735,10 +1737,15 @@ def hp_objective(
     test_weights: NDArray[np.floating],
     model_training_best_parameters: dict[str, Any],
     model_training_parameters: dict[str, Any],
+    space_reduction: bool,
     expansion_ratio: float,
 ) -> float:
     study_model_parameters = get_optuna_study_model_parameters(
-        trial, regressor, model_training_best_parameters, expansion_ratio
+        trial,
+        regressor,
+        model_training_best_parameters,
+        space_reduction,
+        expansion_ratio,
     )
     model_training_parameters = {**model_training_parameters, **study_model_parameters}
 
