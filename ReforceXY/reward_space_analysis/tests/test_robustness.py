@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Robustness tests and boundary condition validation."""
 
-import dataclasses
 import math
 import unittest
 import warnings
@@ -15,7 +14,6 @@ from reward_space_analysis import (
     Positions,
     RewardContext,
     _get_exit_factor,
-    _get_float_param,
     _get_pnl_factor,
     calculate_reward,
     simulate_samples,
@@ -161,8 +159,9 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
         invalid_combinations = df[(df["pnl"].abs() <= self.EPS_BASE) & (df["reward_exit"] != 0)]
         self.assertEqual(len(invalid_combinations), 0)
 
-    def test_exit_factor_mathematical_formulas(self):
-        """Mathematical correctness of exit factor calculations across modes."""
+    def test_exit_factor_comprehensive(self):
+        """Comprehensive exit factor test: mathematical correctness and monotonic attenuation."""
+        # Part 1: Mathematical formulas validation
         context = self.make_ctx(
             pnl=0.05,
             trade_duration=50,
@@ -174,6 +173,8 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
         )
         params = self.DEFAULT_PARAMS.copy()
         duration_ratio = 50 / 100
+
+        # Test power mode
         params["exit_attenuation_mode"] = "power"
         params["exit_power_tau"] = 0.5
         params["exit_plateau"] = False
@@ -187,6 +188,8 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
             action_masking=True,
         )
         self.assertGreater(reward_power.exit_component, 0)
+
+        # Test half_life mode with mathematical validation
         params["exit_attenuation_mode"] = "half_life"
         params["exit_half_life"] = 0.5
         reward_half_life = calculate_reward(
@@ -212,6 +215,8 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
             tolerance=self.TOL_IDENTITY_RELAXED,
             msg="Half-life attenuation mismatch: observed vs expected",
         )
+
+        # Test linear mode
         params["exit_attenuation_mode"] = "linear"
         params["exit_linear_slope"] = 1.0
         reward_linear = calculate_reward(
@@ -232,62 +237,57 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
         unique_rewards = set((f"{r:.6f}" for r in rewards))
         self.assertGreater(len(unique_rewards), 1)
 
-    def test_idle_penalty_fallback_and_proportionality(self):
-        """Idle penalty fallback denominator & proportional scaling (robustness)."""
-        params = self.base_params(max_idle_duration_candles=None, max_trade_duration_candles=100)
-        base_factor = 90.0
-        profit_target = self.TEST_PROFIT_TARGET
-        risk_reward_ratio = 1.0
-        ctx_a = self.make_ctx(
-            pnl=0.0,
-            trade_duration=0,
-            idle_duration=20,
-            position=Positions.Neutral,
-            action=Actions.Neutral,
-        )
-        ctx_b = dataclasses.replace(ctx_a, idle_duration=40)
-        br_a = calculate_reward(
-            ctx_a,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=risk_reward_ratio,
-            short_allowed=True,
-            action_masking=True,
-        )
-        br_b = calculate_reward(
-            ctx_b,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=risk_reward_ratio,
-            short_allowed=True,
-            action_masking=True,
-        )
-        self.assertLess(br_a.idle_penalty, 0.0)
-        self.assertLess(br_b.idle_penalty, 0.0)
-        ratio = br_b.idle_penalty / br_a.idle_penalty if br_a.idle_penalty != 0 else None
-        self.assertIsNotNone(ratio)
-        self.assertAlmostEqualFloat(abs(ratio), 2.0, tolerance=0.2)
-        ctx_mid = dataclasses.replace(ctx_a, idle_duration=120)
-        br_mid = calculate_reward(
-            ctx_mid,
-            params,
-            base_factor=base_factor,
-            profit_target=profit_target,
-            risk_reward_ratio=risk_reward_ratio,
-            short_allowed=True,
-            action_masking=True,
-        )
-        self.assertLess(br_mid.idle_penalty, 0.0)
-        idle_penalty_scale = _get_float_param(params, "idle_penalty_scale", 0.5)
-        idle_penalty_power = _get_float_param(params, "idle_penalty_power", 1.025)
-        factor = _get_float_param(params, "base_factor", float(base_factor))
-        idle_factor = factor * (profit_target * risk_reward_ratio) / 4.0
-        observed_ratio = abs(br_mid.idle_penalty) / (idle_factor * idle_penalty_scale)
-        if observed_ratio > 0:
-            implied_D = 120 / observed_ratio ** (1 / idle_penalty_power)
-            self.assertAlmostEqualFloat(implied_D, 400.0, tolerance=20.0)
+        # Part 2: Monotonic attenuation validation
+        modes = list(ATTENUATION_MODES) + ["plateau_linear"]
+        base_factor = self.TEST_BASE_FACTOR
+        pnl = 0.05
+        pnl_factor = 1.0
+        for mode in modes:
+            with self.subTest(mode=mode):
+                if mode == "plateau_linear":
+                    mode_params = self.base_params(
+                        exit_attenuation_mode="linear",
+                        exit_plateau=True,
+                        exit_plateau_grace=0.2,
+                        exit_linear_slope=1.0,
+                    )
+                elif mode == "linear":
+                    mode_params = self.base_params(
+                        exit_attenuation_mode="linear", exit_linear_slope=1.2
+                    )
+                elif mode == "power":
+                    mode_params = self.base_params(
+                        exit_attenuation_mode="power", exit_power_tau=0.5
+                    )
+                elif mode == "half_life":
+                    mode_params = self.base_params(
+                        exit_attenuation_mode="half_life", exit_half_life=0.7
+                    )
+                else:
+                    mode_params = self.base_params(exit_attenuation_mode="sqrt")
+
+                ratios = np.linspace(0, 2, 15)
+                values = [
+                    _get_exit_factor(base_factor, pnl, pnl_factor, r, mode_params) for r in ratios
+                ]
+
+                if mode == "plateau_linear":
+                    grace = float(mode_params["exit_plateau_grace"])
+                    filtered = [
+                        (r, v)
+                        for r, v in zip(ratios, values)
+                        if r >= grace - self.TOL_IDENTITY_RELAXED
+                    ]
+                    values_to_check = [v for _, v in filtered]
+                else:
+                    values_to_check = values
+
+                for earlier, later in zip(values_to_check, values_to_check[1:]):
+                    self.assertLessEqual(
+                        later,
+                        earlier + self.TOL_IDENTITY_RELAXED,
+                        f"Non-monotonic attenuation in mode={mode}",
+                    )
 
     def test_exit_factor_threshold_warning_and_non_capping(self):
         """Warning emission without capping when exit_factor_threshold exceeded."""
@@ -388,7 +388,8 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
                 f"Alpha attenuation mismatch tau={tau} alpha={alpha} obs_ratio={observed_ratio} exp_ratio={expected_ratio}",
             )
 
-    def test_extreme_parameter_values(self):
+    def test_reward_calculation_extreme_parameters_stability(self):
+        """Test reward calculation extreme parameters stability."""
         extreme_params = self.base_params(win_reward_factor=1000.0, base_factor=10000.0)
         context = RewardContext(
             pnl=0.05,
@@ -411,6 +412,7 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
         self.assertFinite(br.total, name="breakdown.total")
 
     def test_exit_attenuation_modes_enumeration(self):
+        """Test exit attenuation modes enumeration."""
         modes = ATTENUATION_MODES_WITH_LEGACY
         for mode in modes:
             with self.subTest(mode=mode):
@@ -435,49 +437,6 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
                 )
                 self.assertFinite(br.exit_component, name="breakdown.exit_component")
                 self.assertFinite(br.total, name="breakdown.total")
-
-    def test_exit_factor_monotonic_attenuation(self):
-        """For attenuation modes: factor should be non-increasing w.r.t duration_ratio.
-
-        Modes covered: sqrt, linear, power, half_life, plateau+linear (after grace).
-        Legacy is excluded (non-monotonic by design). Plateau+linear includes flat grace then monotonic.
-        """
-        modes = list(ATTENUATION_MODES) + ["plateau_linear"]
-        base_factor = self.TEST_BASE_FACTOR
-        pnl = 0.05
-        pnl_factor = 1.0
-        for mode in modes:
-            if mode == "plateau_linear":
-                params = self.base_params(
-                    exit_attenuation_mode="linear",
-                    exit_plateau=True,
-                    exit_plateau_grace=0.2,
-                    exit_linear_slope=1.0,
-                )
-            elif mode == "linear":
-                params = self.base_params(exit_attenuation_mode="linear", exit_linear_slope=1.2)
-            elif mode == "power":
-                params = self.base_params(exit_attenuation_mode="power", exit_power_tau=0.5)
-            elif mode == "half_life":
-                params = self.base_params(exit_attenuation_mode="half_life", exit_half_life=0.7)
-            else:
-                params = self.base_params(exit_attenuation_mode="sqrt")
-            ratios = np.linspace(0, 2, 15)
-            values = [_get_exit_factor(base_factor, pnl, pnl_factor, r, params) for r in ratios]
-            if mode == "plateau_linear":
-                grace = float(params["exit_plateau_grace"])
-                filtered = [
-                    (r, v) for r, v in zip(ratios, values) if r >= grace - self.TOL_IDENTITY_RELAXED
-                ]
-                values_to_check = [v for _, v in filtered]
-            else:
-                values_to_check = values
-            for earlier, later in zip(values_to_check, values_to_check[1:]):
-                self.assertLessEqual(
-                    later,
-                    earlier + self.TOL_IDENTITY_RELAXED,
-                    f"Non-monotonic attenuation in mode={mode}",
-                )
 
     def test_exit_factor_boundary_parameters(self):
         """Test parameter edge cases: tau extremes, plateau grace edges, slope zero."""
@@ -572,6 +531,7 @@ class TestRewardRobustnessAndBoundaries(RewardSpaceTestBase):
         self.assertLess(vals[-1], ref, "Attenuation should begin after grace boundary")
 
     def test_plateau_continuity_at_grace_boundary(self):
+        """Test plateau continuity at grace boundary."""
         modes = ["sqrt", "linear", "power", "half_life"]
         grace = 0.8
         eps = self.CONTINUITY_EPS_SMALL

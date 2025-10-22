@@ -7,7 +7,6 @@ from .test_reward_components import TestRewardComponents
 from .test_robustness import TestRewardRobustnessAndBoundaries
 from .test_statistics import TestStatistics
 from .test_utilities import (
-    TestBootstrapStatistics,
     TestCsvAndSimulationOptions,
     TestLoadRealEpisodes,
     TestParamsPropagation,
@@ -23,7 +22,6 @@ __all__ = [
     "TestPrivateFunctions",
     "TestRewardRobustnessAndBoundaries",
     "TestLoadRealEpisodes",
-    "TestBootstrapStatistics",
     "TestReportFormatting",
     "TestCsvAndSimulationOptions",
     "TestParamsPropagation",

@@ -8,6 +8,7 @@ import numpy as np
 
 from reward_space_analysis import (
     DEFAULT_MODEL_REWARD_PARAMETERS,
+    PBRS_INVARIANCE_TOL,
     _compute_entry_additive,
     _compute_exit_additive,
     _compute_exit_potential,
@@ -15,6 +16,7 @@ from reward_space_analysis import (
     _get_float_param,
     apply_potential_shaping,
     apply_transform,
+    simulate_samples,
     validate_reward_parameters,
 )
 
@@ -109,6 +111,65 @@ class TestPBRS(RewardSpaceTestBase):
         self.assertTrue(abs(apply_transform("softsign", 100.0)) < 1.0)
         self.assertTrue(abs(apply_transform("softsign", -100.0)) < 1.0)
 
+    def test_canonical_invariance_flag_and_sum(self):
+        """Canonical mode + no additives -> pbrs_invariant True and Σ shaping ≈ 0."""
+        params = self.base_params(
+            exit_potential_mode="canonical",
+            entry_additive_enabled=False,
+            exit_additive_enabled=False,
+            hold_potential_enabled=True,
+        )
+        df = simulate_samples(
+            params={**params, "max_trade_duration_candles": 100},
+            num_samples=400,
+            seed=self.SEED,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
+            max_duration_ratio=2.0,
+            trading_mode="margin",
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
+        )
+        unique_flags = set(df["pbrs_invariant"].unique().tolist())
+        self.assertEqual(unique_flags, {True}, f"Unexpected invariant flags: {unique_flags}")
+        total_shaping = float(df["reward_shaping"].sum())
+        self.assertLess(
+            abs(total_shaping),
+            PBRS_INVARIANCE_TOL,
+            f"Canonical invariance violated: Σ shaping = {total_shaping}",
+        )
+
+    def test_non_canonical_flag_false_and_sum_nonzero(self):
+        """Non-canonical exit potential (progressive_release) -> pbrs_invariant False and Σ shaping != 0."""
+        params = self.base_params(
+            exit_potential_mode="progressive_release",
+            exit_potential_decay=0.25,
+            entry_additive_enabled=False,
+            exit_additive_enabled=False,
+            hold_potential_enabled=True,
+        )
+        df = simulate_samples(
+            params={**params, "max_trade_duration_candles": 100},
+            num_samples=400,
+            seed=self.SEED,
+            base_factor=self.TEST_BASE_FACTOR,
+            profit_target=self.TEST_PROFIT_TARGET,
+            risk_reward_ratio=self.TEST_RR,
+            max_duration_ratio=2.0,
+            trading_mode="margin",
+            pnl_base_std=self.TEST_PNL_STD,
+            pnl_duration_vol_scale=self.TEST_PNL_DUR_VOL_SCALE,
+        )
+        unique_flags = set(df["pbrs_invariant"].unique().tolist())
+        self.assertEqual(unique_flags, {False}, f"Unexpected invariant flags: {unique_flags}")
+        total_shaping = float(df["reward_shaping"].sum())
+        self.assertGreater(
+            abs(total_shaping),
+            PBRS_INVARIANCE_TOL * 10,
+            f"Expected non-zero Σ shaping in non-canonical mode (got {total_shaping})",
+        )
+
     def test_asinh_transform(self):
         """asinh transform: x / sqrt(1 + x^2) in (-1, 1)."""
         self.assertAlmostEqualFloat(apply_transform("asinh", 0.0), 0.0)
@@ -154,31 +215,20 @@ class TestPBRS(RewardSpaceTestBase):
             tolerance=self.TOL_IDENTITY_RELAXED,
         )
 
-    def test_hold_potential_basic(self):
-        """Test basic hold potential calculation."""
-        params = {
-            "hold_potential_enabled": True,
-            "hold_potential_scale": 1.0,
-            "hold_potential_gain": 1.0,
-            "hold_potential_transform_pnl": "tanh",
-            "hold_potential_transform_duration": "tanh",
-        }
-        val = _compute_hold_potential(0.5, 0.3, params)
-        self.assertFinite(val, name="hold_potential")
+    def test_additive_components_disabled_return_zero(self):
+        """Test entry and exit additives return zero when disabled."""
+        # Test entry additive disabled
+        params_entry = {"entry_additive_enabled": False}
+        val_entry = _compute_entry_additive(0.5, 0.3, params_entry)
+        self.assertEqual(val_entry, 0.0)
 
-    def test_entry_additive_disabled(self):
-        """Test entry additive when disabled."""
-        params = {"entry_additive_enabled": False}
-        val = _compute_entry_additive(0.5, 0.3, params)
-        self.assertEqual(val, 0.0)
-
-    def test_exit_additive_disabled(self):
-        """Test exit additive when disabled."""
-        params = {"exit_additive_enabled": False}
-        val = _compute_exit_additive(0.5, 0.3, params)
-        self.assertEqual(val, 0.0)
+        # Test exit additive disabled
+        params_exit = {"exit_additive_enabled": False}
+        val_exit = _compute_exit_additive(0.5, 0.3, params_exit)
+        self.assertEqual(val_exit, 0.0)
 
     def test_exit_potential_canonical(self):
+        """Test exit potential canonical."""
         params = self.base_params(
             exit_potential_mode="canonical",
             hold_potential_enabled=True,
@@ -446,6 +496,154 @@ class TestPBRS(RewardSpaceTestBase):
         s_scaled, k_scaled = _skew_kurt(scaled)
         self.assertAlmostEqualFloat(s_base, s_scaled, tolerance=self.TOL_DISTRIB_SHAPE)
         self.assertAlmostEqualFloat(k_base, k_scaled, tolerance=self.TOL_DISTRIB_SHAPE)
+
+    def test_pbrs_non_canonical_report_generation(self):
+        """Generate synthetic invariance section with non-zero shaping to assert Non-canonical classification."""
+        import re
+
+        import pandas as pd
+
+        from reward_space_analysis import PBRS_INVARIANCE_TOL
+
+        df = pd.DataFrame(
+            {
+                "reward_shaping": [0.01, -0.002],
+                "reward_entry_additive": [0.0, 0.0],
+                "reward_exit_additive": [0.001, 0.0],
+            }
+        )
+        total_shaping = df["reward_shaping"].sum()
+        self.assertGreater(abs(total_shaping), PBRS_INVARIANCE_TOL)
+        invariance_status = "❌ Non-canonical"
+        section = []
+        section.append("**PBRS Invariance Summary:**\n")
+        section.append("| Field | Value |\n")
+        section.append("|-------|-------|\n")
+        section.append(f"| Invariance | {invariance_status} |\n")
+        section.append(f"| Note | Total shaping = {total_shaping:.6f} (non-zero) |\n")
+        section.append(f"| Σ Shaping Reward | {total_shaping:.6f} |\n")
+        section.append(f"| Abs Σ Shaping Reward | {abs(total_shaping):.6e} |\n")
+        section.append(f"| Σ Entry Additive | {df['reward_entry_additive'].sum():.6f} |\n")
+        section.append(f"| Σ Exit Additive | {df['reward_exit_additive'].sum():.6f} |\n")
+        content = "".join(section)
+        self.assertIn("❌ Non-canonical", content)
+        self.assertRegex(content, "Σ Shaping Reward \\| 0\\.008000 \\|")
+        m_abs = re.search("Abs Σ Shaping Reward \\| ([0-9.]+e[+-][0-9]{2}) \\|", content)
+        self.assertIsNotNone(m_abs)
+        if m_abs:
+            val = float(m_abs.group(1))
+            self.assertAlmostEqual(abs(total_shaping), val, places=12)
+
+    def test_potential_gamma_boundary_values_stability(self):
+        """Test potential gamma boundary values (0 and ≈1) produce bounded shaping."""
+        for gamma in [0.0, 0.999999]:
+            params = self.base_params(
+                hold_potential_enabled=True,
+                entry_additive_enabled=False,
+                exit_additive_enabled=False,
+                exit_potential_mode="canonical",
+                potential_gamma=gamma,
+            )
+            _tot, shap, next_pot = apply_potential_shaping(
+                base_reward=0.0,
+                current_pnl=0.02,
+                current_duration_ratio=0.3,
+                next_pnl=0.025,
+                next_duration_ratio=0.35,
+                is_exit=False,
+                last_potential=0.0,
+                params=params,
+            )
+            self.assertTrue(np.isfinite(shap))
+            self.assertTrue(np.isfinite(next_pot))
+            self.assertLessEqual(abs(shap), self.PBRS_MAX_ABS_SHAPING)
+
+    def test_report_cumulative_invariance_aggregation(self):
+        """Canonical telescoping term: small per-step mean drift, bounded increments."""
+        params = self.base_params(
+            hold_potential_enabled=True,
+            entry_additive_enabled=False,
+            exit_additive_enabled=False,
+            exit_potential_mode="canonical",
+        )
+        gamma = _get_float_param(
+            params, "potential_gamma", DEFAULT_MODEL_REWARD_PARAMETERS.get("potential_gamma", 0.95)
+        )
+        rng = np.random.default_rng(321)
+        last_potential = 0.0
+        telescoping_sum = 0.0
+        max_abs_step = 0.0
+        steps = 0
+        for _ in range(500):
+            is_exit = rng.uniform() < 0.1
+            current_pnl = float(rng.normal(0, 0.05))
+            current_dur = float(rng.uniform(0, 1))
+            next_pnl = 0.0 if is_exit else float(rng.normal(0, 0.05))
+            next_dur = 0.0 if is_exit else float(rng.uniform(0, 1))
+            _tot, _shap, next_potential = apply_potential_shaping(
+                base_reward=0.0,
+                current_pnl=current_pnl,
+                current_duration_ratio=current_dur,
+                next_pnl=next_pnl,
+                next_duration_ratio=next_dur,
+                is_exit=is_exit,
+                last_potential=last_potential,
+                params=params,
+            )
+            inc = gamma * next_potential - last_potential
+            telescoping_sum += inc
+            if abs(inc) > max_abs_step:
+                max_abs_step = abs(inc)
+            steps += 1
+            if is_exit:
+                last_potential = 0.0
+            else:
+                last_potential = next_potential
+        mean_drift = telescoping_sum / max(1, steps)
+        self.assertLess(
+            abs(mean_drift),
+            0.02,
+            f"Per-step telescoping drift too large (mean={mean_drift}, steps={steps})",
+        )
+        self.assertLessEqual(
+            max_abs_step,
+            self.PBRS_MAX_ABS_SHAPING,
+            f"Unexpected large telescoping increment (max={max_abs_step})",
+        )
+
+    def test_report_explicit_non_invariance_progressive_release(self):
+        """progressive_release should generally yield non-zero cumulative shaping (release leak)."""
+        params = self.base_params(
+            hold_potential_enabled=True,
+            entry_additive_enabled=False,
+            exit_additive_enabled=False,
+            exit_potential_mode="progressive_release",
+            exit_potential_decay=0.25,
+        )
+        rng = np.random.default_rng(321)
+        last_potential = 0.0
+        shaping_sum = 0.0
+        for _ in range(160):
+            is_exit = rng.uniform() < 0.15
+            next_pnl = 0.0 if is_exit else float(rng.normal(0, 0.07))
+            next_dur = 0.0 if is_exit else float(rng.uniform(0, 1))
+            _tot, shap, next_pot = apply_potential_shaping(
+                base_reward=0.0,
+                current_pnl=float(rng.normal(0, 0.07)),
+                current_duration_ratio=float(rng.uniform(0, 1)),
+                next_pnl=next_pnl,
+                next_duration_ratio=next_dur,
+                is_exit=is_exit,
+                last_potential=last_potential,
+                params=params,
+            )
+            shaping_sum += shap
+            last_potential = 0.0 if is_exit else next_pot
+        self.assertGreater(
+            abs(shaping_sum),
+            PBRS_INVARIANCE_TOL * 50,
+            f"Expected non-zero Σ shaping (got {shaping_sum})",
+        )
 
 
 if __name__ == "__main__":

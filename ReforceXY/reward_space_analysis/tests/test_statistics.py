@@ -124,8 +124,8 @@ class TestStatistics(RewardSpaceTestBase):
                 if key in diagnostics:
                     self.assertFinite(diagnostics[key], name=key)
 
-    def test_statistical_functions(self):
-        """Smoke test statistical_hypothesis_tests on synthetic data (API integration)."""
+    def test_statistical_hypothesis_tests_api_integration(self):
+        """Test statistical_hypothesis_tests API integration with synthetic data."""
         base = self.make_stats_df(n=200, seed=self.SEED, idle_pattern="mixed")
         base.loc[:149, ["reward_idle", "reward_hold", "reward_exit"]] = 0.0
         results = statistical_hypothesis_tests(base)
@@ -388,6 +388,41 @@ class TestStatistics(RewardSpaceTestBase):
                 eff = res["effect_size_epsilon_sq"]
                 self.assertFinite(eff)
                 self.assertGreaterEqual(eff, 0)
+
+    def test_bootstrap_confidence_intervals_bounds_ordering(self):
+        """Test bootstrap confidence intervals return ordered finite bounds."""
+        test_data = self.make_stats_df(n=100, seed=self.SEED)
+        results = bootstrap_confidence_intervals(test_data, ["reward", "pnl"], n_bootstrap=100)
+        for metric, (mean, ci_low, ci_high) in results.items():
+            self.assertFinite(mean, name=f"mean[{metric}]")
+            self.assertFinite(ci_low, name=f"ci_low[{metric}]")
+            self.assertFinite(ci_high, name=f"ci_high[{metric}]")
+            self.assertLess(ci_low, ci_high)
+
+    def test_stats_bootstrap_shrinkage_with_sample_size(self):
+        """Bootstrap CI half-width decreases with larger sample (~1/sqrt(n) heuristic)."""
+        small = self._shift_scale_df(80)
+        large = self._shift_scale_df(800)
+        res_small = bootstrap_confidence_intervals(small, ["reward"], n_bootstrap=400)
+        res_large = bootstrap_confidence_intervals(large, ["reward"], n_bootstrap=400)
+        _, lo_s, hi_s = list(res_small.values())[0]
+        _, lo_l, hi_l = list(res_large.values())[0]
+        hw_small = (hi_s - lo_s) / 2.0
+        hw_large = (hi_l - lo_l) / 2.0
+        self.assertFinite(hw_small, name="hw_small")
+        self.assertFinite(hw_large, name="hw_large")
+        self.assertLess(hw_large, hw_small * 0.55)
+
+    def test_stats_bootstrap_constant_distribution_and_diagnostics(self):
+        """Bootstrap on degenerate columns produce (mean≈lo≈hi) zero-width intervals."""
+        df = self._const_df(80)
+        res = bootstrap_confidence_intervals(
+            df, ["reward", "pnl"], n_bootstrap=200, confidence_level=0.95
+        )
+        for _metric, (mean, lo, hi) in res.items():
+            self.assertAlmostEqualFloat(mean, lo, tolerance=2e-09)
+            self.assertAlmostEqualFloat(mean, hi, tolerance=2e-09)
+            self.assertLessEqual(hi - lo, 2e-09)
             if "effect_size_rank_biserial" in res:
                 rb = res["effect_size_rank_biserial"]
                 self.assertFinite(rb)
