@@ -15,7 +15,7 @@ Key features
 
 Usage
 -----
-python test_cli.py --num_samples 50 --out_dir ../sample_run_output \
+python test_reward_space_analysis_cli.py --num_samples 50 --out_dir ../sample_run_output \
     --shuffle_seed 123 --strict_sample 3 --bootstrap_resamples 200
 
 JSON Summary fields
@@ -56,7 +56,7 @@ except ImportError:
 
 ConfigTuple = Tuple[str, str, float, int, int, int]
 
-SUMMARY_FILENAME = "reward_space_cli_results.json"
+SUMMARY_FILENAME = "reward_space_cli.json"
 
 
 class ScenarioResult(TypedDict):
