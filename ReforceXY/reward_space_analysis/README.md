@@ -57,18 +57,21 @@ Deterministic synthetic sampling with diagnostics for reward shaping, penalties,
 
 ## Prerequisites
 
-Requirements: Python 3.8+, ≥4GB RAM (CPU only). Recommended venv:
+Requirements: 
+- [Python 3.9+](https://www.python.org/downloads/)
+- ≥4GB RAM
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) project manager
+
+Setup with uv:
 
 ```shell
 cd ReforceXY/reward_space_analysis
-python -m venv .venv
-source .venv/bin/activate
-pip install pandas numpy scipy scikit-learn pytest
+uv sync --all-groups
 ```
 
 Run:
 ```shell
-python reward_space_analysis.py --num_samples 20000 --out_dir out
+uv run python reward_space_analysis.py --num_samples 20000 --out_dir out
 ```
 
 ## Common Use Cases
@@ -76,7 +79,7 @@ python reward_space_analysis.py --num_samples 20000 --out_dir out
 ### 1. Validate Reward Logic
 
 ```shell
-python reward_space_analysis.py --num_samples 20000 --out_dir reward_space_outputs
+uv run python reward_space_analysis.py --num_samples 20000 --out_dir reward_space_outputs
 ```
 
 See `statistical_analysis.md` (1–3): positive exit averages (long & short), negative invalid penalties, monotonic idle reduction, zero invariance failures.
@@ -85,18 +88,18 @@ See `statistical_analysis.md` (1–3): positive exit averages (long & short), ne
 
 ```shell
 # Test different win reward factors
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 30000 \
     --params win_reward_factor=2.0 \
     --out_dir conservative_rewards
 
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 30000 \
     --params win_reward_factor=4.0 \
     --out_dir aggressive_rewards
 
 # Test PBRS potential shaping
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 30000 \
     --params hold_potential_enabled=true potential_gamma=0.9 exit_potential_mode=progressive_release \
     --out_dir pbrs_analysis
@@ -108,7 +111,7 @@ Compare reward distribution & component share deltas across runs.
 
 ```shell
 # Generate detailed analysis
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 50000 \
     --out_dir debug_analysis
 ```
@@ -120,7 +123,7 @@ Focus: feature importance, shaping activation, invariance drift, extremes.
 ```shell
 # First, collect real episodes (see Advanced Usage section)
 # Then compare:
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 100000 \
     --real_episodes path/to/episode_rewards.pkl \
     --out_dir real_vs_synthetic
@@ -139,8 +142,6 @@ None (all have defaults).
 **`--num_samples`** (int, default: 20000) – Synthetic scenarios. More = better stats (slower). Recommended: 10k (quick), 50k (standard), 100k+ (deep).
 
 **`--seed`** (int, default: 42) – Master seed (reuse for identical runs).
-
-**`--max_trade_duration`** (int, default: 128) – Max trade duration (candles). Idle grace fallback: `max_idle_duration_candles = 4 * max_trade_duration`.
 
 ### Reward Configuration
 
@@ -183,7 +184,8 @@ Core frequently tuned parameters:
 | `win_reward_factor` | 2.0 | Profit overshoot multiplier |
 | `pnl_factor_beta` | 0.5 | PnL amplification beta |
 | `idle_penalty_scale` | 0.5 | Idle penalty scale |
-| `idle_penalty_power` | 1.025 | Idle penalty exponent (>1 slightly convex) |
+| `idle_penalty_power` | 1.025 | Idle penalty exponent |
+| `max_trade_duration_candles` | 128 | Trade duration cap |
 | `max_idle_duration_candles` | None | Idle duration cap; fallback 4× max trade duration |
 | `hold_penalty_scale` | 0.25 | Hold penalty scale |
 | `hold_penalty_power` | 1.025 | Hold penalty exponent |
@@ -262,11 +264,11 @@ Auto-skip if `num_samples < 4`.
 Patterns:
 ```shell
 # Same synthetic data, two different statistical re-analysis runs
-python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9001 --out_dir run_stats1
-python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9002 --out_dir run_stats2
+uv run python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9001 --out_dir run_stats1
+uv run python reward_space_analysis.py --num_samples 50000 --seed 123 --stats_seed 9002 --out_dir run_stats2
 
 # Fully reproducible end-to-end (all aspects deterministic)
-python reward_space_analysis.py --num_samples 50000 --seed 777
+uv run python reward_space_analysis.py --num_samples 50000 --seed 777
 ```
 
 ### Overrides vs `--params`
@@ -275,10 +277,10 @@ Reward parameters also have individual flags:
 
 ```shell
 # Direct flag style
-python reward_space_analysis.py --win_reward_factor 3.0 --idle_penalty_scale 2.0 --num_samples 15000
+uv run python reward_space_analysis.py --win_reward_factor 3.0 --idle_penalty_scale 2.0 --num_samples 15000
 
 # Equivalent using --params
-python reward_space_analysis.py --params win_reward_factor=3.0 idle_penalty_scale=2.0 --num_samples 15000
+uv run python reward_space_analysis.py --params win_reward_factor=3.0 idle_penalty_scale=2.0 --num_samples 15000
 ```
 
 `--params` wins on conflicts.
@@ -287,29 +289,29 @@ python reward_space_analysis.py --params win_reward_factor=3.0 idle_penalty_scal
 
 ```shell
 # Quick test with defaults
-python reward_space_analysis.py --num_samples 10000
+uv run python reward_space_analysis.py --num_samples 10000
 
 # Full analysis with custom profit target
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 50000 \
     --profit_target 0.05 \
     --trading_mode futures \
     --out_dir custom_analysis
 
 # Parameter sensitivity testing
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 30000 \
     --params win_reward_factor=3.0 idle_penalty_scale=1.5 \
     --out_dir sensitivity_test
 
 # PBRS potential shaping analysis
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 40000 \
     --params hold_potential_enabled=true exit_potential_mode=spike_cancel potential_gamma=0.95 \
     --out_dir pbrs_test
 
 # Real vs synthetic comparison
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 100000 \
     --real_episodes path/to/episode_rewards.pkl \
     --out_dir validation
@@ -339,13 +341,12 @@ Includes: global stats, representativity, component + PBRS analysis, feature imp
 | `generated_at` | string (ISO 8601) | Timestamp of generation (not part of hash). |
 | `num_samples` | int | Number of synthetic samples generated. |
 | `seed` | int | Master random seed driving simulation determinism. |
-| `max_trade_duration` | int | Max trade duration used to scale durations. |
 | `profit_target_effective` | float | Profit target after risk/reward scaling. |
 | `pvalue_adjust_method` | string | Multiple testing correction mode (`none` or `benjamini_hochberg`). |
 | `parameter_adjustments` | object | Map of any automatic bound clamps (empty if none). |
 | `reward_params` | object | Full resolved reward parameter set (post-validation). |
 | `simulation_params` | object | All simulation inputs (num_samples, seed, volatility knobs, etc.). |
-| `params_hash` | string (sha256) | Hash over ALL `simulation_params` + ALL `reward_params` (lexicographically ordered). |
+| `params_hash` | string (sha256) | Hash over ALL `simulation_params` (excluding `out_dir`, `real_episodes`) + ALL `reward_params` (lexicographically ordered). |
 
 Two runs match iff `params_hash` identical (defaults included in hash scope).
 
@@ -371,30 +372,30 @@ Test reward parameter configurations:
 
 ```shell
 # Test power-based exit attenuation with custom tau
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 25000 \
     --params exit_attenuation_mode=power exit_power_tau=0.5 efficiency_weight=0.8 \
     --out_dir custom_test
 
 # Test aggressive hold penalties
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 25000 \
     --params hold_penalty_scale=0.5 \
     --out_dir aggressive_hold
 
 # Canonical PBRS (strict invariance, additives disabled)
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 25000 \
     --params hold_potential_enabled=true entry_additive_enabled=true exit_additive_enabled=false exit_potential_mode=canonical \
     --out_dir pbrs_canonical
 
 # Non-canonical PBRS (allows additives with Φ(terminal)=0, breaks invariance)
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 25000 \
     --params hold_potential_enabled=true entry_additive_enabled=true exit_additive_enabled=true exit_potential_mode=non_canonical \
     --out_dir pbrs_non_canonical
 
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 25000 \
     --params hold_potential_transform_pnl=sigmoid hold_potential_gain=2.0 \
     --out_dir pbrs_sigmoid_transforms
@@ -405,7 +406,7 @@ python reward_space_analysis.py \
 Compare with real trading episodes:
 
 ```shell
-python reward_space_analysis.py \
+uv run python reward_space_analysis.py \
     --num_samples 100000 \
     --real_episodes path/to/episode_rewards.pkl \
     --out_dir real_vs_synthetic
@@ -418,7 +419,7 @@ Shift metrics: lower is better (except p-value: higher ⇒ cannot reject equalit
 ```shell
 # Test multiple parameter combinations
 for factor in 1.5 2.0 2.5 3.0; do
-    python reward_space_analysis.py \
+    uv run python reward_space_analysis.py \
         --num_samples 20000 \
         --params win_reward_factor=$factor \
     --out_dir analysis_factor_$factor
@@ -432,18 +433,14 @@ done
 ### Run Tests
 
 ```shell
-# activate the venv first
-source .venv/bin/activate
-pip install pytest packaging
-pytest -q
+uv run pytest -q
 ```
 
 ### Coverage
 
 ```shell
-pip install pytest-cov
-pytest -q --cov=. --cov-report=term-missing
-pytest -q --cov=. --cov-report=html # open htmlcov/index.html
+uv run pytest -q --cov=. --cov-report=term-missing
+uv run pytest -q --cov=. --cov-report=html # open htmlcov/index.html
 ```
 
 ### When to Run Tests
@@ -457,10 +454,9 @@ pytest -q --cov=. --cov-report=html # open htmlcov/index.html
 ### Focused Test Sets
 
 ```shell
-pytest -q test_reward_space_analysis.py::TestIntegration
-pytest -q test_reward_space_analysis.py::TestStatisticalCoherence
-pytest -q test_reward_space_analysis.py::TestRewardAlignment
-
+uv run pytest -q test_reward_space_analysis.py::TestIntegration
+uv run pytest -q test_reward_space_analysis.py::TestStatisticalCoherence
+uv run pytest -q test_reward_space_analysis.py::TestRewardAlignment
 ```
 
 ---
@@ -482,4 +478,3 @@ Lower samples; skip PD/feature analysis; reduce resamples; ensure SSD.
 ### Memory Errors
 
 Reduce samples; ensure 64‑bit Python; batch processing; add RAM/swap.
-

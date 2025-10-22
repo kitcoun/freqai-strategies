@@ -74,13 +74,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 max(int(self.max_system_threads / 4), 1),
             ),
             "storage": "file",
-            "continuous": True,
-            "warm_start": True,
+            "continuous": False,
+            "warm_start": False,
             "n_startup_trials": 15,
             "n_trials": 50,
             "timeout": 7200,
             "label_candles_step": 1,
             "train_candles_step": 10,
+            "space_reduction": False,
             "expansion_ratio": 0.4,
             "seed": 1,
         }
@@ -89,22 +90,66 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             **self.config.get("freqai", {}).get("optuna_hyperopt", {}),
         }
 
+    def _get_label_frequency_candles(self) -> int:
+        """
+        Calculate label_frequency_candles.
+
+        Default behavior is 'auto' which equals max(2, 2 * number_of_pairs).
+        User can override with:
+        - "auto" string value
+        - Integer value between 2 and 10000
+
+        Returns:
+            int: The calculated label_frequency_candles value
+
+        Raises:
+            ValueError: If no trading pairs are configured
+        """
+        n_pairs = len(self.pairs)
+        default_label_frequency_candles = max(2, 2 * n_pairs)
+
+        label_frequency_candles = self.config.get("feature_parameters", {}).get(
+            "label_frequency_candles"
+        )
+
+        if label_frequency_candles is None:
+            label_frequency_candles = default_label_frequency_candles
+            logger.info(f"{label_frequency_candles=} (default)")
+        elif isinstance(label_frequency_candles, str):
+            if label_frequency_candles == "auto":
+                label_frequency_candles = default_label_frequency_candles
+                logger.info(f"{label_frequency_candles=} (auto)")
+            else:
+                logger.warning(
+                    f"Invalid string value for label_frequency_candles: '{label_frequency_candles}'. "
+                    f"Only 'auto' is supported. Using fallback"
+                )
+                label_frequency_candles = default_label_frequency_candles
+                logger.info(f"{label_frequency_candles=} (fallback)")
+        elif isinstance(label_frequency_candles, (int, float)):
+            if label_frequency_candles >= 2 and label_frequency_candles <= 10000:
+                label_frequency_candles = int(label_frequency_candles)
+                logger.info(f"{label_frequency_candles=} (configuration)")
+            else:
+                logger.warning(
+                    f"Invalid numeric value for label_frequency_candles: {label_frequency_candles}. "
+                    f"Must be between 2 and 10000. Using fallback"
+                )
+                label_frequency_candles = default_label_frequency_candles
+                logger.info(f"{label_frequency_candles=} (fallback)")
+        else:
+            logger.warning(
+                f"Invalid type for label_frequency_candles: {type(label_frequency_candles).__name__}. "
+                f"Expected int, float, or 'auto'. Using fallback"
+            )
+            label_frequency_candles = default_label_frequency_candles
+            logger.info(f"{label_frequency_candles=} (fallback)")
+
+        return label_frequency_candles
+
     @property
     def _optuna_label_candle_pool_full(self) -> list[int]:
-        if not hasattr(self, "pairs") or not self.pairs:
-            raise RuntimeError(
-                "Failed to initialize optuna label candle pool full: pairs property is not defined or empty"
-            )
-        n_pairs = len(self.pairs)
-        label_frequency_candles = max(
-            2,
-            2 * n_pairs,
-            int(
-                self.config.get("feature_parameters", {}).get(
-                    "label_frequency_candles", 12
-                )
-            ),
-        )
+        label_frequency_candles = self._get_label_frequency_candles()
         cache_key = label_frequency_candles
         if cache_key not in self._optuna_label_candle_pool_full_cache:
             half_label_frequency_candles = int(label_frequency_candles / 2)
@@ -317,6 +362,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                     test_weights,
                     self.get_optuna_params(dk.pair, "hp"),
                     model_training_parameters,
+                    self._optuna_config.get("space_reduction"),
                     self._optuna_config.get("expansion_ratio"),
                 ),
                 direction=optuna.study.StudyDirection.MINIMIZE,
@@ -960,14 +1006,14 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
                 # "hamming",
                 # "jaccard",
                 "jensenshannon",
-                # "kulczynski1",  # deprecated since version 1.15.0
+                # "kulczynski1",  # Deprecated in SciPy ≥ 1.15.0; do not use.
                 "mahalanobis",
                 # "matching",
                 "minkowski",
                 # "rogerstanimoto",
                 # "russellrao",
                 "seuclidean",
-                # "sokalmichener",  # deprecated since version 1.15.0
+                # "sokalmichener",  # Deprecated in SciPy ≥ 1.15.0; do not use.
                 # "sokalsneath",
                 "sqeuclidean",
                 # "yule",
@@ -1735,10 +1781,15 @@ def hp_objective(
     test_weights: NDArray[np.floating],
     model_training_best_parameters: dict[str, Any],
     model_training_parameters: dict[str, Any],
+    space_reduction: bool,
     expansion_ratio: float,
 ) -> float:
     study_model_parameters = get_optuna_study_model_parameters(
-        trial, regressor, model_training_best_parameters, expansion_ratio
+        trial,
+        regressor,
+        model_training_best_parameters,
+        space_reduction,
+        expansion_ratio,
     )
     model_training_parameters = {**model_training_parameters, **study_model_parameters}
 

@@ -1,9 +1,32 @@
-[tool.pytest.ini_options]
-# Pytest configuration following GitHub Copilot instructions:
-# - Single source of truth for test configuration
-# - Reproducible test execution
-# - Clear error reporting
+[project]
+name = "reward_space_analysis"
+version = "0.1.0"
+description = "Reward space analysis for ReforceXY trading strategy"
+authors = [
+    {name = "Jerome Benoit", email = "jerome.benoit@sap.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "pytest",
+]
 
+[dependency-groups]
+dev = [
+    "pytest>=6.0",
+    "ruff",
+    "coverage",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = [
     "."
@@ -33,13 +56,10 @@ addopts = [
     "--color=yes"
 ]
 
-# Test markers
-markers = [
-    "integration: Integration tests requiring external dependencies",
-    "unit: Fast unit tests",
-    "statistical: Statistical validation tests",
-    "slow: Tests that take more than a few seconds"
-]
+[tool.ruff]
+line-length = 100
+target-version = "py39"
 
-# Minimum Python version
-python_version = "3.8"
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
