@@ -56,7 +56,7 @@ docker compose up -d --build
 | freqai.feature_parameters.label_natr_ratio | 9.0              | float > 0 | Zigzag NATR ratio.                                                              |
 | freqai.feature_parameters.min_label_natr_ratio | 9.0              | float > 0 | Minimum NATR ratio bound used by label HPO.                                     |
 | freqai.feature_parameters.max_label_natr_ratio | 12.0             | float > 0 | Maximum NATR ratio bound used by label HPO.                                     |
-| freqai.feature_parameters.label_frequency_candles | 12               | int >= 2 | Reversals labeling frequency.                                                   |
+| freqai.feature_parameters.label_frequency_candles | `auto`            | int >= 2 \| `auto` | Reversals labeling frequency. `auto` = max(2, 2 * number of whitelisted pairs). |
 | freqai.feature_parameters.label_metric | `euclidean`      | string (supported: `euclidean`,`minkowski`,`cityblock`,`chebyshev`,`mahalanobis`,`seuclidean`,`jensenshannon`,`sqeuclidean`,...) | Metric used in distance calculations to ideal point.                            |
 | freqai.feature_parameters.label_weights | [0.5,0.5]        | list[float] | Per-objective weights used in distance calculations to ideal point.             |
 | freqai.feature_parameters.label_p_order | `None`           | float | p-order used by Minkowski / power-mean calculations (optional).                 |
