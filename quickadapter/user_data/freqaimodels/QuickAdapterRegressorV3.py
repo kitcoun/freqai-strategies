@@ -90,7 +90,8 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
             **self.config.get("freqai", {}).get("optuna_hyperopt", {}),
         }
 
-    def _get_label_frequency_candles(self) -> int:
+    @cached_property
+    def _label_frequency_candles(self) -> int:
         """
         Calculate label_frequency_candles.
 
@@ -149,7 +150,7 @@ class QuickAdapterRegressorV3(BaseRegressionModel):
 
     @property
     def _optuna_label_candle_pool_full(self) -> list[int]:
-        label_frequency_candles = self._get_label_frequency_candles()
+        label_frequency_candles = self._label_frequency_candles
         cache_key = label_frequency_candles
         if cache_key not in self._optuna_label_candle_pool_full_cache:
             half_label_frequency_candles = int(label_frequency_candles / 2)
