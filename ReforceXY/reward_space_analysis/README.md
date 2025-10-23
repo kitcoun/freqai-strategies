@@ -121,7 +121,7 @@ Focus: feature importance, shaping activation, invariance drift, extremes.
 ### 4. Real vs Synthetic
 
 ```shell
-# First, collect real episodes (see Advanced Usage section)
+# First, collect real episodes
 # Then compare:
 uv run python reward_space_analysis.py \
     --num_samples 100000 \
@@ -173,54 +173,75 @@ Controls synthetic PnL variance (heteroscedastic; grows with duration):
 
 **`--params`** (k=v ...) – Override reward params. Example: `--params win_reward_factor=3.0 idle_penalty_scale=2.0`.
 
-All tunables mirror `DEFAULT_MODEL_REWARD_PARAMETERS`. Flags or `--params` (wins on conflicts).
-
-### Parameter Cheat Sheet
-
-Core frequently tuned parameters:
+### Reward Parameter Cheat Sheet
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
+| **Core Parameters** |||
+| `base_factor` | 100.0 | Base reward scale |
+| `invalid_action` | -2.0 | Penalty for invalid actions |
 | `win_reward_factor` | 2.0 | Profit overshoot multiplier |
 | `pnl_factor_beta` | 0.5 | PnL amplification beta |
-| `idle_penalty_scale` | 0.5 | Idle penalty scale |
-| `idle_penalty_power` | 1.025 | Idle penalty exponent |
+| **Duration Penalties** |||
 | `max_trade_duration_candles` | 128 | Trade duration cap |
 | `max_idle_duration_candles` | None | Idle duration cap; fallback 4× max trade duration |
+| `idle_penalty_scale` | 0.5 | Idle penalty scale |
+| `idle_penalty_power` | 1.025 | Idle penalty exponent |
 | `hold_penalty_scale` | 0.25 | Hold penalty scale |
 | `hold_penalty_power` | 1.025 | Hold penalty exponent |
+| **Exit Attenuation** |||
 | `exit_attenuation_mode` | linear | Exit attenuation kernel |
 | `exit_plateau` | true | Flat region before attenuation starts |
 | `exit_plateau_grace` | 1.0 | Plateau duration ratio grace |
 | `exit_linear_slope` | 1.0 | Linear kernel slope |
-| `exit_power_tau` | 0.5 | Tau controlling power kernel decay (0,1] |
-| `exit_half_life` | 0.5 | Half-life for half_life kernel |
-| `potential_gamma` | 0.95 | PBRS discount γ |
-| `exit_potential_mode` | canonical | Exit potential mode |
+| `exit_power_tau` | 0.5 | Tau controlling `power` kernel decay (0,1] |
+| `exit_half_life` | 0.5 | Half-life for `half_life` kernel |
+| **Efficiency** |||
 | `efficiency_weight` | 1.0 | Efficiency contribution weight |
 | `efficiency_center` | 0.5 | Efficiency pivot in [0,1] |
-
-For full list & exact defaults see `reward_space_analysis.py` (`DEFAULT_MODEL_REWARD_PARAMETERS`).
+| **Validation** |||
+| `check_invariants` | true | Enable runtime invariant checks |
+| `exit_factor_threshold` | 10000.0 | Warn if exit factor exceeds threshold |
+| **PBRS** |||
+| `potential_gamma` | 0.95 | PBRS discount γ |
+| `exit_potential_mode` | canonical | Exit potential mode |
+| `exit_potential_decay` | 0.5 | Decay for `progressive_release` mode |
+| `hold_potential_enabled` | true | Enable hold potential Φ |
+| **Hold Potential** |||
+| `hold_potential_scale` | 1.0 | Hold potential scale |
+| `hold_potential_gain` | 1.0 | Hold potential gain |
+| `hold_potential_transform_pnl` | tanh | Hold PnL transform function |
+| `hold_potential_transform_duration` | tanh | Hold duration transform function |
+| **Entry Additive** |||
+| `entry_additive_enabled` | false | Enable entry additive |
+| `entry_additive_scale` | 1.0 | Entry additive scale |
+| `entry_additive_gain` | 1.0 | Entry additive gain |
+| `entry_additive_transform_pnl` | tanh | Entry PnL transform function |
+| `entry_additive_transform_duration` | tanh | Entry duration transform function |
+| **Exit Additive** |||
+| `exit_additive_enabled` | false | Enable exit additive |
+| `exit_additive_scale` | 1.0 | Exit additive scale |
+| `exit_additive_gain` | 1.0 | Exit additive gain |
+| `exit_additive_transform_pnl` | tanh | Exit PnL transform function |
+| `exit_additive_transform_duration` | tanh | Exit duration transform function |
 
 ### Exit Attenuation Kernels
 
-Let r be the raw duration ratio and grace = `exit_plateau_grace`.
+r = duration ratio and grace = `exit_plateau_grace`.
 
 ```
-effective_r = 0            if exit_plateau and r <= grace
-effective_r = r - grace    if exit_plateau and r >  grace
-effective_r = r            if not exit_plateau
+r* = 0            if exit_plateau and r <= grace
+r* = r - grace    if exit_plateau and r >  grace
+r* = r            if not exit_plateau
 ```
 
 | Mode | Multiplier (applied to base_factor * pnl * pnl_factor * efficiency_factor) | Monotonic decreasing (Yes/No) | Notes |
 |------|---------------------------------------------------------------------|-------------------------------|-------|
-| legacy | step: ×1.5 if r* ≤ 1 else ×0.5 | No | Historical discontinuity retained (not smoothed) |
+| legacy | step: ×1.5 if r* ≤ 1 else ×0.5 | No | Historical reference |
 | sqrt | 1 / sqrt(1 + r*) | Yes | Sub-linear decay |
 | linear | 1 / (1 + slope * r*) | Yes | slope = `exit_linear_slope` (≥0) |
 | power | (1 + r*)^(-alpha) | Yes | alpha = -ln(tau)/ln(2), tau = `exit_power_tau` ∈ (0,1]; tau=1 ⇒ alpha=0 (flat); invalid tau ⇒ alpha=1 (default) |
 | half_life | 2^(- r* / hl) | Yes | hl = `exit_half_life`; r* = hl ⇒ factor × 0.5 |
-
-Where r* = `effective_r` above.
 
 ### Transform Functions
 
@@ -228,7 +249,7 @@ Where r* = `effective_r` above.
 |-----------|---------|-------|-----------------|----------|
 | `tanh` | tanh(x) | (-1, 1) | Smooth sigmoid, symmetric around 0 | Balanced PnL/duration transforms (default) |
 | `softsign` | x / (1 + \|x\|) | (-1, 1) | Smoother than tanh, linear near 0 | Less aggressive saturation |
-| `arctan` | (2/pi) * arctan(x) | (-1, 1) | Slower saturation than tanh | Wide dynamic range |
+| `arctan` | (2/π) * arctan(x) | (-1, 1) | Slower saturation than tanh | Wide dynamic range |
 | `sigmoid` | 2σ(x) - 1, σ(x) = 1/(1 + e^(-x)) | (-1, 1) | Sigmoid mapped to (-1, 1) | Standard sigmoid activation |
 | `asinh` | x / sqrt(1 + x^2) | (-1, 1) | Normalized asinh-like transform | Extreme outlier robustness |
 | `clip` | clip(x, -1, 1) | [-1, 1] | Hard clipping at ±1 | Preserve linearity within bounds |
@@ -296,6 +317,7 @@ uv run python reward_space_analysis.py \
     --num_samples 50000 \
     --profit_target 0.05 \
     --trading_mode futures \
+    --bootstrap_resamples 5000 \
     --out_dir custom_analysis
 
 # Parameter sensitivity testing
