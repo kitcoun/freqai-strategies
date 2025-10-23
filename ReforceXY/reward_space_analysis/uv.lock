@@ -668,8 +668,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "coverage", version = "7.10.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "coverage", version = "7.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -686,7 +684,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "coverage" },
     { name = "pytest", specifier = ">=6.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff" },

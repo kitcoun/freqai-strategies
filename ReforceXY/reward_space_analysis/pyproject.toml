@@ -3,7 +3,7 @@ name = "reward_space_analysis"
 version = "0.1.0"
 description = "Reward space analysis for ReforceXY trading strategy"
 authors = [
-    {name = "Jerome Benoit", email = "jerome.benoit@sap.com"}
+    {name = "Jerome Benoit", email = "jerome.benoit@piment-noir.org"}
 ]
 readme = "README.md"
 requires-python = ">=3.9"
@@ -19,7 +19,6 @@ dependencies = [
 dev = [
     "pytest>=6.0",
     "ruff",
-    "coverage",
     "pytest-cov>=7.0.0",
 ]
 
