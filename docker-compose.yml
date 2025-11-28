@@ -1,0 +1,37 @@
+---
+services:
+  freqtrade:
+    # image: freqtradeorg/freqtrade:stable_freqai
+    # # Enable GPU Image and GPU Resources
+    # # Make sure to uncomment the whole deploy section
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Build step - only needed when additional dependencies are needed
+    build:
+      context: ./quickadapter
+      dockerfile: Dockerfile
+      args:
+        optuna_version: 4.6.0
+        scikit_learn_extra_version: 0.3.0
+        scikit_image_version: 0.25.2
+    restart: unless-stopped
+    container_name: freqtrade-quickadapter
+    environment:
+      - TZ=Europe/Paris
+    volumes:
+      - "./quickadapter/user_data:/freqtrade/user_data"
+    # Expose api on port 8081
+    # Please read the https://www.freqtrade.io/en/stable/rest-api/ documentation
+    # for more information.
+    env_file:
+      - .env
+    ports:
+      - "${FREQTRADE__API_SERVER__LISTEN_PORT}:${FREQTRADE__API_SERVER__LISTEN_PORT}"
+    # Default command used when running `docker compose up`
+    command: trade
