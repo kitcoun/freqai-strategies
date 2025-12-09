@@ -34,6 +34,7 @@ from Utils import (
     MINIMA_THRESHOLD_COLUMN,
     NORMALIZATION_TYPES,
     RANK_METHODS,
+    SMOOTHING_MODES,
     SMOOTHING_METHODS,
     STANDARDIZATION_TYPES,
     WEIGHT_STRATEGIES,
@@ -104,7 +105,7 @@ class QuickAdapterV3(IStrategy):
     _TRADING_MODES: Final[tuple[TradingMode, ...]] = ("spot", "margin", "futures")
 
     def version(self) -> str:
-        return "3.3.174"
+        return "3.3.175"
 
     timeframe = "5m"
 
@@ -123,8 +124,8 @@ class QuickAdapterV3(IStrategy):
     default_reversal_confirmation: ClassVar[dict[str, int | float]] = {
         "lookback_period": 0,
         "decay_ratio": 0.5,
-        "min_natr_ratio_percent": 0.01,
-        "max_natr_ratio_percent": 0.05,
+        "min_natr_ratio_percent": 0.0095,
+        "max_natr_ratio_percent": 0.075,
     }
 
     position_adjustment_enable = True
@@ -664,7 +665,7 @@ class QuickAdapterV3(IStrategy):
             or weighting_robust_quantiles[0] >= weighting_robust_quantiles[1]
         ):
             logger.warning(
-                f"{pair}: invalid extrema_weighting robust_quantiles {weighting_robust_quantiles}, must be (q_low, q_high) with 0 <= q_low < q_high <= 1, using default {DEFAULTS_EXTREMA_WEIGHTING['robust_quantiles']}"
+                f"{pair}: invalid extrema_weighting robust_quantiles {weighting_robust_quantiles}, must be (q1, q3) with 0 <= q1 < q3 <= 1, using default {DEFAULTS_EXTREMA_WEIGHTING['robust_quantiles']}"
             )
             weighting_robust_quantiles = DEFAULTS_EXTREMA_WEIGHTING["robust_quantiles"]
         else:
@@ -672,6 +673,21 @@ class QuickAdapterV3(IStrategy):
                 float(weighting_robust_quantiles[0]),
                 float(weighting_robust_quantiles[1]),
             )
+
+        weighting_mmad_scaling_factor = extrema_weighting.get(
+            "mmad_scaling_factor", DEFAULTS_EXTREMA_WEIGHTING["mmad_scaling_factor"]
+        )
+        if (
+            not isinstance(weighting_mmad_scaling_factor, (int, float))
+            or not np.isfinite(weighting_mmad_scaling_factor)
+            or weighting_mmad_scaling_factor <= 0
+        ):
+            logger.warning(
+                f"{pair}: invalid extrema_weighting mmad_scaling_factor {weighting_mmad_scaling_factor}, must be > 0, using default {DEFAULTS_EXTREMA_WEIGHTING['mmad_scaling_factor']}"
+            )
+            weighting_mmad_scaling_factor = DEFAULTS_EXTREMA_WEIGHTING[
+                "mmad_scaling_factor"
+            ]
 
         # Phase 2: Normalization
         weighting_normalization = str(
@@ -764,6 +780,7 @@ class QuickAdapterV3(IStrategy):
             "strategy": weighting_strategy,
             "standardization": weighting_standardization,
             "robust_quantiles": weighting_robust_quantiles,
+            "mmad_scaling_factor": weighting_mmad_scaling_factor,
             "normalization": weighting_normalization,
             "minmax_range": weighting_minmax_range,
             "sigmoid_scale": weighting_sigmoid_scale,
@@ -807,10 +824,44 @@ class QuickAdapterV3(IStrategy):
             )
             smoothing_beta = DEFAULTS_EXTREMA_SMOOTHING["beta"]
 
+        smoothing_polyorder = extrema_smoothing.get(
+            "polyorder", DEFAULTS_EXTREMA_SMOOTHING["polyorder"]
+        )
+        if not isinstance(smoothing_polyorder, int) or smoothing_polyorder < 1:
+            logger.warning(
+                f"{pair}: invalid extrema_smoothing polyorder {smoothing_polyorder}, must be an integer >= 1, using default {DEFAULTS_EXTREMA_SMOOTHING['polyorder']}"
+            )
+            smoothing_polyorder = DEFAULTS_EXTREMA_SMOOTHING["polyorder"]
+
+        smoothing_mode = str(
+            extrema_smoothing.get("mode", DEFAULTS_EXTREMA_SMOOTHING["mode"])
+        )
+        if smoothing_mode not in set(SMOOTHING_MODES):
+            logger.warning(
+                f"{pair}: invalid extrema_smoothing mode '{smoothing_mode}', using default '{SMOOTHING_MODES[0]}'"
+            )
+            smoothing_mode = SMOOTHING_MODES[0]
+
+        smoothing_bandwidth = extrema_smoothing.get(
+            "bandwidth", DEFAULTS_EXTREMA_SMOOTHING["bandwidth"]
+        )
+        if (
+            not isinstance(smoothing_bandwidth, (int, float))
+            or smoothing_bandwidth <= 0
+            or not np.isfinite(smoothing_bandwidth)
+        ):
+            logger.warning(
+                f"{pair}: invalid extrema_smoothing bandwidth {smoothing_bandwidth}, must be a positive finite number, using default {DEFAULTS_EXTREMA_SMOOTHING['bandwidth']}"
+            )
+            smoothing_bandwidth = DEFAULTS_EXTREMA_SMOOTHING["bandwidth"]
+
         return {
             "method": smoothing_method,
             "window": int(smoothing_window),
             "beta": smoothing_beta,
+            "polyorder": int(smoothing_polyorder),
+            "mode": smoothing_mode,
+            "bandwidth": float(smoothing_bandwidth),
         }
 
     @staticmethod
@@ -895,6 +946,7 @@ class QuickAdapterV3(IStrategy):
             strategy=self.extrema_weighting["strategy"],
             standardization=self.extrema_weighting["standardization"],
             robust_quantiles=self.extrema_weighting["robust_quantiles"],
+            mmad_scaling_factor=self.extrema_weighting["mmad_scaling_factor"],
             normalization=self.extrema_weighting["normalization"],
             minmax_range=self.extrema_weighting["minmax_range"],
             sigmoid_scale=self.extrema_weighting["sigmoid_scale"],
@@ -908,6 +960,9 @@ class QuickAdapterV3(IStrategy):
             self.extrema_smoothing["method"],
             self.extrema_smoothing["window"],
             self.extrema_smoothing["beta"],
+            self.extrema_smoothing["polyorder"],
+            self.extrema_smoothing["mode"],
+            self.extrema_smoothing["bandwidth"],
         )
         if debug:
             extrema = dataframe[EXTREMA_COLUMN]
